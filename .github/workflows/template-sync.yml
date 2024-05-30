@@ -1,0 +1,30 @@
+name: actions-template-sync
+
+on:
+  repository_dispatch:
+    types: [trigger-crs-sandbox-template-sync]
+  # manual trigger
+  workflow_dispatch:
+
+jobs:
+  repo-sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        # https://github.com/actions/checkout#usage
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.TEMPLATE_UPDATE_GITHUB_TOKEN }}
+
+      - name: actions-template-sync
+        uses: AndreasAugustin/actions-template-sync@v2
+        with:
+          github_token: ${{ secrets.TEMPLATE_UPDATE_GITHUB_TOKEN }}
+          source_repo_path: ${{ secrets.SOURCE_REPO_PATH }}
+          source_repo_ssh_private_key: ${{ secrets.CRS_EVALUATOR_EXEMPLAR_CLONE_SSH_KEY }}
+          upstream_branch: main
+          is_pr_cleanup: true
