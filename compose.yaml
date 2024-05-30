@@ -1,0 +1,72 @@
+---
+######################################################################################################
+# DO NOT MODIFY THIS FILE ANYWHERE OTHER THAN WITHIN THE CUSTOMIZE BLOCKS
+#
+#
+# New services are acceptable
+#
+# Profiles
+# We use the profiles "development" and "competition"
+# All containers added by competitors must include the appropriate profiles
+# At competition time only the `--profile competition` will be used
+# This will cause the LiteLLM proxy to disappear.
+# Competitors should be using the AIXCC_LITELLM_HOSTNAME environment variable
+# for accessing LiteLLM, so we can swap the URL at competition time.
+#
+######################################################################################################
+
+include:
+  - sandbox/compose.yaml
+
+#############
+### CUSTOMIZE
+#############
+
+
+### Additional services are welcomed, just make sure to use the supplied variables and profile names
+services:
+  crs:
+    profiles:
+      - development
+      - competition
+    # Competitors: You MUST change to your repos image name and be versioned pinned to the release intended for competition.
+    image: ghcr.io/aixcc-sc/crs-sandbox/replace-me-crs:v1.0.0
+    # Competitors: All services that are expected to have a clean exit must have restart: on-failure
+    restart: on-failure
+    build:
+      context: .  # Note that this uses the base folder for context, you may not need this for your CRS
+      # Competitors: You MUST change to your Dockerfile location for your CRS.
+      # This points to the mock_crs by default.
+      dockerfile: crs/src/Dockerfile
+      # Competitors: You will need to change this command to trigger your CRS.
+      # If you have multiple containers for your CRS you must design your own
+      # orchestration and sychronization mechanisms.
+    command: ["./run.sh"]
+    volumes:
+      #################################################################################
+      ### THESE VOLUMES MUST BE INCLUDED WITHOUT MODIFICATION TO ALL CRS CONTAINERS ###
+      # A CRS MUST copy CP repositories from `/cp_root` to a writable location such as `/crs_scratch` for building and testing CPs.
+      # A CRS MUST not modify settings within this section.
+      - type: bind
+        source: ${PWD}/crs_scratch
+        target: /crs_scratch
+        bind:
+          propagation: rshared
+      - ./cp_root:/cp_root
+      #################################################################################
+
+    environment:
+      # These values will be modified automatically at competition time
+      - DOCKER_HOST=tcp://dind:2375
+      - AIXCC_LITELLM_HOSTNAME=http://litellm
+      - AIXCC_API_HOSTNAME=http://iapi:8080
+      - AIXCC_CP_ROOT=/cp_root
+      - AIXCC_CRS_SCRATCH_SPACE=/crs_scratch
+      - LITELLM_KEY=sk-1234
+    depends_on:
+      iapi:
+        condition: service_healthy
+
+#############
+### CUSTOMIZE
+#############

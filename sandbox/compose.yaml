@@ -1,0 +1,188 @@
+######################################
+# DO NOT MODIFY
+######################################
+---
+services:
+  mock-crs:
+    profiles:
+      - mock-crs
+    image: ghcr.io/aixcc-sc/crs-sandbox/mock-crs:v2.0.0
+    build:
+      context: ../
+      dockerfile: mock_crs/src/Dockerfile
+    command: ["make", "-C", "/root/crs", "test"]
+    volumes:
+
+      - type: bind
+        source: ${PWD}/crs_scratch
+        target: /crs_scratch
+        bind:
+          propagation: rshared
+      - ./cp_root:/cp_root
+    environment:
+      - DOCKER_HOST=tcp://dind:2375
+      - AIXCC_LITELLM_HOSTNAME=http://litellm
+      - AIXCC_API_HOSTNAME=http://iapi:8080
+      - AIXCC_CP_ROOT=/cp_root
+      - AIXCC_CRS_SCRATCH_SPACE=/crs_scratch
+      - LITELLM_KEY=sk-1234
+    depends_on:
+      iapi:
+        condition: service_healthy
+  test:
+    profiles:
+      - loadtest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      # These values will be modified automatically at competition time
+      - DOCKER_HOST=tcp://dind:2375
+      - AIXCC_LITELLM_HOSTNAME=http://litellm
+      - AIXCC_API_HOSTNAME=http://iapi:8080
+      - AIXCC_CP_ROOT=/cp_root
+      - AIXCC_CRS_SCRATCH_SPACE=/crs_scratch
+      - LITELLM_KEY=sk-1234
+    depends_on:
+      litellm:
+        condition: service_healthy
+      iapi:
+        condition: service_healthy
+  dind:
+    expose:
+      - "2375"
+    profiles:
+      - mock-crs
+      - development
+      - competition
+      - loadtest
+    image: docker:24-dind
+    command: ["dockerd", "-H", "tcp://0.0.0.0:2375", "--tls=false", "--storage-driver=overlay2"]
+    restart: always
+    privileged: true  # This must run with privlege to support nested virtualization within the public Linux CP for `virtme-ng`
+    environment:
+      - DOCKER_TLS_CERTDIR  # intentionally blank to optimize runtime
+    volumes:
+      - type: bind
+        source: ${PWD}/crs_scratch
+        target: /crs_scratch
+        bind:
+          propagation: rshared
+      - type: bind
+        source: ${PWD}/dind_cache
+        target: /var/lib/docker
+        bind:
+          propagation: rprivate
+  iapi:
+    expose:
+      - "8080"
+    profiles:
+      - mock-crs
+      - development
+      - competition
+      - loadtest
+    image: nginx:1.25.5
+    env_file: env
+    configs:
+      - source: nginx_config
+        target: /etc/nginx/templates/default.conf.template
+    healthcheck:
+      # this passes through to the capi
+      test: ["CMD-SHELL", "curl --fail http://127.0.0.1:8080/health/ || exit 1"]
+      interval: 5s
+      retries: 5
+      start_period: 3s
+      timeout: 5s
+  capi:
+    expose:
+      - "8080"
+    profiles:
+      - mock-crs
+      - development
+      - loadtest
+    image: ghcr.io/aixcc-sc/capi:v2.0.2
+    restart: always
+    env_file: env
+    environment:
+      - AIXCC_AUDIT_FILE=/var/log/capi/audit.log
+      - AIXCC_CP_ROOT=/cp_root
+      - AIXCC_DATABASE_HOST=db
+      - AIXCC_DATABASE_NAME=capi
+      - AIXCC_DATABASE_PASSWORD=aixcc
+      - AIXCC_DATABASE_PORT=5432
+      - AIXCC_DATABASE_USERNAME=aixcc
+      - AIXCC_TEMPDIR=/crs_scratch
+      - DOCKER_HOST=tcp://dind:2375
+    configs:
+      - source: capi_config
+        target: /etc/capi/config.yaml
+    volumes:
+      - type: bind
+        source: ${PWD}/crs_scratch
+        target: /crs_scratch
+        bind:
+          propagation: rshared
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    expose:
+      - "5432"
+    profiles:
+      - mock-crs
+      - development
+      - loadtest
+    image: postgres:16.2-alpine3.19
+    restart: always
+    shm_size: 128mb
+    environment:
+      - POSTGRES_PASSWORD=aixcc
+      - POSTGRES_USER=aixcc
+      - POSTGRES_DATABASE=litellm
+    configs:
+      - source: capi_db_setup
+        target: /docker-entrypoint-initdb.d/capi-db-setup.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready", "-d", "capi"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+  litellm:
+    expose:
+      - "80"
+    profiles:
+      - mock-crs
+      - development
+      - loadtest
+    image: ghcr.io/berriai/litellm-database:main-v1.35.10
+    restart: always
+    configs:
+      - source: litellm_config
+        target: /app/config.yaml
+      - source: litellm_vertex_config
+        target: /vertex_key.json
+    command: ["--config", "/app/config.yaml", "--port", "80", "--num_workers", "8"]
+    env_file: env
+    environment:
+      - DATABASE_URL=postgresql://aixcc:aixcc@db
+      - AZURE_API_BASE=https://eastus2aoi.openai.azure.com/
+    healthcheck:
+      test: ["CMD-SHELL", "python3", "--version"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 1s
+    depends_on:
+      db:
+        condition: service_healthy
+configs:
+  litellm_config:
+    file: ./litellm/local_litellm_config.yaml
+  litellm_vertex_config:
+    file: ./litellm/vertex_key.json
+  capi_config:
+    file: ./capi/config.yaml
+  nginx_config:
+    file: ./nginx/default.conf.template
+  capi_db_setup:
+    file: ./capi/db_setup.sh

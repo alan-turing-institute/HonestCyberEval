@@ -1,0 +1,19 @@
+---
+# Changes the bind mount of ./cp_root to specify Persistent Volume that will be populated at competition time
+services:
+  crs:
+    volumes:
+      - cp_root:/cp_root
+      - crs_scratch:/crs_scratch
+  dind:
+    volumes:
+      - dind_cache:/var/lib/docker
+      - crs_scratch:/crs_scratch
+  capi:
+    volumes:
+      - cp_root:/cp_root
+      - crs_scratch:/crs_scratch
+volumes:
+  cp_root:
+  crs_scratch:
+  dind_cache:

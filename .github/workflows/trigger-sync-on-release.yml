@@ -1,0 +1,29 @@
+name: Submit PR to downstream CRS repos on Release
+permissions: read-all
+# Configures this workflow to run every time a release is published
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  trigger_downstream_sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if this is the source (template) repository
+        id: check-repo
+        run: |
+          if [ "${{ github.repository }}" != "aixcc-sc/crs-sandbox" ]; then
+            echo "Skipping downstream sync since this is not the template repo..."
+            exit 0
+          fi
+        # Check out code using git
+      - uses: actions/checkout@v4
+      # Install Node 20
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install @octokit/action
+      - run: node .github/actions/trigger-downstream-sync.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.SANDBOX_ACTION_GITHUB_TOKEN }}

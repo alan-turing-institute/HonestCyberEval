@@ -1,0 +1,21 @@
+# COMPETITORS: You may use this GitHub action file for assisting your development
+
+name: CRS Action
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  crs-action:
+    runs-on: large-runner
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+
+      - name: Do Nothing
+        run: |
+          echo "This is a sample action that competitors can replace to assist development."
