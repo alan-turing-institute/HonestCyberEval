@@ -1,6 +1,5 @@
 import time
 from typing import TypedDict, Literal, TypeAlias
-import requests
 from requests import Session
 from requests.auth import HTTPBasicAuth
 from config import AIXCC_API_HOSTNAME
