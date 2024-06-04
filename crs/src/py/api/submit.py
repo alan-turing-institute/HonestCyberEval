@@ -21,7 +21,7 @@ class ProofOfUnderstanding(TypedDict):
 
 
 class VDSubmission(TypedDict):
-    cp_name: str  # directory name of the challenge project NOT the name from project.yaml
+    cp_name: str  # cp_name from project.yaml
     pou: ProofOfUnderstanding
     pov: ProofOfVulnerability
 
