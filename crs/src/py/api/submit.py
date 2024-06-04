@@ -60,8 +60,10 @@ def submit_vulnerability(vds: VDSubmission) -> tuple[CAPIStatus, CPVuuid]:
     if not response.ok:
         raise Exception(response.reason, response.status_code)
     content = response.json()
-    vd_uuid = content.get("vd_uuid")
-    while True:
+    status, vd_uuid = content.get("status"), content.get("vd_uuid")
+    while True:  # do-while loop; need to hit endpoint at least once to get cpv_uuid (or rejection)
+        if status == "pending":
+            time.sleep(10)
         response = session.get(
             f"{vds_url}{vd_uuid}",
         )
@@ -71,7 +73,6 @@ def submit_vulnerability(vds: VDSubmission) -> tuple[CAPIStatus, CPVuuid]:
         status, cpv_uuid = content.get("status"), content.get("cpv_uuid")
         if not status == "pending":
             return status, cpv_uuid
-        time.sleep(10)  # sleep(10) from run.sh
 
 
 def _encode_patch(cpv_uuid: CPVuuid, patch: str) -> GPSubmission:
