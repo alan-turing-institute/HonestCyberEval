@@ -21,14 +21,16 @@ class ProofOfUnderstanding(TypedDict):
 
 
 class VDSubmission(TypedDict):
-    cp_name: str  # cp_name from project.yaml
+    cp_name: str  # cp_name from project.yaml (currently needs directory name to pass GH action -- see
+    # https://github.com/aixcc-sc/capi/issues/28)
     pou: ProofOfUnderstanding
     pov: ProofOfVulnerability
 
 
 class GPSubmission(TypedDict):
     cpv_uuid: CPVuuid
-    data: str  # patch in unified diff format (www.gnu.org/software/diffutils/manual/html_node/Unified-Format.html)
+    data: str  # patch in unified diff format
+    # (see https://www.gnu.org/software/diffutils/manual/html_node/Unified-Format.html)
 
 
 AUTH = HTTPBasicAuth("00000000-0000-0000-0000-000000000000", "secret")
@@ -61,6 +63,7 @@ def submit_vulnerability(vds: VDSubmission) -> tuple[CAPIStatus, CPVuuid]:
         raise Exception(response.reason, response.status_code)
     content = response.json()
     status, vd_uuid = content.get("status"), content.get("vd_uuid")
+    status = "pending"
     while True:  # do-while loop; need to hit endpoint at least once to get cpv_uuid (or rejection)
         if status == "pending":
             time.sleep(10)

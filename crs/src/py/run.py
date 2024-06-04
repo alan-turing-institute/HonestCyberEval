@@ -7,7 +7,7 @@ while not healthcheck():
 else:
     print("healthcheck passed")
 
-vds_submission: VDSubmission = {"cp_name": "Mock CP",
+vds_submission: VDSubmission = {"cp_name": "mock-cp",
                                 "pou": {"commit_sha1": "451dfb089f10ae0b5afd091a428e8c501c8b9b45",
                                         "sanitizer": "id_1",
                                         },
