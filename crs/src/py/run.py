@@ -1,4 +1,4 @@
-from submit import healthcheck, submit_vds, wait_until_vds_checked
+from api.submit import healthcheck, submit_vds, wait_until_vds_checked
 
 print(healthcheck())
 
@@ -7,6 +7,5 @@ vds_submission = {"cp_name": "mock-cp",
                   "pov": {"harness": "id_1", "data": "YWJjZGVmYWJjZGVmYWJjZGVmYWJjZGVmYWJjZGVmYWJjZGVmCmIKCjEK"}}
 
 vd_uuid, status = submit_vds(vds_submission)
-print(status)
-status = wait_until_vds_checked(vd_uuid)
+status = wait_until_vds_checked(vd_uuid, status)
 print(status)

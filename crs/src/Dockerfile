@@ -19,8 +19,6 @@ RUN apt-get update && \
 # Copy your source code
 COPY crs/src .
 
-RUN python3 --version
-
 RUN pip3 install -r requirements.txt
 
 # Run the command to start your CRS, this is just a placeholder
