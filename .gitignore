@@ -33,3 +33,5 @@ devenv.lock
 
 # direnv
 .direnv
+
+.idea
