@@ -12,7 +12,8 @@ on:
 
 jobs:
   run-lint:
-    runs-on: large-runner
+    runs-on:
+      group: large-runners
     permissions:
       contents: read
       packages: read
@@ -37,7 +38,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
   run-loadtests:
-    runs-on: large-runner
+    runs-on:
+      group: large-runners
     steps:
       - name: Check out code
         uses: actions/checkout@v2
@@ -106,11 +108,20 @@ jobs:
       - name: Show help
         run: make help
 
-  run-e2e-test:
-    runs-on: large-runner
+  run-validate-crs-submissions:
+    env:
+      AUDIT_LOG: ./capi_logs/audit.log
+      MAX_SECONDS: 600
+      POLL_SECONDS: 5
+    if: ${{ github.actor != 'robothing' }}
+    runs-on:
+      group: large-runners
     steps:
       - name: Check out code
         uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Install dependencies
         run: |
@@ -170,34 +181,68 @@ jobs:
         run: |
           make up
 
-      - name: Check audit log contents
+      - name: Wait for audit log to appear
         run: |
-          MAX_SECONDS=600
           CURRENT_SECONDS=0
-          AUDIT_LOG="./capi_logs/audit.log"
-          POLL_SECONDS=5
 
-          until [ -f $AUDIT_LOG ]; do
+          until [ -f "$AUDIT_LOG" ]; do
               echo "Waiting for audit log"
-              sleep $POLL_SECONDS
-              ((CURRENT_SECONDS += POLL_SECONDS)) && ((CURRENT_SECONDS == MAX_SECONDS)) && echo "timeout while waiting for audit log to start" && exit 1
+              sleep "$POLL_SECONDS"
+              ((CURRENT_SECONDS += POLL_SECONDS)) && ((CURRENT_SECONDS == MAX_SECONDS)) && echo "Timed out while waiting for audit log" && exit 1
           done
 
-          while [ -z "$(jq <$AUDIT_LOG '. | select( .event_type | match("vd_submission_success"))')" ]; do
-              echo "Waiting for VDS accepted event"
-              sleep $POLL_SECONDS
-              ((CURRENT_SECONDS += POLL_SECONDS)) && ((CURRENT_SECONDS == MAX_SECONDS)) && echo "timeout while waiting for success event" && exit 1
+          echo "Audit log appeared"
+
+      - name: Validate vulnerability discovery
+        run: |
+          CURRENT_SECONDS=0
+
+          while [ -z "$(jq <"$AUDIT_LOG" '. | select( .event_type | match("vd_submission_success"))')" ]; do
+              echo "Waiting for VDS success event"
+              sleep "$POLL_SECONDS"
+              ((CURRENT_SECONDS += POLL_SECONDS)) && ((CURRENT_SECONDS == MAX_SECONDS)) && echo "CRS did not submit a working VDS within the time limit" && exit 1
           done
 
-          echo "CRS passed"
+          echo "CRS submitted a working VDS within the time limit"
 
-      - name: Show logs
-        run: make logs
+      - name: Validate generated patch
+        run: |
+          CURRENT_SECONDS=0
+
+          while [ -z "$(jq <"$AUDIT_LOG" '. | select( .event_type | match("gp_submission_success"))')" ]; do
+              echo "Waiting for GP success event"
+              sleep "$POLL_SECONDS"
+              ((CURRENT_SECONDS += POLL_SECONDS)) && ((CURRENT_SECONDS == MAX_SECONDS)) && echo "CRS did not submit a working GP within the time limit" && exit 1
+          done
+
+          echo "CRS submitted a working GP within the time limit"
+
+      - name: Show CRS submission log
+        run: |
+          jq -rsc '. | .[] | select(
+              (.event_type == "gp_submission") or
+              (.event_type == "gp_submission_success") or
+              (.event_type == "gp_submission_invalid") or
+              (.event_type == "gp_submission_failed") or
+              (.event_type == "vd_submission") or
+              (.event_type == "vd_submission_success") or
+              (.event_type == "vd_submission_invalid") or
+              (.event_type == "vd_submission_failed")
+          ) | "\(.timestamp)\t\(.event_type)"' "$AUDIT_LOG" | column -t -s $'\t'
+        if: ${{ always() }}
+
+      - name: Print CRS logs
+        run: make logs-crs-nofollow
+        if: ${{ always() }}
+
+      - name: Print all logs from docker compose
+        run: make logs-nofollow
         if: ${{ failure() }}
 
 
   run-mock-crs:
-    runs-on: large-runner
+    runs-on:
+      group: large-runners
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -249,10 +294,14 @@ jobs:
           make mock-crs/up-attached
 
   run-kubernetes:
-    runs-on: large-runner
+    runs-on:
+      group: large-runners
     steps:
       - name: Check out code
         uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Install dependencies
         run: |

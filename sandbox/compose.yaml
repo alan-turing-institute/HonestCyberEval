@@ -4,6 +4,8 @@
 ---
 services:
   mock-crs:
+    networks:
+      - crs-internal
     profiles:
       - mock-crs
     image: ghcr.io/aixcc-sc/crs-sandbox/mock-crs:v2.0.0
@@ -30,6 +32,8 @@ services:
       iapi:
         condition: service_healthy
   test:
+    networks:
+      - crs-internal
     profiles:
       - loadtest
     build:
@@ -49,6 +53,9 @@ services:
       iapi:
         condition: service_healthy
   dind:
+    networks:
+      - crs-internal
+      - internet
     expose:
       - "2375"
     profiles:
@@ -74,6 +81,9 @@ services:
         bind:
           propagation: rprivate
   iapi:
+    networks:
+      - crs-internal
+      - internet  # Internal networks can't have host port mappings
     expose:
       - "8080"
     profiles:
@@ -94,13 +104,16 @@ services:
       start_period: 3s
       timeout: 5s
   capi:
+    networks:
+      - crs-internal
+      - internet  # This needs internet to pull CP container images but not for competition
     expose:
       - "8080"
     profiles:
       - mock-crs
       - development
       - loadtest
-    image: ghcr.io/aixcc-sc/capi:v2.0.2
+    image: ghcr.io/aixcc-sc/capi:v2.0.7
     restart: always
     env_file: env
     environment:
@@ -126,6 +139,8 @@ services:
       db:
         condition: service_healthy
   db:
+    networks:
+      - crs-internal
     expose:
       - "5432"
     profiles:
@@ -148,6 +163,9 @@ services:
       timeout: 3s
       retries: 3
   litellm:
+    networks:
+      - crs-internal
+      - internet
     expose:
       - "80"
     profiles:
@@ -165,7 +183,6 @@ services:
     env_file: env
     environment:
       - DATABASE_URL=postgresql://aixcc:aixcc@db
-      - AZURE_API_BASE=https://eastus2aoi.openai.azure.com/
     healthcheck:
       test: ["CMD-SHELL", "python3", "--version"]
       interval: 5s
@@ -186,3 +203,7 @@ configs:
     file: ./nginx/default.conf.template
   capi_db_setup:
     file: ./capi/db_setup.sh
+networks:
+  internet: {}
+  crs-internal:
+    internal: true

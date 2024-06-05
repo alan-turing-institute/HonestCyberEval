@@ -16,7 +16,8 @@
 ######################################################################################################
 
 include:
-  - sandbox/compose.yaml
+  - path:
+      - sandbox/compose.yaml
 
 #############
 ### CUSTOMIZE
@@ -26,10 +27,12 @@ include:
 ### Additional services are welcomed, just make sure to use the supplied variables and profile names
 services:
   crs:
+    networks:
+      - crs-internal  # Competitors: You MUST use this network only for any containers you add to your CRS.
     profiles:
       - development
       - competition
-    # Competitors: You MUST change to your repos image name and be versioned pinned to the release intended for competition.
+    # Competitors: You MUST change crs-sandbox to your repo name, change replace-me-crs to your image name, and be versioned pinned to the release intended for competition.
     image: ghcr.io/aixcc-sc/crs-sandbox/replace-me-crs:v1.0.0
     # Competitors: All services that are expected to have a clean exit must have restart: on-failure
     restart: on-failure
@@ -41,7 +44,7 @@ services:
       # Competitors: You will need to change this command to trigger your CRS.
       # If you have multiple containers for your CRS you must design your own
       # orchestration and sychronization mechanisms.
-    command: ["python3", "py/run.py"]
+    command: ["./run.sh"]
     volumes:
       #################################################################################
       ### THESE VOLUMES MUST BE INCLUDED WITHOUT MODIFICATION TO ALL CRS CONTAINERS ###

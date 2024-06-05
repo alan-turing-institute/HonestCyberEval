@@ -1,7 +1,7 @@
 ROOT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
 DOCKER_COMPOSE_FILE = $(ROOT_DIR)/compose.yaml
-DOCKER_COMPOSE_PORTS_FILE = $(ROOT_DIR)/sandbox/compose_local_overrides.yaml
+DOCKER_COMPOSE_PORTS_FILE = $(ROOT_DIR)/compose_local_overrides.yaml
 DOCKER_COMPOSE_LOCAL_ARGS = -f $(DOCKER_COMPOSE_FILE) -f $(DOCKER_COMPOSE_PORTS_FILE) --profile development
 DOCKER_COMPOSE_LOCAL_MOCK_CRS_ARGS = -f $(DOCKER_COMPOSE_FILE) -f $(DOCKER_COMPOSE_PORTS_FILE) --profile mock-crs
 
@@ -13,6 +13,9 @@ HOST_CAPI_LOGS = $(ROOT_DIR)/capi_logs
 # variables that control the CP repos
 HOST_CP_ROOT_DIR = $(ROOT_DIR)/cp_root
 CP_CONFIG_FILE ?= $(ROOT_DIR)/cp_config.yaml
+
+# location of local env file
+HOST_ENV_FILE = $(ROOT_DIR)/sandbox/env
 
 # Check for required file that will error out elsewhere if not present
 ifeq (,$(wildcard $(CP_CONFIG_FILE)))
@@ -43,7 +46,7 @@ help: ## Display available targets and their help strings
 build: ## Build the project
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) build $(c)
 
-computed-env:
+computed-env: required-env-file
 	@sed -i '/CAPI_AUTH_HEADER=*/d' sandbox/env
 	$(eval include sandbox/env)
 	@echo -n "CAPI_AUTH_HEADER=\"Basic " >> sandbox/env
@@ -72,6 +75,7 @@ destroy: clear-dind-cache ## Stop and remove containers with volumes
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) down --volumes --remove-orphans $(c)
 
 clear-dind-cache: ## Clears out DIND cached artifacts
+	@echo "Deleting the docker-in-docker cache folder, which requires sudo.  You will be prompted for your password."
 	@sudo rm -rf $(ROOT_DIR)/dind_cache/*
 
 stop: ## Stop containers
@@ -84,14 +88,26 @@ restart: computed-env ## Restart containers
 logs: ## Show logs for containers
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) logs --tail=100 -f $(c)
 
+logs-nofollow: ## Show logs for containers
+	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) logs $(c)
+
 logs-crs: ## Show logs for crs container
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) logs --tail=100 -f crs
+
+logs-crs-nofollow: ## Show logs for crs container
+	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) logs crs
 
 logs-litellm: ## Show logs for litellm container
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) logs --tail=100 -f litellm
 
+logs-capi: ## Show logs for capi container
+	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) logs --tail=100 -f capi
+
 logs-iapi: ## Show logs for iapi container
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) logs --tail=100 -f iapi
+
+logs-capi-audit: ## Watch the cAPI's audit log
+	@tail -f $(HOST_CAPI_LOGS)/audit.log
 
 ps: ## List containers
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) ps
@@ -127,7 +143,13 @@ loadtest: computed-env ## Run k6 load tests
 loadtest/destroy: ## Stop and remove containers with volumes
 	@docker compose -f $(DOCKER_COMPOSE_FILE) --profile loadtest down --volumes --remove-orphans $(c)
 
-k8s: k8s/clean build ## Generates helm chart locally for the development profile for kind testing, etc. build is called for local image generation
+required-env-file:
+ifeq (,$(wildcard $(HOST_ENV_FILE)))
+	@echo "No env file found at sandbox/env.  Please copy & customize sandbox/example.env and try again."
+	exit 1
+endif
+
+k8s: required-env-file k8s/clean build ## Generates helm chart locally for the development profile for kind testing, etc. build is called for local image generation
 	@kind create cluster --wait 1m
 	@docker pull ghcr.io/aixcc-sc/iapi:v4.0.3
 	@docker pull ghcr.io/berriai/litellm-database:main-v1.35.10
@@ -148,7 +170,7 @@ k8s/clean:
 	@rm -rf $(ROOT_DIR)/charts
 	@kind delete cluster
 
-k8s/competition: k8s/clean ## Generates the competition helm chart for use during pregame and the competition
+k8s/competition: required-env-file k8s/clean ## Generates the competition helm chart for use during pregame and the competition
 	@COMPOSE_FILE="$(ROOT_DIR)/compose.yaml $(ROOT_DIR)/kompose_competition_overrides.yaml" kompose convert --profile competition --chart --out tmp_charts
 	@mkdir $(ROOT_DIR)/charts
 	@mv tmp_charts $(ROOT_DIR)/charts/crs

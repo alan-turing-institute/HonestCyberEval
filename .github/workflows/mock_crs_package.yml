@@ -25,8 +25,8 @@ jobs:
 
 
         include:
-          - dockerfile: ./crs/src/Dockerfile
-            image: ghcr.io/aixcc-sc/${{ github.event.repository.name }}/replace-me-crs
+          - dockerfile: ./mock_crs/src/Dockerfile
+            image: ghcr.io/aixcc-sc/${{ github.event.repository.name }}/mock_crs
     permissions:
       contents: write # to push chart release and create a release (helm/chart-releaser-action)
       packages: write # needed for ghcr access
@@ -81,49 +81,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo curl -L "https://github.com/docker/compose/releases/download/v2.26.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-          sudo chmod +x /usr/local/bin/docker-compose
-          sudo curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64
-          curl https://mise.jdx.dev/install.sh | sh
-          echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
-          mise install
-
-      - name: Configure Git
-        run: |
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
-
-      - name: Move sandbox/example.env to sandbox/env
-        run: mv sandbox/example.env sandbox/env
-
-      - name: Create Competition Helm Resources
-        run: |
-          make k8s/competition
-
-      - name: Helm | Package
-        shell: bash
-        run: |
-          VERSION_STRING=${{ github.event.release.tag_name }}
-          NEW_VERSION="${VERSION_STRING#v}"
-          cd ./charts && helm package crs --version "$NEW_VERSION"
-          gh release upload "${{github.event.release.tag_name}}" "crs-${NEW_VERSION}.tgz"
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
-      - name: Push chart to GHCR
-        run: |
-          shopt -s nullglob
-          for pkg in ./charts/*.tgz; do
-            if [ -z "${pkg:-}" ]; then
-              break
-            fi
-            helm push "${pkg}" oci://ghcr.io/${{ github.repository }}
-          done
-        env:
-          HELM_EXPERIMENTAL_OCI: 1
-          GITHUB_TOKEN: ${{ github.token }}

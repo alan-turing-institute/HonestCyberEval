@@ -57,6 +57,19 @@ async function repos(octokit) {
   return dependents;
 }
 
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function dispatchEventToRepo(repo) {
+  console.log(`🔄 syncing repository "${repo}"`);
+  await octokit.request("POST /repos/{owner}/{repo}/dispatches", {
+    owner,
+    repo,
+    event_type: "trigger-template-sync",
+  });
+}
+
 const octokit = new Octokit();
 const repositories = await repos(octokit);
 
@@ -66,11 +79,8 @@ if (repositories.length === 0) {
   process.exit(0);
 }
 
-repositories.forEach(async (repo) => {
-  console.log(`🔄 syncing repository "${repo}"`);
-  await octokit.request("POST /repos/{owner}/{repo}/dispatches", {
-    owner,
-    repo,
-    event_type: "trigger-crs-sandbox-template-sync",
-  });
-});
+for (const repo of repositories) {
+  // Just sends dispatch event. Sync action will add delay to prevent API rate-limiting
+  await dispatchEventToRepo(repo);
+  await delay(1000);
+}

@@ -18,7 +18,6 @@ services:
       - dind_cache:/var/lib/docker
       - crs_scratch:/crs_scratch
 
-
 volumes:
   cp_root:
   crs_scratch:
