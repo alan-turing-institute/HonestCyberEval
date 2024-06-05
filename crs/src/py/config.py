@@ -1,3 +1,8 @@
 import os
 
 AIXCC_API_HOSTNAME = os.environ.get("AIXCC_API_HOSTNAME")
+AIXCC_CP_ROOT = os.environ.get("AIXCC_CP_ROOT")
+AIXCC_CRS_SCRATCH_SPACE = os.environ.get("AIXCC_CRS_SCRATCH_SPACE")
+DOCKER_HOST = os.environ.get("DOCKER_HOST")
+AIXCC_LITELLM_HOSTNAME = os.environ.get("AIXCC_LITELLM_HOSTNAME")
+LITELLM_KEY = os.environ.get("LITELLM_KEY")

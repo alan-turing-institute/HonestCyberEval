@@ -21,7 +21,7 @@ class ProofOfUnderstanding(TypedDict):
 
 
 class VDSubmission(TypedDict):
-    cp_name: str  # cp_name from project.yaml (currently needs directory name to pass GH action -- see
+    cp_name: str  # cp_name from project.yaml
     # https://github.com/aixcc-sc/capi/issues/28)
     pou: ProofOfUnderstanding
     pov: ProofOfVulnerability
@@ -53,8 +53,22 @@ def healthcheck() -> bool:
         return False
 
 
-def submit_vulnerability(vds: VDSubmission) -> tuple[CAPIStatus, CPVuuid]:
+def submit_vulnerability(cp_name: str, commit_sha1: str, sanitizer_id: str, harness_id: str, data: str) \
+        -> tuple[CAPIStatus, CPVuuid]:
     vds_url = f"{AIXCC_API_HOSTNAME}/submission/vds/"
+
+    vds: VDSubmission = {
+        "cp_name": cp_name,
+        "pou": {
+            "commit_sha1": commit_sha1,
+            "sanitizer": sanitizer_id,
+        },
+        "pov": {
+            "harness": harness_id,
+            "data": base64.b64encode(data.encode()).decode('ascii'),
+        }
+    }
+
     response = session.post(
         vds_url,
         json=vds,

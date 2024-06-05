@@ -17,6 +17,13 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v2
 
-      - name: Do Nothing
-        run: |
-          echo "This is a sample action that competitors can replace to assist development."
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install test requirements
+        run: pip3 install -r crs/src/requirements.test.txt
+
+      - name: Run Mypy typechecking
+        run: MYPYPATH=crs/src/py mypy crs/src/ --explicit-package-bases

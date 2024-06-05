@@ -7,6 +7,8 @@ services:
   dind:
     ports:
       - "2375:2375"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
   iapi:
     ports:
       - "8080:8080"
@@ -30,3 +32,10 @@ services:
   litellm:
     ports:
       - "8081:80"
+  crs:
+    volumes:
+      - type: bind
+        source: ${PWD}/crs/src/
+        target: /src/
+        bind:
+          propagation: rshared
