@@ -1,6 +1,6 @@
 #! /bin/bash
 
-CURL="curl --location --silent --user 00000000-0000-0000-0000-000000000000:secret"
+CURL="curl -v --location --silent --user 00000000-0000-0000-0000-000000000000:secret"
 
 until $CURL ${AIXCC_API_HOSTNAME}/health/ >/dev/null; do
 	echo "Waiting for API to be available"

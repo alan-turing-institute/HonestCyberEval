@@ -41,7 +41,7 @@ services:
       # Competitors: You will need to change this command to trigger your CRS.
       # If you have multiple containers for your CRS you must design your own
       # orchestration and sychronization mechanisms.
-    command: ["./run.sh"]
+    command: ["python3", "py/run.py"]
     volumes:
       #################################################################################
       ### THESE VOLUMES MUST BE INCLUDED WITHOUT MODIFICATION TO ALL CRS CONTAINERS ###
