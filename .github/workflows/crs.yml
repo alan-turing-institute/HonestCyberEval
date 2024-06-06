@@ -23,7 +23,7 @@ jobs:
           cache: 'pip'
 
       - name: Install test requirements
-        run: pip3 install -r crs/src/requirements.test.txt
+        run: pip3 install -r crs/src/requirements.txt -r crs/src/requirements.test.txt
 
       - name: Run Mypy typechecking
         run: MYPYPATH=crs/src/py mypy crs/src/ --explicit-package-bases

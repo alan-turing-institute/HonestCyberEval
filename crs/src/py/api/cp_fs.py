@@ -36,6 +36,9 @@ def run_cp_run_sh(project_path, *command):
 def run_cp_make(project_path, *command):
     subprocess.run(["make", "-C", project_path, *command])
 
+def run_cp_git(project_path, *command):
+    subprocess.run(["git", "-C", project_path, *command])
+
 
 def write_file_to_scratch(filename, content):
     file_path = Path(AIXCC_CRS_SCRATCH_SPACE) / filename

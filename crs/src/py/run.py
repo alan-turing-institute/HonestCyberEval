@@ -1,16 +1,28 @@
 import time
 
 from api.submit import healthcheck, submit_vulnerability, submit_patch
-from api.cp_fs import get_projects, read_project_yaml, write_file_to_scratch, move_projects_to_scratch, run_cp_run_sh
+from api.cp_fs import get_projects, read_project_yaml, write_file_to_scratch, move_projects_to_scratch, run_cp_run_sh, run_cp_git
+from api.llm import send_msg_to_llm
 
 move_projects_to_scratch()
 projects = get_projects()
 project = projects[0]  # for project in projects:
 project_config = read_project_yaml(project)
+# run_cp_git(project, "reset", "--hard")
 
 # Assuming this is "Mock CP" for now and using hardcoded inputs and patches
 # print(f"Building {project_config['cp_name']}")
 # run_cp_run_sh(project, "build")
+
+# cp_sources = list(project_config["cp_sources"].keys())
+# with open(project / "src" / cp_sources[0] / "mock_vp.c") as code_file:
+#     code_snippet = code_file.read().replace('\n', '')
+#
+# print(send_msg_to_llm(
+#     "oai-gpt-3.5-turbo",
+#     f"Could you find the vulnerabilities and write a diff patch for the following code:\n {code_snippet}\nBe brief",
+# ))
+#
 
 input_data = r"""abcdefabcdefabcdefabcdefabcdefabcdef
 b
@@ -19,7 +31,7 @@ b
 
 blob_file = write_file_to_scratch("input.blob", input_data)
 
-# run_cp_run_sh(project, "run_pov", blob_file, "stdin_harness.sh")  # project_config["harnesses"]["id_1"]["binary"]
+# run_cp_run_sh(project, "run_pov", blob_file, project_config["harnesses"]["id_1"]["name"])  # name or binary?
 
 while not healthcheck():
     time.sleep(5)
@@ -51,10 +63,10 @@ index 56cf8fd..abb73cd 100644
      i--;
 """
     patch_path = write_file_to_scratch("patch.diff", patch)
-#
+
     # print("Re-building CP with patch")
-    # run_cp_run_sh(project, "build", patch_path.absolute(), "samples")
-    # run_cp_run_sh(project, "run_pov", blob_file, "stdin_harness.sh")  # project_config["harnesses"]["id_1"]["binary"]
+    # run_cp_run_sh(project, "build", patch_path.absolute(), cp_sources[0])
+    # run_cp_run_sh(project, "run_pov", blob_file, project_config["harnesses"]["id_1"]["name"])
     # run_cp_run_sh(project, "run_tests")
 
     print("Submitting patch")

@@ -50,6 +50,7 @@ Note that this readme is not a substitute for the original README.md provided by
   - if you are usure what info you should put there, please let us know
 - To start LiteLLM proxy (port 8081 on host) and cAPI (scoring server API, port 8080 on host), run `make up`
   - if you get an error regarding the "docker.sock" file you might need to run `sudo chmod 777 /var/run/docker.sock`
+- To run only the CRS server with attached output stream run `c=crs make up-attached`
 
 ### Development workflow
 1. Do any work on new branches called `<name>/<short description>`.
