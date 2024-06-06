@@ -32,7 +32,7 @@ services:
     profiles:
       - development
       - competition
-    # Competitors: You MUST change crs-sandbox to your repo name, change replace-me-crs to your image name, and be versioned pinned to the release intended for competition.
+    # Competitors: You MUST change replace-me-crs to your image name, and be versioned pinned to the release intended for competition.
     image: ghcr.io/aixcc-sc/acs-crs-mindrake/replace-me-crs:v1.0.0
     # Competitors: All services that are expected to have a clean exit must have restart: on-failure
     restart: on-failure
@@ -43,8 +43,9 @@ services:
       dockerfile: crs/src/Dockerfile
       # Competitors: You will need to change this command to trigger your CRS.
       # If you have multiple containers for your CRS you must design your own
-      # orchestration and sychronization mechanisms.
+      # orchestration and synchronisation mechanisms.
     command: ["python3", "py/run.py"]
+    # command: ["tail", "-f", "py/run.py"]  # useful to keep CRS container alive in conjunction with `make crs-shell`
     volumes:
       #################################################################################
       ### THESE VOLUMES MUST BE INCLUDED WITHOUT MODIFICATION TO ALL CRS CONTAINERS ###

@@ -42,8 +42,6 @@ Note that this readme is not a substitute for the original README.md provided by
     - `chmod 600 ~/.ssh/id_rsa_aicc`
     - `eval "$(ssh-agent -s)"`
     - `ssh-add ~/.ssh/id_rsa_aicc`
-- `cd` into the CP folders in `cp_root` and run `make docker-pull` in each to pull the image used to build and test the CP
-  - when running containers locally, your Docker Daemon is exposed inside the container, so pulling the image will make it available inside the CRS container through the `dind` (Docker-in-Docker) container  
 - run `make build` to build docker images 
   - if you face issues regarding `yq` not installed, then run the following and try again
     - `wget https://github.com/mikefarah/yq/releases/download/v4.44.1/yq_linux_amd64`
@@ -54,9 +52,12 @@ Note that this readme is not a substitute for the original README.md provided by
   - fill in any API keys for the LLMs (e.g., OpenAI key)
   - include our GitHub username and personal access token in the `GITHUB_USER` and `GITHUB_TOKEN` variables in the `env` file
   - if you are usure what info you should put there, please let us know
-- To start LiteLLM proxy (port 8081 on host) and cAPI (scoring server API, port 8080 on host), run `make up`
+- run `make up` to start LiteLLM proxy (port 8081 on host), cAPI (scoring server API, port 8080 on host), and `dind` (Docker-in-Docker).
   - if you get an error regarding the "docker.sock" file you might need to run `sudo chmod 777 /var/run/docker.sock`
-- To run only the CRS server with attached output stream run `c=crs make up-attached`
+- with the `dind` container running, `cd` into the CP folders in `cp_root` and run `DOCKER_HOST=tcp://localhost:2375 make docker-pull` in each
+  - this will pull the image used to build and test the CP into the `dind` cache (`dind_cache`)
+  - in general, prefixing Docker commands with `DOCKER_HOST=tcp://localhost:2375` will let you run commands using the Docker instance inside the containers 
+- to run only the CRS server with attached output stream run `c=crs make up-attached`
 
 ### Development workflow
 1. Do any work on new branches called `<name>/<short description>`.

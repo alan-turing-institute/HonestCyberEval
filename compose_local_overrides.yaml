@@ -7,8 +7,6 @@ services:
   dind:
     ports:
       - "2375:2375"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
   iapi:
     ports:
       - "8080:8080"
