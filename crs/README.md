@@ -28,7 +28,13 @@ Note that this readme is not a substitute for the original README.md provided by
   - `echo 'eval "$(~/.local/bin/mise activate bash)"' >> ~/.bashrc`
   - `echo 'export PATH="$HOME/.local/share/mise/shims:$PATH"' >> ~/.bash_profile`
   - if you cannot run `mise --version` then uninstall using `~/.local/bin/mise implode` and start again :/
-- Clone this repo
+- We will supply you with an SSH key so that you can pull and push to the repo
+  - If you get authentication issues, you should use the private SSH key linked to our AIxCC GitHub Account.
+    - move the key to the `~/.ssh/` directory
+    - `chmod 600 ~/.ssh/id_rsa_aicc`
+    - `eval "$(ssh-agent -s)"`
+    - `ssh-add ~/.ssh/id_rsa_aicc`
+- Clone the repo by running `git clone git@github.com:aixcc-sc/asc-crs-mindrake.git`
 - `cd` into repo directory and run `mise install` to install dependencies
 - run `make cps` to pull the CP repos listed in [cp_config.yaml](..%2Fcp_config.yaml)
   - If you get authentication issues, you should use the private SSH key linked to our AIxCC GitHub Account.
