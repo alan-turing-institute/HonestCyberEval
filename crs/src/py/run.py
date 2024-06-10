@@ -40,6 +40,7 @@ for project_path in projects:
         print(f"Skipping {project.name}")
         continue
     project.repo.git.reset('--hard')
+    project.pull_docker_image()
 
     cp_source = project.sources[0]  # for cp_source in project.sources
     git_repo = project.repos.get(cp_source)
@@ -48,9 +49,9 @@ for project_path in projects:
         print(commit.hexsha, commit.message, commit.stats.files, sep="\n")
 
     print(f"Building {project.config['cp_name']}", flush=True)
-    # result = project.build_project()
-    # if result.stderr:
-    #     raise Exception("Build failed", result.stderr)
+    result = project.build_project()
+    if result.stderr:
+        raise Exception("Build failed", result.stderr)
 
     with open(project.path / "src" / cp_source / "mock_vp.c") as code_file:
         code_snippet = code_file.read().replace('\n', '')
@@ -61,8 +62,8 @@ for project_path in projects:
     # ))
 
     blob_file = write_file_to_scratch("input.blob", input_data)
-    # result = project.run_harness(blob_file, "id_1")
-    # print("Harness sanitiser output:\n", result.stderr)
+    result = project.run_harness(blob_file, "id_1")
+    print("Harness sanitiser output:\n", result.stderr)
 
     while not healthcheck():
         time.sleep(5)
@@ -78,23 +79,23 @@ for project_path in projects:
     print("Vulnerability:", status, cpv_uuid)
 
     if status != 'rejected':
-        # patch_path = write_file_to_scratch("patch.diff", patch)
-        #
-        # try:
-        #     print("Re-building CP with patch", flush=True)
-        #     result = project.patch_and_build_project(patch_path.absolute(), cp_source)
-        #     if result.stderr:
-        #         raise Exception("Build failed after patch", result.stderr)
-        # except CalledProcessError as err:
-        #     print("Patching failed", err, err.stdout, err.stderr)
-        # else:
-        #     result = project.run_harness(blob_file, "id_1")
-        #     if result.stderr:
-        #         raise Exception("Harness sanitiser output:\n", result.stderr)
-        #     result = project.run_tests()
-        #
-        #     if result.stderr:
-        #         raise Exception("Test failed", result.stderr)
+        patch_path = write_file_to_scratch("patch.diff", patch)
+
+        try:
+            print("Re-building CP with patch", flush=True)
+            result = project.patch_and_build_project(patch_path.absolute(), cp_source)
+            if result.stderr:
+                raise Exception("Build failed after patch", result.stderr)
+        except CalledProcessError as err:
+            print("Patching failed", err, err.stdout, err.stderr)
+        else:
+            result = project.run_harness(blob_file, "id_1")
+            if result.stderr:
+                raise Exception("Harness sanitiser output:\n", result.stderr)
+            result = project.run_tests()
+
+            if result.stderr:
+                raise Exception("Test failed", result.stderr)
 
             print("Submitting patch", flush=True)
             status, gp_uuid = submit_patch(cpv_uuid, patch)

@@ -52,9 +52,11 @@ Note that this readme is not a substitute for the original README.md provided by
   - fill in any API keys for the LLMs (e.g., OpenAI key)
   - include our GitHub username and personal access token in the `GITHUB_USER` and `GITHUB_TOKEN` variables in the `env` file
   - if you are usure what info you should put there, please let us know
+- run `docker login -u auth0-660bd3c14d2d6436de9169f3_aixcc -p <your pat> ghcr.io` to be able to pull the competition images
 - run `make up` to start LiteLLM proxy (port 8081 on host), cAPI (scoring server API, port 8080 on host), and `dind` (Docker-in-Docker).
   - if you get an error regarding the "docker.sock" file you might need to run `sudo chmod 777 /var/run/docker.sock`
-- with the `dind` container running, `cd` into the CP folders in `cp_root` and run `DOCKER_HOST=tcp://localhost:2375 make docker-pull` in each
+- OPTIONAL: with the `dind` container running, `cd` into the CP folders in `cp_root` and run `DOCKER_HOST=tcp://localhost:2375 make docker-pull` in each
+  - the CRS should manage docker images automatically 
   - this will pull the image used to build and test the CP into the `dind` cache (`dind_cache`)
   - in general, prefixing Docker commands with `DOCKER_HOST=tcp://localhost:2375` will let you run commands using the Docker instance inside the containers 
 - to run only the CRS server with attached output stream run `c=crs make up-attached`

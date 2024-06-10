@@ -6,3 +6,6 @@ AIXCC_CRS_SCRATCH_SPACE = os.environ.get("AIXCC_CRS_SCRATCH_SPACE")
 DOCKER_HOST = os.environ.get("DOCKER_HOST")
 AIXCC_LITELLM_HOSTNAME = os.environ.get("AIXCC_LITELLM_HOSTNAME")
 LITELLM_KEY = os.environ.get("LITELLM_KEY")
+
+GITHUB_USER = os.environ.get("GITHUB_USER")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
