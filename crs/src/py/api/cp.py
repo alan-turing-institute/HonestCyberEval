@@ -49,7 +49,6 @@ class ChallengeProject:
         """Runs a specified project test harness and returns the output of the process.
         Check result.stderr for sanitizer output if it exists.
         """
-        # TODO: name or binary?
         return self._run_cp_run_sh("run_pov", harness_input, self.config["harnesses"][harness_id]["name"])
 
     def run_tests(self):
@@ -60,6 +59,15 @@ class ChallengeProject:
 
     def run_cp_make(self, *command):
         return run_command("make", "-C", self.path, *command)
+
+    def open_project_source_file(self, source, file_path):
+        """Opens a file path in the CP.
+        source must be one of self.sources
+        file_path must be relative to source folder (can be obtained from git history)
+        """
+        if source not in self.sources:
+            return None
+        return open(self.path / "src" / source / file_path)
 
     # temporary code to interact with CP Docker images
     # Organisers are planning to make changes that will create a Docker container for this in local dev
@@ -84,4 +92,3 @@ class ChallengeProject:
             except CalledProcessError as err:
                 print("Docker CP image pull error", err.stderr)
                 raise err
-
