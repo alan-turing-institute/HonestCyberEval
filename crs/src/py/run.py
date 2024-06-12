@@ -43,8 +43,8 @@ for project_path in projects:
     project.pull_docker_image()
 
     for cp_source in project.sources:
-        git_repo = project.repos.get(cp_source)
-        git_log = list(git_repo.iter_commits(git_repo.head, max_count=2))
+        git_repo, ref = project.repos.get(cp_source)
+        git_log = list(git_repo.iter_commits(ref, max_count=2))
         for commit in git_log:
             print(commit.hexsha, commit.message, commit.stats.files, sep="\n")
 
