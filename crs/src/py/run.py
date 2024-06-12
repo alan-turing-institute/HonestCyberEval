@@ -53,7 +53,7 @@ for project_path in projects:
     if result.stderr:
         raise Exception("Build failed", result.stderr)
 
-    with open(project.path / "src" / cp_source / "mock_vp.c") as code_file:
+    with project.open_project_source_file(cp_source, "mock_vp.c") as code_file:
         code_snippet = code_file.read().replace('\n', '')
 
     # print(send_msg_to_llm(
