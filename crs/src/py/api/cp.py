@@ -1,7 +1,11 @@
+from collections import namedtuple
 from subprocess import CalledProcessError
 import yaml
 from git import Repo
 from api.fs import run_command, docker_login
+
+Sanitizer = namedtuple('Sanitizer', ['name', 'error_code'])
+SourceRepo = namedtuple('SourceRepo', ['repo', 'ref'])
 
 
 class ChallengeProject:
@@ -9,9 +13,20 @@ class ChallengeProject:
         self.path = path
         self.config = self._read_project_yaml()
         self.name = self.config["cp_name"]
+
         self.sources = list(self.config["cp_sources"].keys())
         self.repo = Repo(self.path)
-        self.repos = {source: Repo(self.path / "src" / source) for source in self.sources}
+        self.repos = {
+            source: SourceRepo(
+                repo,
+                repo.refs[self.config["cp_sources"][source]["ref"]]
+            ) for source in self.sources if (repo := Repo(self.path / "src" / source))
+        }
+
+        self.sanitizers = {
+            key: Sanitizer(*(x.strip() for x in value.split(":")))
+            for key, value in self.config["sanitizers"].items()
+        }
 
     def _read_project_yaml(self):
         with open(self.path / "project.yaml", "r") as stream:
@@ -57,7 +72,7 @@ class ChallengeProject:
         """
         return self._run_cp_run_sh("run_tests")
 
-    def run_cp_make(self, *command):
+    def _run_cp_make(self, *command):
         return run_command("make", "-C", self.path, *command)
 
     def open_project_source_file(self, source, file_path):
@@ -88,7 +103,7 @@ class ChallengeProject:
         if not self._check_docker_image():
             docker_login()
             try:
-                self.run_cp_make("docker-pull")
+                self._run_cp_make("docker-pull")
             except CalledProcessError as err:
                 print("Docker CP image pull error", err.stderr)
                 raise err
