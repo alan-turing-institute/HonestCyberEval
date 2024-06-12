@@ -84,10 +84,10 @@ jobs:
             echo 'Establishing base commit'
             git checkout -b initial "$initial"
             git fetch git@github.com:aixcc-sc/crs-sandbox.git main:upstream_merge
-            git merge upstream_merge --allow-unrelated-histories --no-edit --strategy=subtree
+            git merge upstream_merge --allow-unrelated-histories --no-edit --strategy=subtree -X theirs
             git branch -D upstream_merge
             git checkout main -b "${PR_BRANCH}"
-            git merge --squash --no-edit initial
+            git merge --no-edit --squash initial --strategy=subtree -X theirs || true
             git branch -D initial
 
       - name: actions-template-sync
