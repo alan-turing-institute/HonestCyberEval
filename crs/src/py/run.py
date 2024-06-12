@@ -42,61 +42,61 @@ for project_path in projects:
     project.repo.git.reset('--hard')
     project.pull_docker_image()
 
-    cp_source = project.sources[0]  # for cp_source in project.sources
-    git_repo = project.repos.get(cp_source)
-    git_log = list(git_repo.iter_commits(git_repo.head, max_count=2))
-    for commit in git_log:
-        print(commit.hexsha, commit.message, commit.stats.files, sep="\n")
+    for cp_source in project.sources:
+        git_repo = project.repos.get(cp_source)
+        git_log = list(git_repo.iter_commits(git_repo.head, max_count=2))
+        for commit in git_log:
+            print(commit.hexsha, commit.message, commit.stats.files, sep="\n")
 
-    print(f"Building {project.config['cp_name']}", flush=True)
-    result = project.build_project()
-    if result.stderr:
-        raise Exception("Build failed", result.stderr)
+        print(f"Building {project.config['cp_name']}", flush=True)
+        result = project.build_project()
+        if result.stderr:
+            raise Exception("Build failed", result.stderr)
 
-    with project.open_project_source_file(cp_source, "mock_vp.c") as code_file:
-        code_snippet = code_file.read().replace('\n', '')
+        with project.open_project_source_file(cp_source, "mock_vp.c") as code_file:
+            code_snippet = code_file.read().replace('\n', '')
 
-    # print(send_msg_to_llm(
-    #     "oai-gpt-3.5-turbo",
-    #     f"Could you find the vulnerabilities and write a diff patch for the following code:\n {code_snippet}\nBe brief",
-    # ))
+        # print(send_msg_to_llm(
+        #     "oai-gpt-3.5-turbo",
+        #     f"Could you find the vulnerabilities and write a diff patch for the following code:\n {code_snippet}\nBe brief",
+        # ))
 
-    blob_file = write_file_to_scratch("input.blob", input_data)
-    result = project.run_harness(blob_file, "id_1")
-    print("Harness sanitiser output:\n", result.stderr)
+        blob_file = write_file_to_scratch("input.blob", input_data)
+        result = project.run_harness(blob_file, "id_1")
+        print("Harness sanitiser output:\n", result.stderr)
 
-    while not healthcheck():
-        time.sleep(5)
-    else:
-        print("healthcheck passed")
-    status, cpv_uuid = submit_vulnerability(
-        cp_name=project.name,
-        commit_sha1="9d38fc63bb9ffbc65f976cbca45e096bad3b30e1",
-        sanitizer_id="id_1",
-        harness_id="id_1",
-        data=input_data,
-    )
-    print("Vulnerability:", status, cpv_uuid)
-
-    if status != 'rejected':
-        patch_path = write_file_to_scratch("patch.diff", patch)
-
-        try:
-            print("Re-building CP with patch", flush=True)
-            result = project.patch_and_build_project(patch_path.absolute(), cp_source)
-            if result.stderr:
-                raise Exception("Build failed after patch", result.stderr)
-        except CalledProcessError as err:
-            print("Patching failed", err, err.stdout, err.stderr)
+        while not healthcheck():
+            time.sleep(5)
         else:
-            result = project.run_harness(blob_file, "id_1")
-            if result.stderr:
-                raise Exception("Harness sanitiser output:\n", result.stderr)
-            result = project.run_tests()
+            print("healthcheck passed")
+        status, cpv_uuid = submit_vulnerability(
+            cp_name=project.name,
+            commit_sha1="9d38fc63bb9ffbc65f976cbca45e096bad3b30e1",
+            sanitizer_id="id_1",
+            harness_id="id_1",
+            data=input_data,
+        )
+        print("Vulnerability:", status, cpv_uuid)
 
-            if result.stderr:
-                raise Exception("Test failed", result.stderr)
+        if status != 'rejected':
+            patch_path = write_file_to_scratch("patch.diff", patch)
 
-            print("Submitting patch", flush=True)
-            status, gp_uuid = submit_patch(cpv_uuid, patch)
-            print("Patch:", status, gp_uuid, flush=True)
+            try:
+                print("Re-building CP with patch", flush=True)
+                result = project.patch_and_build_project(patch_path.absolute(), cp_source)
+                if result.stderr:
+                    raise Exception("Build failed after patch", result.stderr)
+            except CalledProcessError as err:
+                print("Patching failed", err, err.stdout, err.stderr)
+            else:
+                result = project.run_harness(blob_file, "id_1")
+                if result.stderr:
+                    raise Exception("Harness sanitiser output:\n", result.stderr)
+                result = project.run_tests()
+
+                if result.stderr:
+                    raise Exception("Test failed", result.stderr)
+
+                print("Submitting patch", flush=True)
+                status, gp_uuid = submit_patch(cpv_uuid, patch)
+                print("Patch:", status, gp_uuid, flush=True)
