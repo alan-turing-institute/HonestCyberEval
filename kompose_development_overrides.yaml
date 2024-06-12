@@ -1,14 +1,26 @@
 ---
+# This file can only be modified to add services which need access to /crs_scratch or read-only access to /cp_root.
+# Do not define new volumes, edit services other than the CRS, or attach any volumes other than those two to your services.
 # Changes the bind mount of ./cp_root to specify Persistent Volume that will be populated at competition time
 services:
+  load-cp-images:
+    volumes:
+      - cp_root:/cp_root
   crs:
     volumes:
       - cp_root:/cp_root
       - crs_scratch:/crs_scratch
+    depends_on:
+      load-cp-images:
+        condition: service_completed_successfully
   dind:
     volumes:
       - dind_cache:/var/lib/docker
       - crs_scratch:/crs_scratch
+  iapi:
+    depends_on:
+      capi:
+        condition: service_healthy
   capi:
     volumes:
       - cp_root:/cp_root

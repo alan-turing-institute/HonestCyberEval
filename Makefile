@@ -6,6 +6,8 @@ DOCKER_COMPOSE_LOCAL_ARGS = -f $(DOCKER_COMPOSE_FILE) -f $(DOCKER_COMPOSE_PORTS_
 DOCKER_COMPOSE_LOCAL_MOCK_CRS_ARGS = -f $(DOCKER_COMPOSE_FILE) -f $(DOCKER_COMPOSE_PORTS_FILE) --profile mock-crs
 
 # variables that control the volumes
+export UID=$(shell id -u)
+export GID=$(shell id -g)
 HOST_CRS_SCRATCH = $(ROOT_DIR)/crs_scratch
 HOST_DIND_CACHE = $(ROOT_DIR)/dind_cache
 HOST_CAPI_LOGS = $(ROOT_DIR)/capi_logs
@@ -17,7 +19,16 @@ CP_CONFIG_FILE ?= $(ROOT_DIR)/cp_config.yaml
 # location of local env file
 HOST_ENV_FILE = $(ROOT_DIR)/sandbox/env
 
-# Check for required file that will error out elsewhere if not present
+# Check for required files that will error out elsewhere if not present
+ENV_FILES_PRESENT = $(wildcard $(HOST_ENV_FILE))
+UNSET_GITHUB_ENV_VARS = $(shell grep REPLACE_WITH <$(HOST_ENV_FILE) | grep GITHUB_)
+
+ifeq (,$(ENV_FILES_PRESENT))
+$(warning No env file found at $(HOST_ENV_FILE).  Please copy & fill out sandbox/example.env and try again.  See the README and the file's comments for details.)
+else ifneq (,$(UNSET_GITHUB_ENV_VARS))
+$(warning Uninitialized GitHub credentials in $(HOST_ENV_FILE).  In order for make up to work, these need to be set to values that can pull containers and clone repos.)
+endif
+
 ifeq (,$(wildcard $(CP_CONFIG_FILE)))
 $(error Required file not found: $(CP_CONFIG_FILE))
 endif
@@ -38,34 +49,40 @@ endif
 CP_TARGETS_DIRS = $(shell yq -r '.cp_targets | keys | .[]' $(CP_CONFIG_FILE))
 CP_MAKE_TARGETS = $(addprefix $(HOST_CP_ROOT_DIR)/.pulled_, $(subst :,_colon_, $(subst /,_slash_, $(CP_TARGETS_DIRS))))
 
-.PHONY: help build up start down destroy stop restart logs logs-crs logs-litellm logs-iapi ps crs-shell litellm-shell cps/clean cps computed-env clear-dind-cache
+.PHONY: help build up start down destroy stop restart logs logs-crs logs-litellm logs-iapi ps crs-shell litellm-shell cps/clean cps computed-env clear-dind-cache env-file-required github-creds-required
 
 help: ## Display available targets and their help strings
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_/-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(THIS_FILE) | sort
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_/-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(THIS_FILE) | sort
+
+env-file-required:
+	@if [ -z "$(ENV_FILES_PRESENT)" ]; then exit 1; fi
+
+github-creds-required: env-file-required
+	@if [ -n "$(UNSET_GITHUB_ENV_VARS)" ]; then exit 1; fi
 
 build: ## Build the project
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) build $(c)
 
-computed-env: required-env-file
+computed-env: env-file-required
 	@sed -i '/CAPI_AUTH_HEADER=*/d' sandbox/env
 	$(eval include sandbox/env)
-	@echo -n "CAPI_AUTH_HEADER=\"Basic " >> sandbox/env
-	@echo -n "${CAPI_ID}:${CAPI_TOKEN}" | base64 | tr -d '\n' >> sandbox/env
-	@echo \" >> sandbox/env
+	@printf 'CAPI_AUTH_HEADER="Basic ' >> sandbox/env
+	@printf "%s:%s" "${CAPI_ID}" "${CAPI_TOKEN}" | base64 | tr -d '\n' >> sandbox/env
+	@printf '"' >> sandbox/env
 
 local-volumes:
 	mkdir -p $(HOST_CP_ROOT_DIR) $(HOST_CRS_SCRATCH) $(HOST_DIND_CACHE) $(HOST_CAPI_LOGS)
 
-up: local-volumes cps computed-env ## Start containers
+up: github-creds-required local-volumes cps computed-env ## Start containers
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) up -d $(c)
 
-up-attached: cps computed-env ## Start containers
+up-attached: github-creds-required cps computed-env ## Start containers
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) up --build --abort-on-container-exit $(c)
 
-mock-crs/up-attached: cps computed-env ## Start containers
+mock-crs/up-attached: github-creds-required cps computed-env ## Start containers
 	@docker compose $(DOCKER_COMPOSE_LOCAL_MOCK_CRS_ARGS) up --build --abort-on-container-exit $(c)
 
-start: ## Start containers
+start: github-creds-required ## Start containers
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) start $(c)
 
 down: ## Stop and remove containers
@@ -81,7 +98,7 @@ clear-dind-cache: ## Clears out DIND cached artifacts
 stop: ## Stop containers
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) stop $(c)
 
-restart: computed-env ## Restart containers
+restart: github-creds-required computed-env ## Restart containers
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) stop $(c)
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) up -d $(c)
 
@@ -143,26 +160,15 @@ loadtest: computed-env ## Run k6 load tests
 loadtest/destroy: ## Stop and remove containers with volumes
 	@docker compose -f $(DOCKER_COMPOSE_FILE) --profile loadtest down --volumes --remove-orphans $(c)
 
-required-env-file:
-ifeq (,$(wildcard $(HOST_ENV_FILE)))
-	@echo "No env file found at sandbox/env.  Please copy & customize sandbox/example.env and try again."
-	exit 1
-endif
-
-k8s: required-env-file k8s/clean build ## Generates helm chart locally for the development profile for kind testing, etc. build is called for local image generation
+k8s: k8s/development build ## Generates helm chart locally for the development profile for kind testing, etc. build is called for local image generation
 	@kind create cluster --wait 1m
-	@docker pull ghcr.io/aixcc-sc/iapi:v4.0.3
+	@docker pull ghcr.io/aixcc-sc/capi:v2.1.2
 	@docker pull ghcr.io/berriai/litellm-database:main-v1.35.10
+	@docker pull nginx:1.25.5
 	@docker pull docker:24-dind
 	@docker pull postgres:16.2-alpine3.19
 	@docker pull ghcr.io/aixcc-sc/crs-sandbox/mock-crs:v2.0.0
-	@kind load docker-image ghcr.io/aixcc-sc/iapi:v4.0.3 ghcr.io/berriai/litellm-database:main-v1.35.10 docker:24-dind postgres:16.2-alpine3.19
-	@mkdir $(ROOT_DIR)/charts
-	@COMPOSE_FILE="$(ROOT_DIR)/compose.yaml $(ROOT_DIR)/kompose_development_overrides.yaml" kompose convert --profile development --chart --out tmp_charts
-	@mv tmp_charts $(ROOT_DIR)/charts/crs
-	@rm -rf ./tmp_charts
-	@yq eval ".description = \"AIxCC Competitor CRS\"" -i $(ROOT_DIR)/charts/crs/Chart.yaml
-	@yq eval ".name = \"crs\"" -i $(ROOT_DIR)/charts/crs/Chart.yaml
+	@kind load docker-image ghcr.io/aixcc-sc/capi:v2.1.2 ghcr.io/berriai/litellm-database:main-v1.35.10 docker:24-dind postgres:16.2-alpine3.19 nginx:1.25.5 load-cp-images:v0.0.1
 	@helm install crs $(ROOT_DIR)/charts/crs
 
 k8s/clean:
@@ -170,7 +176,15 @@ k8s/clean:
 	@rm -rf $(ROOT_DIR)/charts
 	@kind delete cluster
 
-k8s/competition: required-env-file k8s/clean ## Generates the competition helm chart for use during pregame and the competition
+k8s/development: github-creds-required k8s/clean
+	@COMPOSE_FILE="$(ROOT_DIR)/compose.yaml $(ROOT_DIR)/kompose_development_overrides.yaml" kompose convert --profile development --chart --out tmp_charts
+	@mkdir $(ROOT_DIR)/charts
+	@mv tmp_charts $(ROOT_DIR)/charts/crs
+	@rm -rf ./tmp_charts
+	@yq eval ".description = \"AIxCC Competitor CRS\"" -i $(ROOT_DIR)/charts/crs/Chart.yaml
+	@yq eval ".name = \"crs\"" -i $(ROOT_DIR)/charts/crs/Chart.yaml
+
+k8s/competition: env-file-required k8s/clean ## Generates the competition helm chart for use during pregame and the competition
 	@COMPOSE_FILE="$(ROOT_DIR)/compose.yaml $(ROOT_DIR)/kompose_competition_overrides.yaml" kompose convert --profile competition --chart --out tmp_charts
 	@mkdir $(ROOT_DIR)/charts
 	@mv tmp_charts $(ROOT_DIR)/charts/crs

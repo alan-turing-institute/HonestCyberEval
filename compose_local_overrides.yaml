@@ -4,15 +4,29 @@
 
 ---
 services:
-  dind:
-    ports:
-      - "2375:2375"
+  # dind:
+  #   ports:
+  #     - "127.0.0.1:2375:2375"
+  crs:
+    env_file: sandbox/env  # needed for Docker login details; can be removed when the other Docker code isn't needed
+    volumes:
+      - type: bind
+        source: ${PWD}/crs/src/py/
+        target: /app/py/
+        bind:
+          propagation: rshared
+    depends_on:
+      load-cp-images:
+        condition: service_completed_successfully
   iapi:
     ports:
-      - "8080:8080"
+      - '127.0.0.1:8080:8080'
+    depends_on:
+      capi:
+        condition: service_healthy
   capi:
-    ports:
-      - "8082:8080"
+    # ports:
+    #   - "127.0.0.1:8082:8080"
     volumes:
       - type: bind
         source: ${PWD}/capi_logs
@@ -24,16 +38,9 @@ services:
         target: /cp_root
         bind:
           propagation: rshared
-  db:
-    ports:
-      - "5432:5432"
+  # db:
+  #   ports:
+  #     - "127.0.0.1:5432:5432"
   litellm:
     ports:
-      - "8081:80"
-  crs:
-    volumes:
-      - type: bind
-        source: ${PWD}/crs/src/py/
-        target: /app/py/
-        bind:
-          propagation: rshared
+      - '127.0.0.1:8081:80'

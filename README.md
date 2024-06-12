@@ -23,6 +23,9 @@ Competitors MUST release at least one version of their CRS during Phase 1 to val
 
 Failure to do so will prevent a team's CRS from moving forward to Phase 2.
 
+During Phase 1, teams must use their own secret keys and tokens to access collaborator resources
+(LLM APIs) and authenticate against GitHub.
+
 #### Interpreting Results in GitHub Actions
 
 The job that evaluates the CRS's performance is part of the [CRS Evaluator](https://github.com/aixcc-sc/crs-sandbox/actions/workflows/evaluator.yml) and is called `run-validate-crs-submissions`.
@@ -34,7 +37,7 @@ Check the output of the validation steps, CRS submission log step, and CRS logs 
 
 ### Phase 2 - Automated Execution of your CRS
 
-Date: 2024-06-19
+Date: 2024-06-21
 
 On the above date, the AIxCC Game Architecture team will automatically execute competitors CRSs against a subset of published challenge problems.
 
@@ -45,6 +48,9 @@ Competitors must release new versions of their CRS with an updated tag from `mai
 With each new release of a competitors CRS it will be automatically executed.
 
 Only the latest semantic version of a competitors CRS that is properly tagged from `main` will be tested in Phase 2.
+
+During Phase 2, secret keys and tokens for collaborator resources (LLM APIs) and GitHub access will
+be set by the AIxCC infrastructure team.
 
 ## Code Owners
 
@@ -71,8 +77,6 @@ charts/*
 cp_root/*
 crs_scratch/*
 dind_cache/*
-kompose_competition_overrides.yaml
-kompose_development_overrides.yaml
 LICENSE
 Makefile
 README.md
@@ -111,54 +115,70 @@ compatible with the competition environment.
 
 ## Environment Variables & GitHub Secrets
 
-Each competitors CRS will come pre-packaged with a list of GitHub secrets and environment variables.
-Teams may change the values of these secrets, however they must not change the name of the pre-existing
-secrets or variables and must ensure their application code uses the core variables related to the iAPI and LiteLLM connections.
+Each competitor CRS repository will come pre-packaged with a list of GitHub secrets and environment
+variables. Teams may change the values of these secrets (e.g. to their own collaborator API keys);
+however, teams must not change the variable names. Also, teams must ensure their services use the
+core variables related to the iAPI and LiteLLM connections.
 
-This is so the AIxCC infrastructure team can override the per-competitor secrets and variables at competition time,
-yet competitors can use these secrets for connecting to their cloud vendor and/or LLM APIs as needed.
+For local development and during Phase 1 of the Evaluation Window, competitors are expected to
+use / provide their own keys and secrets. During subsequent phases of the evaluation window
+and at competition, the AIxCC infrastructure team will override these values with their own.
 
-There are currently 4 LLM Provider environment variables declared but not populated in example.env, which will be populated at competition time:
+There are currently 5 LLM Provider environment variables declared but not populated in example.env, which will be populated at competition time:
 
 - OPENAI\_API\_KEY
 - AZURE\_API\_KEY
 - AZURE\_API\_BASE
 - GOOGLE_APPLICATION_CREDENTIAL
 - ANTHROPIC\_API\_KEY
-Note: For local development the [./sandbox/example.env](./sandbox/example.env) file should be renamed to env.
-This file is included in the .gitignore so competitors don't accidentally push it to their repository.
+
+Note: For local development, the [./sandbox/example.env](./sandbox/example.env) file should be
+copied to `./sandbox/env`. This file is included in the `.gitignore` so competitors don't
+accidentally push it to their repository.
 
 *TBD* - These variables and the LiteLLM configuration file are not yet complete. This will be released in a CRS sandbox update.
 We will continue iterating on the CRS sandbox as we grow closer to the competition in order to support newer versions of components.
 
-Please see the competition rules and technical release as the cut off dates for changes will be descibed there.
+Please see the competition rules and technical release as the cut off dates for changes will be described there.
 
 ## LiteLLM Models Supported
 
-| Provider  | Model                  | Pinned Version              |
-| --------- | ---------------------- | --------------------------- |
-| OpenAI    | gpt-3.5-turbo          | gpt-3.5-turbo-0125          |
-| OpenAI    | gpt-4                  | gpt-4-0613                  |
-| OpenAI    | gpt-4-turbo            | gpt-4-turbo-2024-04-09      |
-| OpenAI    | gpt-4o                 | gpt-4o-2024-05-13           |
-| OpenAI    | text-embedding-3-large | text-embedding-3-large      |
-| OpenAI    | text-embedding-3-small | text-embedding-3-small      |
-| Anthropic | claude-3-sonnet        | claude-3-sonnet-20240229    |
-| Anthropic | claude-3-opus          | claude-3-opus-20240229      |
-| Anthropic | claude-3-haiku         | claude-3-haiku-20240307     |
-| Google    | gemini-pro             | gemini-1.0-pro-002          |
-| Google    | gemini-1.5-pro         | gemini-1.5-pro-preview-0514 |
-| Google    | textembedding-gecko    | textembedding-gecko@003     |
+| Provider  | Model                  | Pinned Version              | Requests per Minute (RPM) | Tokens per Minute (TPM)  |
+| --------- | ---------------------- | --------------------------- | --------------------------| -------------------------|
+| OpenAI    | gpt-3.5-turbo          | gpt-3.5-turbo-0125          | 800                       | 80,000                   |
+| OpenAI    | gpt-4                  | gpt-4-0613                  | 200                       | 20,000                   |
+| OpenAI    | gpt-4-turbo            | gpt-4-turbo-2024-04-09      | 400                       | 60,000                   |
+| OpenAI    | gpt-4o                 | gpt-4o-2024-05-13           | 400                       | 300,000                  |
+| OpenAI    | text-embedding-3-large | text-embedding-3-large      | 500                       | 200,000                  |
+| OpenAI    | text-embedding-3-small | text-embedding-3-small      | 500                       | 200,000                  |
+| Anthropic | claude-3-sonnet        | claude-3-sonnet-20240229    | 1,000                     | 80,000                   |
+| Anthropic | claude-3-opus          | claude-3-opus-20240229      | 1,000                     | 40,000                   |
+| Anthropic | claude-3-haiku         | claude-3-haiku-20240307     | 1,000                     | 100,000                  |
+| Google    | gemini-pro             | gemini-1.0-pro-002          | 120                       | pending (as of 20240610) |
+| Google    | gemini-1.5-pro         | gemini-1.5-pro-preview-0514 | 120                       | pending (as of 20240610) |
+| Google    | textembedding-gecko*   | textembedding-gecko@003*    | pending (as of 20240610)  | pending (as of 20240610) |
 
 Note: OpenAI Embedding models have not currently been released in more than a single version, thus pinned/name strings are identical.
 
-All OpenAI models also have an Azure-hosted version that is identical, for load-balancing. Competitors will be able to freely request the
-model they like by the Model name in chart above without having to worry about addressing them directly.
+All OpenAI models will also be matched by an Azure-hosted version. Competitors will be able to freely request the
+model they like by the Model name in chart above, plus a prefix "oai-" or "azure-".
+Ex. "oai-gpt-4o".
+This was done because of performance differences between the models as hosted on OAI vs Azure infrastructure. The models themselves are guaranteed to be identical but no such promises can be made as regards supporting provider infrastrcture.
 
-Note: Embedding models have not currently been released in more than a single version.
+Note: OAI Embedding models have not currently been released in more than a single version.
 
 These are utilized by hitting the LiteLLM /chat/completions endpoint, specifying model and message using the OpenAI JSON request format.
 Note: Further models will be supported in subsequent iterations.
+
+The Requests per Minute (RPM) and Tokens per Minute (TPM) columns in the table above are
+rate limits that are enforced per CRS for the ASC. The LiteLLM proxy will be responsible for
+implementing these limits. The RPM and TPM limits are enforced per model, not in aggregate across
+models or providers.
+
+Note: the "\*" next to model "textembedding-gecko" indicates this model target is still in flux.
+The AIxCC infrastructure team is still waiting on LiteLLM to finalize support for the model
+"text-embedding-04". If this newer model is not integrated in time to support its use during the
+ASC, then the fallback will likely be "textembedding-gecko@003".
 
 ## Local Development
 
@@ -195,6 +215,25 @@ Most dependencies in this repository can be automatically managed by `mise`, but
 - docker >= 24.0.5
 - docker-compose >= 2.26.1
 - GNU make >= 4.3
+- kind >= 0.23.0 (for running local kubernetes clusters in docker)
+
+Additionally, you will need permissions to interact with the Docker daemon.  Typically this means adding your user to the `docker` group.
+
+### Working with Docker-in-Docker
+
+The `crs-sandbox` contains its own Docker daemon inside of a Docker container.
+By default this is not accessible on the host machine, but you can enable the
+port mapping by editing
+[`./compose_local_overrides.yaml`](./compose_local_overrides.yaml).  Note that
+by doing this, you are exposing the Docker daemon on your host without
+authentication enabled.
+
+Once you've done that, set `DOCKER_HOST=tcp://127.0.0.1:2375`.
+
+```bash
+export DOCKER_HOST=tcp://127.0.0.1:2375
+docker logs <container name>
+```
 
 Additionally, you will need permissions to interact with the Docker daemon.  Typically this means adding your user to the `docker` group.
 
@@ -212,10 +251,17 @@ This is so we can easily swap `--profile development` with `--profile competitio
 
 ### Data Sharing & Volumes
 
-A CRS MUST copy CP repositories from `/cp_root` to a writable location such as `/crs_scratch` for building and testing CPs.
-A CRS MUST NOT modify data within `/cp_root` directly.
-A CRS MUST use `/crs_scratch` as the only shared filesystem between containers.
-No other folders or volumes will be shared between containers for competitor use.
+A CRS will find the CPs under evaluation in the volume indicated by the environment variable
+`${AIXCC_CP_ROOT}`. At competition time and likely during some part of the evaluation
+window, this volume will be configured as read-only. As such, a CRS **MUST** copy a CP
+from `${AIXCC_CP_ROOT}` to a writable location in order to build or test it.
+
+The volume indicated by the environment variable `${AIXCC_CRS_SCRATCH_SPACE}` will be writable
+by the CRS and CPs. Moreover, this volume can be shared among the CRS services as a
+shared file system. It is the responsibility of the CRS developers to ensure that
+use of this shared volume is coordinated between its services to prevent data corruption
+via collisions or race conditions. No other folders or volumes will be shared between
+containers for competitor use during competition.
 
 ### No internet Access
 
@@ -251,13 +297,15 @@ At competition the AIxCC Game Architecture team will use the latest SemVer tag a
 
 A Makefile has been provided with a number of a commands to make it easy to clone the exemplar repos, stand up the environment, and a variety of other actions.
 
-Copy `sandbox/example.env` to `sandbox/env` and replace the variables with your own for local development
+Copy `sandbox/example.env` to `sandbox/env` and replace the variables with your own for local development.
+
+**If you do not have working GitHub credentials that can pull images from GHCR, `make up` will fail.**
 
 ```bash
 cp sandbox/example.env sandbox/env
 ```
 
-`make cps` - clones the exemplar challenges into `./cp_root` folder
+`make cps` - clones the exemplar challenges into local `./cp_root` folder (the source folder for `${AIXCC_CP_ROOT}`)
 `make up` - brings up the development CRS Sandbox, you can visit <http://127.0.0.1:8080/docs> to see the iAPI OpenAPI spec.
 `make down` - tears down the development CRS Sandbox
 
@@ -275,6 +323,25 @@ This will generate and push the container images to the respective per-competito
 This will also push the Helm chart as an OCI compliant chart to the private GitHub repos.
 The `evaluator.yml` action runs `make k8s` in every pull request to `main`.
 This is to ensure all resources can be properly translated into a Helm chart and deployed into Kubernetes.
+
+#### Autoscaling
+
+One of Kubernetes' most useful features is autoscaling.  Kompose exposes horizontal pod autoscaling, among many other
+features, via labels set on services.  This example produces an HPA configuration that will scale from 3 replicas up to
+12, adding and removing replicas to target an average CPU utilization of 80% and memory utilization of 1024 megabytes.
+Please note these are probably not good default values for your application and you should customize them.
+
+```yaml
+services:
+  job-runner:
+    labels:
+      # Thresholds for automatic scale up
+      kompose.hpa.cpu: 80 # percentage
+      kompose.hpa.memory: 1024Mi
+      # High & low limits for number of replicas
+      kompose.hpa.replicas.max: 12
+      kompose.hpa.replicas.min: 3
+```
 
 ### Architecture Diagram
 

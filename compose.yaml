@@ -32,8 +32,8 @@ services:
     profiles:
       - development
       - competition
-    # Competitors: You MUST change replace-me-crs to your image name, and be versioned pinned to the release intended for competition.
-    image: ghcr.io/aixcc-sc/acs-crs-mindrake/replace-me-crs:v1.0.0
+    # Competitors: You MUST change crs-sandbox to your repo name, change replace-me-crs to your image name, and be versioned pinned to the release intended for competition.
+    image: ghcr.io/aixcc-sc/acs-crs-mindrake/brainbox:v1.0.0
     # Competitors: All services that are expected to have a clean exit must have restart: on-failure
     restart: on-failure
     build:
@@ -49,7 +49,8 @@ services:
     volumes:
       #################################################################################
       ### THESE VOLUMES MUST BE INCLUDED WITHOUT MODIFICATION TO ALL CRS CONTAINERS ###
-      # A CRS MUST copy CP repositories from `/cp_root` to a writable location such as `/crs_scratch` for building and testing CPs.
+      # A CRS MUST copy CP repositories from `AIXCC_CP_ROOT` to a writable location such as
+      # `AIXCC_CRS_SCRATCH_SPACE` for building and testing CPs.
       # A CRS MUST not modify settings within this section.
       - type: bind
         source: ${PWD}/crs_scratch
