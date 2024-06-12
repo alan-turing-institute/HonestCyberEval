@@ -55,10 +55,12 @@ Note that this readme is not a substitute for the original README.md provided by
 - run `docker login -u auth0-660bd3c14d2d6436de9169f3_aixcc -p <your pat> ghcr.io` to be able to pull the competition images
 - run `make up` to start LiteLLM proxy (port 8081 on host), cAPI (scoring server API, port 8080 on host), and `dind` (Docker-in-Docker).
   - if you get an error regarding the "docker.sock" file you might need to run `sudo chmod 777 /var/run/docker.sock`
-- OPTIONAL: with the `dind` container running, `cd` into the CP folders in `cp_root` and run `DOCKER_HOST=tcp://localhost:2375 make docker-pull` in each
-  - the CRS should manage docker images automatically 
-  - this will pull the image used to build and test the CP into the `dind` cache (`dind_cache`)
-  - in general, prefixing Docker commands with `DOCKER_HOST=tcp://localhost:2375` will let you run commands using the Docker instance inside the containers 
+- _Note_: challenge images are handled locally by the `load-cp-images` container and are placed into the `dind` cache (`dind_cache`).
+  - on the GitHub pipeline, challenge images are temporarily handled by the Docker-related code in the `ChallengeProject` class.
+    Once the organisers make images available during testing, that code can be removed.
+  - if you want to run Docker commands inside the `dind` container, uncomment the port bindings for `dind` in [compose_local_overrides.yaml](../compose_local_overrides.yaml) and run `make up`.
+    Prefixing Docker commands with `DOCKER_HOST=tcp://localhost:2375` will let you run commands using the Docker instance inside the containers,
+    e.g. `DOCKER_HOST=tcp://localhost:2375 docker images` to check which CP images are available. 
 - to run only the CRS server with attached output stream run `c=crs make up-attached`
 
 ### Development workflow
