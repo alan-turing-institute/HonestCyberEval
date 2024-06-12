@@ -21,10 +21,11 @@ jobs:
       statuses: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           # Full git history is needed to get a proper list of changed files within `super-linter`
           fetch-depth: 0
+          lfs: true
       - name: Lint Code Base
         uses: github/super-linter@v6
         env:
@@ -42,7 +43,9 @@ jobs:
       group: large-runners
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Install dependencies
         run: |
@@ -113,12 +116,17 @@ jobs:
       AUDIT_LOG: ./capi_logs/audit.log
       MAX_SECONDS: 600
       POLL_SECONDS: 5
-    if: ${{ github.actor != 'robothing' }}
+    if: ${{ github.actor != 'robothing[bot]' }}
     runs-on:
       group: large-runners
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -136,11 +144,87 @@ jobs:
           mise install
 
       - name: Check required files
+        shell: bash
         run: |
           if [ ! -f "${{ github.workspace }}/cp_config.yaml" ]; then
             echo "Required file not found: cp_config.yaml"
             exit 1
           fi
+          if [ ! -f "${{ github.workspace }}/kompose_competition_overrides.yaml" ]; then
+            echo "Required file not found: kompose_competition_overrides.yaml"
+            exit 1
+          fi
+          if [ ! -f "${{ github.workspace }}/kompose_development_overrides.yaml" ]; then
+            echo "Required file not found: kompose_development_overrides.yaml"
+            exit 1
+          fi
+
+          eval_vol_count_dev=$(yq eval '.volumes | length == 3' kompose_development_overrides.yaml)
+          eval_vol_count_comp=$(yq eval '.volumes | length == 3' kompose_competition_overrides.yaml)
+
+          eval_services_dev=$(yq eval '.services | (has("dind") and has("iapi") and has("capi"))' kompose_development_overrides.yaml)
+          eval_services_comp=$(yq eval '.services | has("dind")' kompose_competition_overrides.yaml)
+
+          eval_dind_dev=$(yq eval '(
+            .services | to_entries[] |
+            select(.key == "dind") |
+            select(.value.volumes != null) | .value.volumes | all_c(. == "dind_cache:/var/lib/docker" or . == "crs_scratch:/crs_scratch")
+          ) | [.]' kompose_development_overrides.yaml | yq eval 'all')
+
+          eval_dind_comp=$(yq eval '(
+            .services | to_entries[] |
+            select(.key == "dind") |
+            select(.value.volumes != null) | .value.volumes | all_c(. == "dind_cache:/var/lib/docker" or . == "crs_scratch:/crs_scratch")
+          ) | [.]' kompose_competition_overrides.yaml | yq eval 'all')
+
+          eval_volume_dev=$(yq eval '(
+            .services | to_entries[] |
+            select(.key != "dind") |
+            select(.value.volumes != null) | .value.volumes | all_c(. == "cp_root:/cp_root" or . == "crs_scratch:/crs_scratch")
+          ) | [.]' kompose_development_overrides.yaml | yq eval 'all')
+
+          eval_volume_comp=$(yq eval '(
+            .services | to_entries[] |
+            select(.key != "dind") |
+            select(.value.volumes != null) | .value.volumes | all_c(. == "cp_root:/cp_root" or . == "crs_scratch:/crs_scratch")
+          ) | [.]' kompose_competition_overrides.yaml | yq eval 'all')
+
+          EXIT=0
+          if [ "$eval_vol_count_dev" = "false" ]; then
+            echo "Extra volumes found in kompose_development_overrides.yaml.  Please remove them."
+            EXIT=1
+          fi
+          if [ "$eval_vol_count_comp" = "false" ]; then
+            echo "Extra volumes found in kompose_competition_overrides.yaml.  Please remove them."
+            EXIT=1
+          fi
+          if [ "$eval_dind_dev" = "false" ]; then
+            echo "dind_cache not found for dind in kompose_development_overrides.yaml.  Please add it."
+            EXIT=1
+          fi
+          if [ "$eval_dind_comp" = "false" ]; then
+            echo "dind_cache not found for dind in kompose_competition_overrides.yaml.  Please add it."
+            EXIT=1
+          fi
+          if [ "$eval_services_dev" = "false" ]; then
+            echo "Required services not found in kompose_development_overrides.yaml.  Please add them (dind, capi, iapi)."
+            EXIT=1
+          fi
+          if [ "$eval_services_comp" = "false" ]; then
+            echo "Required services not found in kompose_competition_overrides.yaml.  Please add them (dind)."
+            EXIT=1
+          fi
+          if [ "$eval_volume_dev" = "false" ]; then
+            echo "Other volumes specified in service in kompose_development_overrides.yaml.  Please remove them."
+            EXIT=1
+          fi
+          if [ "$eval_volume_comp" = "false" ]; then
+            echo "Other volumes specified in service in kompose_competition_overrides.yaml.  Please remove them."
+            EXIT=1
+          fi
+
+          exit $EXIT
+
 
       - name: Move sandbox/example.env to sandbox/env
         run: mv sandbox/example.env sandbox/env
@@ -245,7 +329,9 @@ jobs:
       group: large-runners
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Install dependencies
         run: |
@@ -287,6 +373,13 @@ jobs:
           username: gha
           password: ${{ github.token }}
 
+      - name: Set up GHCR auth tokens
+        run: |
+          sed -i '/GITHUB_TOKEN=*/d' sandbox/env
+          sed -i '/GITHUB_USER=*/d' sandbox/env
+          echo "GITHUB_TOKEN=${{ github.token }}" >> sandbox/env
+          echo "GITHUB_USER=gha" >> sandbox/env
+
       - name: Run Docker Compose
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
@@ -294,11 +387,17 @@ jobs:
           make mock-crs/up-attached
 
   run-kubernetes:
+    if: ${{ github.actor != 'robothing[bot]' }}
     runs-on:
       group: large-runners
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -342,6 +441,13 @@ jobs:
           registry: ghcr.io
           username: gha
           password: ${{ github.token }}
+
+      - name: Set up GHCR auth tokens
+        run: |
+          sed -i '/GITHUB_TOKEN=*/d' sandbox/env
+          sed -i '/GITHUB_USER=*/d' sandbox/env
+          echo "GITHUB_TOKEN=${{ github.token }}" >> sandbox/env
+          echo "GITHUB_USER=gha" >> sandbox/env
 
       - name: Run Local Helm & Kubernetes Validation
         env:

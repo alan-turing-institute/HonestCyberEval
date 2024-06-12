@@ -1,5 +1,8 @@
 ---
+# This file can only be modified to add services which need access to /crs_scratch or read-only access to /cp_root.
+# Do not define new volumes, edit services other than the CRS, or attach any volumes other than those two to your services.
 # Changes the bind mount of ./cp_root to specify Persistent Volume that will be populated at competition time
+
 services:
   crs:
     labels:

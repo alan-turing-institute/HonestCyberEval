@@ -15,7 +15,9 @@ jobs:
       group: large-runners
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - uses: actions/setup-python@v5
         with:
