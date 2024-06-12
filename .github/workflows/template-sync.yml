@@ -49,6 +49,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ steps.generate_token.outputs.token }}
+          fetch-depth: 0
 
       - name: actions-template-sync
         uses: AndreasAugustin/actions-template-sync@f8342aa8ac0268b511227d38a3c13dcc1f1b3c5e
@@ -61,3 +62,44 @@ jobs:
           is_keep_branch_on_pr_cleanup: true
           is_force_push_pr: false
           is_git_lfs: true
+          steps: "prechecks"
+          pr_branch_name_prefix: chore/template_sync
+
+      - name: Establish base commit and build mergeable history
+        run: |
+            # Set up checkout vars
+            export SRC_SSH_PRIVATEKEY_ABS_PATH="/tmp/.ssh/id_rsa_template_sync"
+            mkdir -p "/tmp/.ssh"
+            cat <<< "${{ secrets.CRS_EVALUATOR_EXEMPLAR_CLONE_SSH_KEY }}" | sed 's/\\n/\n/g' > "${SRC_SSH_PRIVATEKEY_ABS_PATH}"
+            chmod 600 "${SRC_SSH_PRIVATEKEY_ABS_PATH}"
+            export GIT_SSH_COMMAND="ssh -i ${SRC_SSH_PRIVATEKEY_ABS_PATH}"
+
+            # Generate PR branch name
+            PR_BRANCH_NAME_PREFIX=chore/template_sync
+            TEMPLATE_REMOTE_GIT_HASH=$(git ls-remote "git@github.com:aixcc-sc/crs-sandbox.git" HEAD | awk '{print $1}')
+            SHORT_TEMPLATE_GIT_HASH=$(git rev-parse --short "${TEMPLATE_REMOTE_GIT_HASH}")
+            export PR_BRANCH="${PR_BRANCH_NAME_PREFIX}_${SHORT_TEMPLATE_GIT_HASH}"
+
+            initial=$(git rev-list --max-parents=0 HEAD)
+            echo 'Establishing base commit'
+            git checkout -b initial "$initial"
+            git fetch git@github.com:aixcc-sc/crs-sandbox.git main:upstream_merge
+            git merge upstream_merge --allow-unrelated-histories --no-edit --strategy=subtree
+            git branch -D upstream_merge
+            git checkout main -b "${PR_BRANCH}"
+            git merge --squash --no-edit initial
+            git branch -D initial
+
+      - name: actions-template-sync
+        uses: AndreasAugustin/actions-template-sync@f8342aa8ac0268b511227d38a3c13dcc1f1b3c5e
+        with:
+          github_token: ${{ steps.generate_token.outputs.token }}
+          source_repo_path: ${{ secrets.SOURCE_REPO_PATH }}
+          source_repo_ssh_private_key: ${{ secrets.CRS_EVALUATOR_EXEMPLAR_CLONE_SSH_KEY }}
+          upstream_branch: main
+          is_pr_cleanup: true
+          is_keep_branch_on_pr_cleanup: true
+          is_force_push_pr: false
+          is_git_lfs: true
+          steps: "commit,push,pr"
+          pr_branch_name_prefix: chore/template_sync
