@@ -29,3 +29,6 @@ jobs:
 
       - name: Run Mypy typechecking
         run: MYPYPATH=crs/src/py mypy crs/src/ --explicit-package-bases
+
+#      - name: Run test
+#        run: pytest -c crs/src/pyproject.toml crs/src/py

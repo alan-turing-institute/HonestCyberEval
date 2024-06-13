@@ -17,6 +17,15 @@ The only additional changes to this repository should be to the
 
 Note that this readme is not a substitute for the original README.md provided by the AIxCC organizers. 
 
+
+### Extending CRS functionality
+To add new code to the CRS, edit the appropriate file in the `process` folder.
+
+
+For example, to add code to the vulnerability discovery pipeline:
+- add a function in `[vuln_discovery.py](src%2Fpy%2Fprocess%2Fvuln_discovery.py)` or a method to the `VulnDiscovery` class
+- call the new function in `VulnDiscovery.run` 
+
 ### Setting up the CRS on a new machine
 - Install docker engine >= 24.0.5
   - uninstall any potential existing Docker packages by running `for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do sudo apt-get remove $pkg; done`

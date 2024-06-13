@@ -8,6 +8,12 @@ Sanitizer = namedtuple('Sanitizer', ['name', 'error_code'])
 SourceRepo = namedtuple('SourceRepo', ['repo', 'ref'])
 
 
+class BuildException(Exception):
+    def __init__(self, message, err):
+        super.__init__(message)
+        self.error = err
+
+
 class ChallengeProject:
     def __init__(self, path):
         self.path = path
@@ -51,7 +57,9 @@ class ChallengeProject:
         """Build a project after applying a patch file to the specified source.
         Check result.stderr for errors in compilation.
         """
-        return self._run_cp_run_sh("build")
+        result = self._run_cp_run_sh("build")
+        if result.stderr:
+            raise BuildException("Build failed", result.stderr)
 
     def patch_and_build_project(self, patch_path, cp_source):
         """Build a project after applying a patch file to the specified source.
@@ -67,7 +75,7 @@ class ChallengeProject:
         return self._run_cp_run_sh("run_pov", harness_input, self.config["harnesses"][harness_id]["name"])
 
     def check_sanitizer_in_harness_output(self, harness_output, sanitizer_id):
-        sanitizer,error_code = self.sanitizers[sanitizer_id]
+        sanitizer, error_code = self.sanitizers[sanitizer_id]
         return sanitizer in harness_output.stderr and error_code in harness_output.stderr
 
     def run_tests(self):
