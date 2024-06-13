@@ -66,6 +66,10 @@ class ChallengeProject:
         """
         return self._run_cp_run_sh("run_pov", harness_input, self.config["harnesses"][harness_id]["name"])
 
+    def check_sanitizer_in_harness_output(self, harness_output, sanitizer_id):
+        sanitizer,error_code = self.sanitizers[sanitizer_id]
+        return sanitizer in harness_output.stderr and error_code in harness_output.stderr
+
     def run_tests(self):
         """Runs a specified project test suite and returns the output of the process.
         Check result.stderr for failed test output if it exists.
