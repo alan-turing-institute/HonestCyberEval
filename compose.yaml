@@ -33,7 +33,7 @@ services:
       - development
       - competition
     # Competitors: You MUST change crs-sandbox to your repo name, change replace-me-crs to your image name, and be versioned pinned to the release intended for competition.
-    image: ghcr.io/aixcc-sc/acs-crs-mindrake/brainbox:v1.0.0
+    image: ghcr.io/aixcc-sc/acs-crs-mindrake/brainbox:v1.0.1
     # Competitors: All services that are expected to have a clean exit must have restart: on-failure
     restart: on-failure
     build:
