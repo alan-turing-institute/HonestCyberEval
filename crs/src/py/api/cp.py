@@ -1,4 +1,5 @@
 from collections import namedtuple
+from copy import deepcopy
 from subprocess import CalledProcessError
 import yaml
 from git import Repo
@@ -8,31 +9,41 @@ Sanitizer = namedtuple('Sanitizer', ['name', 'error_code'])
 SourceRepo = namedtuple('SourceRepo', ['repo', 'ref'])
 
 
-class BuildException(Exception):
-    def __init__(self, message, err):
+class ProjectBuildException(Exception):
+    def __init__(self, message, stderr):
         super.__init__(message)
-        self.error = err
+        self.stderr = stderr
+
+
+class ProjectPatchException(Exception):
+    def __init__(self, message, stderr):
+        super.__init__(message)
+        self.stderr = stderr
 
 
 class ChallengeProject:
     def __init__(self, path):
         self.path = path
-        self.config = self._read_project_yaml()
-        self.name = self.config["cp_name"]
+        self.__config = self._read_project_yaml()
+        self.name = self.__config["cp_name"]
 
-        self.sources = list(self.config["cp_sources"].keys())
+        self.sources = list(self.__config["cp_sources"].keys())
         self.repo = Repo(self.path)
         self.repos = {
             source: SourceRepo(
                 repo,
-                repo.refs[self.config["cp_sources"][source]["ref"]]
+                repo.refs[self.__config["cp_sources"][source]["ref"]]
             ) for source in self.sources if (repo := Repo(self.path / "src" / source))
         }
 
         self.sanitizers = {
             key: Sanitizer(*(x.strip() for x in value.split(":")))
-            for key, value in self.config["sanitizers"].items()
+            for key, value in self.__config["sanitizers"].items()
         }
+
+    @property
+    def config(self):
+        return deepcopy(self.__config)
 
     def _read_project_yaml(self):
         with open(self.path / "project.yaml", "r") as stream:
@@ -53,28 +64,39 @@ class ChallengeProject:
         """
         return run_command(self.path / "run.sh", *command)
 
+    def reset_source_repo(self, source):
+        self.repos.get(source).repo.git.reset('--hard')
+
     def build_project(self):
-        """Build a project after applying a patch file to the specified source.
-        Check result.stderr for errors in compilation.
+        """Build a project.
+        Raises ProjectBuildException, check ProjectBuildException.stderr for output
         """
         result = self._run_cp_run_sh("build")
         if result.stderr:
-            raise BuildException("Build failed", result.stderr)
+            raise ProjectBuildException("Build failed", stderr=result.stderr)
+        return result
 
     def patch_and_build_project(self, patch_path, cp_source):
         """Build a project after applying a patch file to the specified source.
-        Throws CalledProcessError if patch cannot be applied.
-        Check result.stderr for errors in compilation from a patch that was applied but did not produce correct code.
+        Raises ProjectPatchException if patch cannot be applied, check ProjectPatchException.stderr for output.
+        Raises ProjectBuildException, check ProjectBuildException.stderr for output.
         """
-        return self._run_cp_run_sh("build", patch_path.absolute(), cp_source)
+        try:
+            result = self._run_cp_run_sh("build", patch_path.absolute(), cp_source)
+            if result.stderr:
+                raise ProjectBuildException("Build failed after patch", stderr=result.stderr)
+            return result
+        except CalledProcessError as err:
+            raise ProjectPatchException("Patching failed", stderr=err.stderr) from err
 
     def run_harness(self, harness_input, harness_id):
         """Runs a specified project test harness and returns the output of the process.
         Check result.stderr for sanitizer output if it exists.
         """
-        return self._run_cp_run_sh("run_pov", harness_input, self.config["harnesses"][harness_id]["name"])
+        return self._run_cp_run_sh("run_pov", harness_input, self.__config["harnesses"][harness_id]["name"])
 
-    def check_sanitizer_in_harness_output(self, harness_output, sanitizer_id):
+    def run_harness_and_check_sanitizer(self, harness_input, harness_id, sanitizer_id):
+        harness_output = self.run_harness(harness_input, harness_id)
         sanitizer, error_code = self.sanitizers[sanitizer_id]
         return sanitizer in harness_output.stderr and error_code in harness_output.stderr
 
@@ -102,7 +124,7 @@ class ChallengeProject:
     # and images will be present for the CRS to use when running in Stage 2
     # https://github.com/aixcc-sc/crs-sandbox/issues/169
     def _check_docker_image(self):
-        image = self.config["docker_image"]
+        image = self.__config["docker_image"]
         try:
             run_command("docker", "image", "inspect", image)
             return True

@@ -4,6 +4,11 @@ from api.fs import write_file_to_scratch
 
 Vulnerability = namedtuple('Vulnerability', ['commit', 'harness_id', 'sanitizer_id', 'input_data', 'blob_file'])
 
+mock_input_data = r"""abcdefabcdefabcdefabcdefabcdefabcdef
+b
+
+1"""
+
 
 class VulnDiscovery:
     project = None
@@ -35,14 +40,11 @@ class VulnDiscovery:
 
                 # loop over input logic until we trigger harness
                 while True:
-                    input_data = r"""abcdefabcdefabcdefabcdefabcdefabcdef
-                    b
-    
-                    1"""
+                    input_data = mock_input_data
                     blob_file = write_file_to_scratch(f"{harness_id}_{sanitizer_id}input.blob", input_data)
-                    result = self.project.run_harness(blob_file, "id_1")
-                    if self.project.check_sanitizer_in_harness_output(result, sanitizer_id):
-                        vulnerabilities.append(Vulnerability(bad_commit_sha, harness_id, sanitizer_id, input_data, blob_file))
+                    if self.project.run_harness_and_check_sanitizer(blob_file, harness_id, sanitizer_id):
+                        vulnerabilities.append(
+                            Vulnerability(bad_commit_sha, harness_id, sanitizer_id, input_data, blob_file))
                         break
             return vulnerabilities
 
