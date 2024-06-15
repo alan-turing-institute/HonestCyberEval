@@ -141,6 +141,26 @@ We will continue iterating on the CRS sandbox as we grow closer to the competiti
 
 Please see the competition rules and technical release as the cut off dates for changes will be described there.
 
+### Setting GitHub secrets with competitor repository permissions
+
+Using the [GitHub CLI](https://cli.github.com/), you are able to set repository-level secrets
+despite not being able to view or edit them in the web UI.
+
+Your GitHub Classic PAT will need the `Full control of private repositories` permission, and you
+will need it set in the `GITHUB_TOKEN` environment variable.  Once you have that configured, try `gh
+secret list`.  You might get a 403 error requiring SSO sign-in:
+
+![gh secret list SSO sign-in error](./.static/gh-secret-list-sso-sign-in.png)
+
+Open the link and complete the SSO flow.  Then you should be able to use `gh secret set` to set
+secrets on your repository and `gh secrets list` to show which ones exist and when they were most
+recently set.
+
+The [GitHub CRS Validation workflow](./.github/workflows/evaluator.yml) expects the repo-level
+secrets to have the same names as in `sandbox/env` (`OPENAI_API_KEY`, etc).
+
+![gh secret set and list demonstration](./.static/gh-secret-list-set-demo.png)
+
 ## LiteLLM Models Supported
 
 | Provider  | Model                  | Pinned Version              | Requests per Minute (RPM) | Tokens per Minute (TPM)  |
@@ -234,8 +254,6 @@ Once you've done that, set `DOCKER_HOST=tcp://127.0.0.1:2375`.
 export DOCKER_HOST=tcp://127.0.0.1:2375
 docker logs <container name>
 ```
-
-Additionally, you will need permissions to interact with the Docker daemon.  Typically this means adding your user to the `docker` group.
 
 #### Dependencies managed using mise
 

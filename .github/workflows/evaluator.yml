@@ -128,9 +128,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -229,10 +226,16 @@ jobs:
       - name: Move sandbox/example.env to sandbox/env
         run: mv sandbox/example.env sandbox/env
 
-      - name: Disable mock mode
+      - name: Set env file up for real run
         run: |
-          sed -i '/AIXCC_MOCK_MODE=*/d' sandbox/env
-          echo "AIXCC_MOCK_MODE=false" >> sandbox/env
+          .github/scripts/set-env.sh AIXCC_MOCK_MODE false
+          .github/scripts/set-env.sh ANTHROPIC_API_KEY "${{ secrets.ANTHROPIC_API_KEY }}"
+          .github/scripts/set-env.sh AZURE_API_BASE "${{ secrets.AZURE_API_BASE }}"
+          .github/scripts/set-env.sh AZURE_API_KEY "${{ secrets.AZURE_API_KEY }}"
+          .github/scripts/set-env.sh GEMINI_API_KEY "${{ secrets.GEMINI_API_KEY }}"
+          .github/scripts/set-env.sh GITHUB_TOKEN "${{ github.token }}"
+          .github/scripts/set-env.sh GITHUB_USER gha
+          .github/scripts/set-env.sh OPENAI_API_KEY "${{ secrets.OPENAI_API_KEY }}"
 
       - name: Add SSH key
         env:
@@ -251,13 +254,6 @@ jobs:
           registry: ghcr.io
           username: gha
           password: ${{ github.token }}
-
-      - name: Set up GHCR auth tokens
-        run: |
-          sed -i '/GITHUB_TOKEN=*/d' sandbox/env
-          sed -i '/GITHUB_USER=*/d' sandbox/env
-          echo "GITHUB_TOKEN=${{ github.token }}" >> sandbox/env
-          echo "GITHUB_USER=gha" >> sandbox/env
 
       - name: Run Docker Compose
         env:
@@ -395,9 +391,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           lfs: true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

@@ -44,6 +44,63 @@ jobs:
         with:
           app_id: ${{ secrets.ROBO_APP_ID }}
           private_key: ${{ secrets.ROBO_APP_KEY }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install @octokit/action @actions/core
+      - run: |
+          cat <<- EOF > action.mjs
+          import { Octokit } from "@octokit/action";
+          import * as core from '@actions/core';
+
+          const octokit = new Octokit();
+
+          const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
+          const specificTitle = "upstream merge template repository";
+
+          async function getPullRequestsByTitle(owner, repo, title) {
+            try {
+              const { data: pullRequests } = await octokit.rest.pulls.list({
+                owner,
+                repo,
+                state: "closed",
+              });
+
+              const matchingPRs = pullRequests.filter(
+                (pr) =>
+                  pr.merged_at &&
+                  (pr.user.login === "robothing[bot]" ||
+                    pr.user.login === "auth0-66229d6de354a375d9a2f156_aixcc")
+              );
+              matchingPRs.sort((a, b) => new Date(b.merged_at) - new Date(a.merged_at));
+              return matchingPRs;
+            } catch (error) {
+              console.error("Error fetching pull requests:", error);
+            }
+          }
+
+          let merged_upstream_prs = await getPullRequestsByTitle(
+            owner,
+            repo,
+            specificTitle
+          );
+          if (merged_upstream_prs.length > 0) {
+            const commit_body = merged_upstream_prs[0].body;
+            console.log("Most recent upstream merged PR:", commit_body);
+            const parts = commit_body.split(" ");
+            core.setOutput("latestMergedUpstream", parts[parts.length - 1]);
+            console.log(parts[parts.length - 1]);
+          } else {
+            console.log("No matching PRs found, using base");
+            core.setOutput("latestMergedUpstream", "v2.2.0");
+          }
+
+          EOF
+      - name: Run Get Merged Upstream PRs
+        id: get_latest_merged_upstream_pr
+        run: node action.mjs
+        env:
+          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
       - name: Checkout
         # https://github.com/actions/checkout#usage
         uses: actions/checkout@v4
@@ -80,15 +137,18 @@ jobs:
             SHORT_TEMPLATE_GIT_HASH=$(git rev-parse --short "${TEMPLATE_REMOTE_GIT_HASH}")
             export PR_BRANCH="${PR_BRANCH_NAME_PREFIX}_${SHORT_TEMPLATE_GIT_HASH}"
 
-            initial=$(git rev-list --max-parents=0 HEAD)
-            echo 'Establishing base commit'
-            git checkout -b initial "$initial"
+            upstream=$UPSTREAM_MERGED
             git fetch git@github.com:aixcc-sc/crs-sandbox.git main:upstream_merge
-            git merge upstream_merge --allow-unrelated-histories --no-edit --strategy=subtree -X theirs
-            git branch -D upstream_merge
+            git checkout upstream_merge
+            # convenience to squash to make cherry-pick easier
+            git reset --soft "$upstream"
+            git commit -m "upstream merge"
+            merged_template_change_sha=$(git rev-parse HEAD)
             git checkout main -b "${PR_BRANCH}"
-            git merge --no-edit --squash initial --strategy=subtree -X theirs || true
-            git branch -D initial
+            git cherry-pick --no-commit -X ours "$merged_template_change_sha" || true
+            git branch -D upstream_merge
+        env:
+          UPSTREAM_MERGED: ${{ steps.get_latest_merged_upstream_pr.outputs.latestMergedUpstream }}
 
       - name: actions-template-sync
         uses: AndreasAugustin/actions-template-sync@f8342aa8ac0268b511227d38a3c13dcc1f1b3c5e
