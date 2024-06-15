@@ -4,7 +4,7 @@
 ---
 services:
   load-cp-images:
-    image: load-cp-images:v0.0.1
+    image: ghcr.io/aixcc-sc/load-cp-images:v0.0.1
     restart: on-failure
     build:
       context: ./cp_image_pull
@@ -132,7 +132,7 @@ services:
       - mock-crs
       - development
       - loadtest
-    image: ghcr.io/aixcc-sc/capi:v2.1.2
+    image: ghcr.io/aixcc-sc/capi:v2.1.4
     restart: always
     env_file: env
     environment:
@@ -188,7 +188,7 @@ services:
       test: ["CMD-SHELL", "pg_isready", "-d", "capi"]
       interval: 10s
       timeout: 3s
-      retries: 3
+      retries: 15
   litellm:
     networks:
       - crs-internal

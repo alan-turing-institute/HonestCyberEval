@@ -21,12 +21,15 @@ HOST_ENV_FILE = $(ROOT_DIR)/sandbox/env
 
 # Check for required files that will error out elsewhere if not present
 ENV_FILES_PRESENT = $(wildcard $(HOST_ENV_FILE))
-UNSET_GITHUB_ENV_VARS = $(shell grep REPLACE_WITH <$(HOST_ENV_FILE) | grep GITHUB_)
+INVALID_GITHUB_ENV_VARS = $(shell grep -E '^GITHUB_(TOKEN|USER)=(<REPLACE_WITH.*|)$$' <$(HOST_ENV_FILE))
+GITHUB_ENV_VAR_COUNT = $(shell grep -E '^GITHUB_(TOKEN|USER)' -c <$(HOST_ENV_FILE))
 
 ifeq (,$(ENV_FILES_PRESENT))
 $(warning No env file found at $(HOST_ENV_FILE).  Please copy & fill out sandbox/example.env and try again.  See the README and the file's comments for details.)
-else ifneq (,$(UNSET_GITHUB_ENV_VARS))
+else ifneq (,$(INVALID_GITHUB_ENV_VARS))
 $(warning Uninitialized GitHub credentials in $(HOST_ENV_FILE).  In order for make up to work, these need to be set to values that can pull containers and clone repos.)
+else ifneq (2,$(GITHUB_ENV_VAR_COUNT))
+$(warning Not all GitHub credentials are set in $(HOST_ENV_FILE).  In order for make up to work, these need to be set to values that can pull containers and clone repos.  Check sandbox/example.env and README.md for what these are and how to set them.)
 endif
 
 ifeq (,$(wildcard $(CP_CONFIG_FILE)))
@@ -58,7 +61,8 @@ env-file-required:
 	@if [ -z "$(ENV_FILES_PRESENT)" ]; then exit 1; fi
 
 github-creds-required: env-file-required
-	@if [ -n "$(UNSET_GITHUB_ENV_VARS)" ]; then exit 1; fi
+	@if [ -n "$(INVALID_GITHUB_ENV_VARS)" ]; then exit 1; fi
+	@if [ "$(GITHUB_ENV_VAR_COUNT)" -lt 2 ]; then exit 1; fi
 
 build: ## Build the project
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) build $(c)
@@ -162,13 +166,13 @@ loadtest/destroy: ## Stop and remove containers with volumes
 
 k8s: k8s/development build ## Generates helm chart locally for the development profile for kind testing, etc. build is called for local image generation
 	@kind create cluster --wait 1m
-	@docker pull ghcr.io/aixcc-sc/capi:v2.1.2
+	@docker pull ghcr.io/aixcc-sc/capi:v2.1.4
 	@docker pull ghcr.io/berriai/litellm-database:main-v1.35.10
 	@docker pull nginx:1.25.5
 	@docker pull docker:24-dind
 	@docker pull postgres:16.2-alpine3.19
 	@docker pull ghcr.io/aixcc-sc/crs-sandbox/mock-crs:v2.0.0
-	@kind load docker-image ghcr.io/aixcc-sc/capi:v2.1.2 ghcr.io/berriai/litellm-database:main-v1.35.10 docker:24-dind postgres:16.2-alpine3.19 nginx:1.25.5 load-cp-images:v0.0.1
+	@kind load docker-image ghcr.io/aixcc-sc/capi:v2.1.4 ghcr.io/berriai/litellm-database:main-v1.35.10 docker:24-dind postgres:16.2-alpine3.19 nginx:1.25.5 ghcr.io/aixcc-sc/load-cp-images:v0.0.1
 	@helm install crs $(ROOT_DIR)/charts/crs
 
 k8s/clean:

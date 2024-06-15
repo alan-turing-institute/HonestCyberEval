@@ -2,6 +2,9 @@
 # Competitors: You may modify this file to make local development easier.
 # However, this file will not impact services at competition, only local development.
 
+# We recommend you only bind ports to 127.0.0.1 in this file & have a GitHub action checking this.
+# If you need to bind to other interfaces, putting a comment in this file containing only "exposed-port-check: disable" will turn off that check.
+
 ---
 services:
   # dind:

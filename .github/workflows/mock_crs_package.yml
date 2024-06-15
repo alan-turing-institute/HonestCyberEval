@@ -7,9 +7,26 @@ on:
 
 # There is a single job in this workflow.
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      is_template_repo: ${{ steps.check-repo.outputs.is_template_repo }}
+    steps:
+        - name: Check if this is the source (template) repository
+          id: check-repo
+          run: |
+            if [ "${{ github.repository }}" == "aixcc-sc/crs-sandbox" ]; then
+              echo "This repo is the template repo..."
+              echo "is_template_repo=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "is_template_repo=false" >> "$GITHUB_OUTPUT"
+
   build-and-push-image:
+    needs: check
     runs-on:
       group: large-runners
+    if: ${{ needs.check.outputs.is_template_repo == 'true' }}
     # Sets the permissions granted to the `GITHUB_TOKEN` for the actions in this job.
     strategy:
       fail-fast: false

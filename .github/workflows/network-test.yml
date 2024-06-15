@@ -9,15 +9,31 @@ on:
       - main
 
 jobs:
-  run-exposed-port-check:
-    runs-on:
-      group: large-runners
+  get-inputs:
+    runs-on: ubuntu-latest
+    outputs:
+      optout: ${{ steps.optout.outputs.OPT_OUT }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
         with:
           lfs: true
 
+      - name: Check for opt-out
+        id: optout
+        run: |
+          printf "OPT_OUT=%s" "$(grep -c -E '^# exposed-port-check: disable$' compose_local_overrides.yaml)" >> "$GITHUB_OUTPUT"
+
+  run-exposed-port-check:
+    runs-on:
+      group: large-runners
+    needs: get-inputs
+    if: ${{ needs.get-inputs.outputs.optout == 0 }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          lfs: true
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -73,4 +89,9 @@ jobs:
       - name: Check for any exposed ports
         run: |
           # 22, 8084, and 68 are bound by the workflow / runner somewhere, so we except them from our check
-          exit "$(sudo netstat -tulpn | tail -n +3 | awk '{print $4}' | grep -v -E '(:22|:8084|:68)' | grep -v -E '(127.0.0|::1)' -c)"
+          EXPOSED_PORTS=$(sudo netstat -tulpn | tail -n +3 | awk '{print $4}' | grep -v -E '(:22|:8084|:68)' | grep -v -E '(127.0.0|::1)' || true)
+          if [ -n "${EXPOSED_PORTS}" ]; then
+              echo "The following ports are exposed on interfaces other than localhost:"
+              echo "${EXPOSED_PORTS}"
+          fi
+          exit "$(printf '%s' "$EXPOSED_PORTS" | wc -l)"
