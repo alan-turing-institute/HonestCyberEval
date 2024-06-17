@@ -6,6 +6,7 @@ from git import Repo
 from api.fs import run_command, docker_login
 
 Sanitizer = namedtuple('Sanitizer', ['name', 'error_code'])
+Harness = namedtuple('Harness', ['name', 'file_path'])
 SourceRepo = namedtuple('SourceRepo', ['repo', 'ref'])
 
 
@@ -39,6 +40,11 @@ class ChallengeProject:
         self.sanitizers = {
             key: Sanitizer(*(x.strip() for x in value.split(":")))
             for key, value in self.__config["sanitizers"].items()
+        }
+
+        self.harnesses = {
+            key: Harness(value["name"], self.path / value["source"])
+            for key, value in self.__config["harnesses"].items()
         }
 
     @property
@@ -93,7 +99,7 @@ class ChallengeProject:
         """Runs a specified project test harness and returns the output of the process.
         Check result.stderr for sanitizer output if it exists.
         """
-        return self._run_cp_run_sh("run_pov", harness_input, self.__config["harnesses"][harness_id]["name"])
+        return self._run_cp_run_sh("run_pov", harness_input, self.harnesses[harness_id].name)
 
     def run_harness_and_check_sanitizer(self, harness_input, harness_id, sanitizer_id):
         harness_output = self.run_harness(harness_input, harness_id)
