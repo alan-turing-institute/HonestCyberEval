@@ -3,7 +3,7 @@ from copy import deepcopy
 from subprocess import CalledProcessError
 import yaml
 from git import Repo
-from api.fs import run_command, docker_login
+from api.fs import run_command, docker_login, write_file_to_scratch
 
 Sanitizer = namedtuple('Sanitizer', ['name', 'error_code'])
 Harness = namedtuple('Harness', ['name', 'file_path'])
@@ -12,13 +12,13 @@ SourceRepo = namedtuple('SourceRepo', ['repo', 'ref'])
 
 class ProjectBuildException(Exception):
     def __init__(self, message, stderr):
-        super.__init__(message)
+        super().__init__(message)
         self.stderr = stderr
 
 
 class ProjectPatchException(Exception):
     def __init__(self, message, stderr):
-        super.__init__(message)
+        super().__init__(message)
         self.stderr = stderr
 
 
@@ -95,14 +95,14 @@ class ChallengeProject:
         except CalledProcessError as err:
             raise ProjectPatchException("Patching failed", stderr=err.stderr) from err
 
-    def run_harness(self, harness_input, harness_id):
+    def run_harness(self, harness_input_file, harness_id):
         """Runs a specified project test harness and returns the output of the process.
         Check result.stderr for sanitizer output if it exists.
         """
-        return self._run_cp_run_sh("run_pov", harness_input, self.harnesses[harness_id].name)
+        return self._run_cp_run_sh("run_pov", harness_input_file, self.harnesses[harness_id].name)
 
-    def run_harness_and_check_sanitizer(self, harness_input, harness_id, sanitizer_id):
-        harness_output = self.run_harness(harness_input, harness_id)
+    def run_harness_and_check_sanitizer(self, harness_input_file, harness_id, sanitizer_id):
+        harness_output = self.run_harness(harness_input_file, harness_id)
         sanitizer, error_code = self.sanitizers[sanitizer_id]
         return sanitizer in harness_output.stderr and error_code in harness_output.stderr
 
