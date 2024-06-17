@@ -19,11 +19,15 @@ Note that this readme is not a substitute for the original README.md provided by
 
 
 ### Extending CRS functionality
-To add new code to the CRS, edit the appropriate file in the `process` folder.
+The interfaces with the various components can be found in [api](./src/py/api).
+To interact with the challenge projects, the [api.cp.ChallengeProject](./src/py/api/cp.py) class exposes the relevant functionality as methods.
+The code that interacts with the LLM APIs can be found in [api/llm.py](./src/py/api/llm.py).
+To submit vulnerabilities and patches, the code that interfaces with the competition API (cAPI) lives in [api/submit.py](./src/py/api/submit.py).
 
+To add new code to the CRS, edit the appropriate file in the [pipeline](./src/py/pipeline) folder.
 
 For example, to add code to the vulnerability discovery pipeline:
-- add a function in `[vuln_discovery.py](src%2Fpy%2Fprocess%2Fvuln_discovery.py)` or a method to the `VulnDiscovery` class
+- add a function in [vuln_discovery.py](./src/py/pipeline/vuln_discovery.py) or a method to the `VulnDiscovery` class
 - call the new function in `VulnDiscovery.run` 
 
 ### Setting up the CRS on a new machine
@@ -45,6 +49,13 @@ For example, to add code to the vulnerability discovery pipeline:
     - `ssh-add ~/.ssh/id_rsa_aicc`
 - Clone the repo by running `git clone git@github.com:aixcc-sc/asc-crs-mindrake.git`
 - `cd` into repo directory and run `mise install` to install dependencies
+- run `cp sandbox/example.env sandbox/env` and modify `sandbox/env` as follows:
+  - generate a new personal access token (PAT) (https://github.com/settings/tokens) with `read:packages` permissions.
+  - authorise the token by clicking "Configure SSO" next to it and then "aixcc-sc".
+  - include our GitHub username (`auth0-660bd3c14d2d6436de9169f3_aixcc`) and personal access token in the `GITHUB_USER` and `GITHUB_TOKEN` variables in the `env` file
+  - fill in any API keys for the LLMs (e.g., OpenAI key)
+  - if you are usure what info you should put there, please let us know
+- run `docker login -u auth0-660bd3c14d2d6436de9169f3_aixcc -p <your pat> ghcr.io` to be able to pull the competition images
 - run `make cps` to pull the CP repos listed in [cp_config.yaml](..%2Fcp_config.yaml)
   - If you get authentication issues, you should use the private SSH key linked to our AIxCC GitHub Account.
     - move the key to the `~/.ssh/` directory
@@ -57,11 +68,6 @@ For example, to add code to the vulnerability discovery pipeline:
     - `chmod +x yq_linux_amd64`
     - `mv yq_linux_amd64 yq`
     - `sudo mv  yq  /bin`
-- run `cp sandbox/example.env sandbox/env` and modify `sandbox/env` as follows: 
-  - fill in any API keys for the LLMs (e.g., OpenAI key)
-  - include our GitHub username and personal access token in the `GITHUB_USER` and `GITHUB_TOKEN` variables in the `env` file
-  - if you are usure what info you should put there, please let us know
-- run `docker login -u auth0-660bd3c14d2d6436de9169f3_aixcc -p <your pat> ghcr.io` to be able to pull the competition images
 - run `make up` to start LiteLLM proxy (port 8081 on host), cAPI (scoring server API, port 8080 on host), and `dind` (Docker-in-Docker).
   - if you get an error regarding the "docker.sock" file you might need to run `sudo chmod 777 /var/run/docker.sock`
 - _Note_: challenge images are handled locally by the `load-cp-images` container and are placed into the `dind` cache (`dind_cache`).
