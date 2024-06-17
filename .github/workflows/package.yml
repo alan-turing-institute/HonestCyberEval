@@ -25,6 +25,7 @@ jobs:
 
         include:
           - dockerfile: ./crs/src/Dockerfile
+            context: .
             image: ghcr.io/aixcc-sc/${{ github.event.repository.name }}/brainbox
     permissions:
       contents: write # to push chart release and create a release (helm/chart-releaser-action)
