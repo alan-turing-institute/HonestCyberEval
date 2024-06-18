@@ -67,27 +67,48 @@ class ChallengeProject:
         return deepcopy(self.__config)
 
     def _set_docker_env(self):
-        # `CC` - C compiler binary
-        # `CP_BASE_CFLAGS` - C compiler flags for CP base target (default: CP-specific)
-        # `CP_BASE_EXTRA_CFLAGS`- Supplemental C compiler flags CP base target (default: empty)
-        # `CP_BASE_LDFLAGS` - Linker flags for CP base target (default: CP-specific)
-        # `CP_BASE_EXTRA_LDFLAGS` - Supplemental linker flags for CP base target (default: empy)
-        # `CP_BASE_LIBS` - Libraries to be linked for CP base target (default: CP-specific)
-        # `CP_BASE_EXTRA_LIBS` - Supplemental libraries to be linked for CP base target (default: empty)
-        # `CP_HARNESS_CFLAGS` - C compiler flags for CP harness(es) target (default: CP-specific)
-        # `CP_HARNESS_EXTRA_CFLAGS`- Supplemental C compiler flags for CP harness(es) target (default: empty)
-        # `CP_HARNESS_LDFLAGS` - Linker flags for CP harness(es) target (default: CP-specific)
-        # `CP_HARNESS_EXTRA_LDFLAGS` - Supplemental linker flags for CP harness(es) target (default: empty)
-        # `CP_HARNESS_LIBS` - Libraries to be linked for CP harness(es) target (default: CP-specific)
-        # `CP_HARNESS_EXTRA_LIBS` - Supplemental libraries to be linked for CP harness(es) target (default: empty)
-
-        if self.__config["language"] == 'c':
-            # TODO: more control over C config
-            cflags = set()
-            for sanitizer_name, _ in self.sanitizers.values():
-                cflags |= SANITIZER_COMPILER_FLAGS.get(sanitizer_name)
-            with open(self.path / ".env.docker", "w") as env_file:
-                env_file.write(f"CP_BASE_EXTRA_CFLAGS={' '.join(cflags)}")
+        match self.__config["language"]:
+            # `CC` - C compiler binary
+            # `CXX` - C++ compiler binary
+            # `CCC` - C++ compiler binary
+            # `CP_BASE_CFLAGS` - C compiler flags for CP base target (default: CP-specific)
+            # `CP_BASE_EXTRA_CFLAGS`- Supplemental C compiler flags CP base target (default: empty)
+            # `CP_BASE_CXXFLAGS` - C++ compiler flags for CP base target (default: CP-specific)
+            # `CP_BASE_EXTRA_CXXFLAGS`- Supplemental C++ compiler flags CP base target (default: empty)
+            # `CP_BASE_LDFLAGS` - Linker flags for CP base target (default: CP-specific)
+            # `CP_BASE_EXTRA_LDFLAGS` - Supplemental linker flags for CP base target (default: empy)
+            # `CP_BASE_LIBS` - Libraries to be linked for CP base target (default: CP-specific)
+            # `CP_BASE_EXTRA_LIBS` - Supplemental libraries to be linked for CP base target (default: empty)
+            # `CP_HARNESS_CFLAGS` - C compiler flags for CP harness(es) target (default: CP-specific)
+            # `CP_HARNESS_EXTRA_CFLAGS`- Supplemental C compiler flags for CP harness(es) target (default: empty)
+            # `CP_HARNESS_CXXFLAGS` - C++ compiler flags for CP harness(es) target (default: CP-specific)
+            # `CP_HARNESS_EXTRA_CXXFLAGS`- Supplemental C++ compiler flags for CP harness(es) target (default: empty)
+            # `CP_HARNESS_LDFLAGS` - Linker flags for CP harness(es) target (default: CP-specific)
+            # `CP_HARNESS_EXTRA_LDFLAGS` - Supplemental linker flags for CP harness(es) target (default: empty)
+            # `CP_HARNESS_LIBS` - Libraries to be linked for CP harness(es) target (default: CP-specific)
+            # `CP_HARNESS_EXTRA_LIBS` - Supplemental libraries to be linked for CP harness(es) target (default: empty)
+            case 'c':
+                # TODO: linux kernel uses specific build flags e.g. CONFIG_KFENCE=y, CONFIG_KASAN=y
+                # TODO: more control over C config
+                cflags = set()
+                for sanitizer_name, _ in self.sanitizers.values():
+                    cflags |= SANITIZER_COMPILER_FLAGS.get(sanitizer_name)
+                with open(self.path / ".env.docker", "w") as env_file:
+                    env_file.write(f"CP_BASE_EXTRA_CFLAGS={' '.join(cflags)}")
+            # `JAVA_HOME` - The root directory of installed Java Development Kit (default: `/opt/java/openjdk`)
+            # `MAVEN_HOME` - The root directory of the installed Maven package (default: `/usr/share/maven`)
+            # `MVN` - Maven's `mvn` binary (default: `/usr/bin/mvn`)
+            # `CP_BASE_MAVEN_ARGS` - Arguments passed to Maven before the CLI for building the CP base target (default: CP-specific)
+            # `CP_BASE_EXTRA_MAVEN_ARGS` - Supplemental arguments passed to Maven before the CLI for building the CP base target (default: empty)
+            # `CP_BASE_MAVEN_OPTS` - Parameters passed to JVM running Maven for building the CP base target (default: CP-specific)
+            # `CP_BASE_EXTRA_MAVEN_OPTS` - Supplemental parameters passed to JVM running Maven for building the CP base target (default: empty)
+            # `CP_HARNESS_MAVEN_ARGS` - Arguments passed to Maven before the CLI for building the CP harness(es) (default: CP-specific)
+            # `CP_HARNESS_EXTRA_MAVEN_ARGS` - Supplemental arguments passed to Maven before the CLI for building the CP harness(es) (default: empty)
+            # `CP_HARNESS_MAVEN_OPTS` - Parameters passed to JVM running Maven for building the CP harness(es) (default: CP-specific)
+            # `CP_HARNESS_EXTRA_MAVEN_OPTS` - Supplemental parameters passed to JVM running Maven for building the CP harness(es) (default: empty)
+            case 'java':
+                # TODO: configure Java compilation
+                pass
 
     def _read_project_yaml(self):
         with open(self.path / "project.yaml", "r") as stream:
