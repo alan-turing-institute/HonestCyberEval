@@ -24,19 +24,3 @@ def write_file_to_scratch(filename, content):
         output_file.write(content)
         output_file.close()
     return file_path
-
-
-# temporary code to interact with CP Docker images
-# Organisers are planning to make changes that will create a Docker container for this in local dev
-# https://github.com/aixcc-sc/crs-sandbox/pull/178
-# and images will be present for the CRS to use when running in Stage 2
-# https://github.com/aixcc-sc/crs-sandbox/issues/169
-__logged_in = False
-
-
-def docker_login():
-    if __logged_in:
-        return
-    run_command("docker", "login", "-u", GITHUB_USER, "-p", GITHUB_TOKEN, "ghcr.io")
-
-

@@ -3,7 +3,7 @@ from copy import deepcopy
 from subprocess import CalledProcessError
 import yaml
 from git import Repo
-from api.fs import run_command, docker_login
+from api.fs import run_command
 
 Sanitizer = namedtuple('Sanitizer', ['name', 'error_code'])
 Harness = namedtuple('Harness', ['name', 'file_path'])
@@ -171,27 +171,3 @@ class ChallengeProject:
         if source not in self.sources:
             return None
         return open(self.path / "src" / source / file_path)
-
-    # temporary code to interact with CP Docker images
-    # Organisers are planning to make changes that will create a Docker container for this in local dev
-    # https://github.com/aixcc-sc/crs-sandbox/pull/178
-    # and images will be present for the CRS to use when running in Stage 2
-    # https://github.com/aixcc-sc/crs-sandbox/issues/169
-    def _check_docker_image(self):
-        image = self.__config["docker_image"]
-        try:
-            run_command("docker", "image", "inspect", image)
-            return True
-        except CalledProcessError as err:
-            if "No such image" in err.stderr:
-                return False
-            raise err
-
-    def pull_docker_image(self):
-        if not self._check_docker_image():
-            docker_login()
-            try:
-                self._run_cp_make("docker-pull")
-            except CalledProcessError as err:
-                print("Docker CP image pull error", err.stderr)
-                raise err
