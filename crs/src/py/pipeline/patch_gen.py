@@ -4,10 +4,10 @@ from api.cp import ProjectPatchException, ProjectBuildException
 from api.fs import write_file_to_scratch
 
 mock_patch = r"""diff --git a/mock_vp.c b/mock_vp.c
-index 56cf8fd..abb73cd 100644
+index 9dc6bf0..72678be 100644
 --- a/mock_vp.c
 +++ b/mock_vp.c
-@@ -11,7 +11,8 @@ int main()
+@@ -10,7 +10,8 @@ func_a(){
          printf("input item:");
          buff = &items[i][0];
          i++;
@@ -49,6 +49,7 @@ class PatchGen:
             has_sanitizer_triggered = self.project.run_harness_and_check_sanitizer(harness_input_file, harness_id, sanitizer_id)
             if has_sanitizer_triggered:
                 # todo: the patch doesn't solve the error, sanitizer still complaining
+                print(self.project.run_harness(harness_input_file, harness_id).stderr)
                 raise Exception("the patch doesn't solve the error")
             result = self.project.run_tests()
             if result.stderr:

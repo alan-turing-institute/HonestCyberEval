@@ -48,6 +48,8 @@ For example, to add code to the vulnerability discovery pipeline:
     - `eval "$(ssh-agent -s)"`
     - `ssh-add ~/.ssh/id_rsa_aicc`
 - Clone the repo by running `git clone git@github.com:aixcc-sc/asc-crs-mindrake.git`
+- Run `sudo sysctl -w vm.mmap_rnd_bits=28` to avoid issues with address randomisation
+  (see https://github.com/aixcc-sc/cp-sandbox/pull/28 and linked issues for extra details)
 - `cd` into repo directory and run `mise install` to install dependencies
 - run `cp sandbox/example.env sandbox/env` and modify `sandbox/env` as follows:
   - generate a new personal access token (PAT) (https://github.com/settings/tokens) with `read:packages` permissions.

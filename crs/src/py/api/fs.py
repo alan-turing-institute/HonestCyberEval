@@ -4,8 +4,8 @@ from pathlib import Path
 from config import AIXCC_CP_ROOT, AIXCC_CRS_SCRATCH_SPACE, GITHUB_USER, GITHUB_TOKEN
 
 
-def run_command(*args):
-    result = subprocess.run(args, capture_output=True, text=True)
+def run_command(*args, **kwargs):
+    result = subprocess.run(args, capture_output=True, text=True, **kwargs)
     result.check_returncode()
     return result
 

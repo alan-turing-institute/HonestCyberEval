@@ -1,11 +1,9 @@
 import time
-from subprocess import CalledProcessError
 
-from api.cp import ProjectBuildException, ProjectPatchException
 from api.submit import healthcheck, submit_vulnerability, submit_patch
 from api.fs import (
     get_projects,
-    move_projects_to_scratch, write_file_to_scratch,
+    move_projects_to_scratch,
 )
 from pipeline.patch_gen import patch_generation
 from pipeline.vuln_discovery import vuln_discovery
@@ -41,13 +39,14 @@ for project_path in projects:
             print("Vulnerability:", status, cpv_uuid)
 
             if status != 'rejected':
-                patch = patch_generation.run(
-                    project, cp_source, cpv_uuid, harness_id, blob_file, sanitizer_id
-                )
+                # remove this check once patch generation is not hardcoded:
+                if project.name == "Mock CP" and sanitizer_id == "id_1":
+                    patch = patch_generation.run(
+                        project, cp_source, cpv_uuid, harness_id, blob_file, sanitizer_id
+                    )
 
-                # todo: save patch to persistent storage and check it to avoid double submissions
-                print("Submitting patch", flush=True)
-                status, gp_uuid = submit_patch(cpv_uuid, patch)
-                print("Patch:", status, gp_uuid, flush=True)
-                # todo: update patch in persistent storage and mark as accepted
-
+                    # todo: save patch to persistent storage and check it to avoid double submissions
+                    print("Submitting patch", flush=True)
+                    status, gp_uuid = submit_patch(cpv_uuid, patch)
+                    print("Patch:", status, gp_uuid, flush=True)
+                    # todo: update patch in persistent storage and mark as accepted
