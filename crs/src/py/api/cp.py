@@ -3,23 +3,19 @@ from copy import deepcopy
 from subprocess import CalledProcessError
 import yaml
 from git import Repo
-from api.fs import run_command
+from api.fs import run_command, RunException
 
 Sanitizer = namedtuple('Sanitizer', ['name', 'error_code'])
 Harness = namedtuple('Harness', ['name', 'file_path'])
 Source = namedtuple('Source', ['repo', 'ref'])
 
 
-class ProjectBuildException(Exception):
-    def __init__(self, message, stderr):
-        super().__init__(message)
-        self.stderr = stderr
+class ProjectBuildException(RunException):
+    pass
 
 
-class ProjectPatchException(Exception):
-    def __init__(self, message, stderr):
-        super().__init__(message)
-        self.stderr = stderr
+class ProjectPatchException(RunException):
+    pass
 
 
 # TODO: complete list of flags and better handling

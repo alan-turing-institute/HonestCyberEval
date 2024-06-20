@@ -4,6 +4,15 @@ from pathlib import Path
 from config import AIXCC_CP_ROOT, AIXCC_CRS_SCRATCH_SPACE, GITHUB_USER, GITHUB_TOKEN
 
 
+class RunException(Exception):
+    def __init__(self, message, stderr):
+        super().__init__(message)
+        self.stderr = stderr
+
+    def __str__(self):
+        return f"{super().__str__()}\n{self.stderr}"
+
+
 def run_command(*args, **kwargs):
     result = subprocess.run(args, capture_output=True, text=True, **kwargs)
     result.check_returncode()
