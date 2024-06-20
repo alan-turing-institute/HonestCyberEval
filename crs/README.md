@@ -39,6 +39,7 @@ For example, to add code to the vulnerability discovery pipeline:
   - uninstall any potential existing Docker packages by running
     `for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do sudo apt-get remove $pkg; done`
   - Follow https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository
+  - Enable managing Docker as a non-root user: https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user
 - Install GNU make >= 4.3
   - `sudo apt install make`
 - Install mise by following https://mise.jdx.dev/getting-started.html
@@ -79,7 +80,6 @@ For example, to add code to the vulnerability discovery pipeline:
     - `sudo mv  yq  /bin`
 - run `make up` to start LiteLLM proxy (port 8081 on host), cAPI (scoring server API, port 8080 on host), and `dind`
   (Docker-in-Docker).
-  - if you get an error regarding the "docker.sock" file you might need to run `sudo chmod 777 /var/run/docker.sock`
 - _Note_: challenge images are handled by the `load-cp-images` container and are placed into the `dind` cache
   (`dind_cache`).
   - if you want to run Docker commands inside the `dind` container, uncomment the port bindings for `dind`
