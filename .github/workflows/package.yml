@@ -57,6 +57,7 @@ jobs:
           echo "MAIN_COMMIT_SHA=${MAIN_COMMIT_SHA}" >> "$GITHUB_ENV"
 
       - name: Check if tag commit is an ancestor of the main branch
+        if: ${{ !github.event.release.prerelease }} # We only care about ensuring actual release tags come from main
         id: check_ancestor
         run: |
           if git merge-base --is-ancestor "${{ env.TAG_COMMIT_SHA }}" "${{ env.MAIN_COMMIT_SHA }}"; then
@@ -83,11 +84,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  build-and-push-chart:
+  build-and-push-manifest:
     runs-on:
       group: large-runners
-    strategy:
-      fail-fast: false
     needs: build-and-push-image
     # Sets the permissions granted to the `GITHUB_TOKEN` for the actions in this job.
     permissions:
@@ -112,7 +111,12 @@ jobs:
           sudo apt-get update
           sudo curl -L "https://github.com/docker/compose/releases/download/v2.26.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
-          sudo curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64
+          ORAS_VERSION="1.2.0"
+          curl -LO "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz"
+          mkdir -p oras-install/
+          tar -zxf oras_${ORAS_VERSION}_*.tar.gz -C oras-install/
+          sudo mv oras-install/oras /usr/local/bin/
+          rm -rf oras_${ORAS_VERSION}_*.tar.gz oras-install/
           curl https://mise.jdx.dev/install.sh | sh
           echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
@@ -129,26 +133,13 @@ jobs:
       - name: Create Competition Helm Resources
         run: |
           make k8s/competition
+          tar -czf kustomize.tar.gz -C sandbox/kustomize .
 
-      - name: Helm | Package
-        shell: bash
+      - name: Push manifest to GHCR
         run: |
           VERSION_STRING=${{ github.event.release.tag_name }}
           NEW_VERSION="${VERSION_STRING#v}"
-          cd ./charts && helm package crs --version "$NEW_VERSION"
-          gh release upload "${{github.event.release.tag_name}}" "crs-${NEW_VERSION}.tgz"
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+          oras push --artifact-type application/vnd.kubernetes.kustomization "ghcr.io/${{ github.repository }}/crs-manifest:${NEW_VERSION}" kustomize.tar.gz
 
-      - name: Push chart to GHCR
-        run: |
-          shopt -s nullglob
-          for pkg in ./charts/*.tgz; do
-            if [ -z "${pkg:-}" ]; then
-              break
-            fi
-            helm push "${pkg}" oci://ghcr.io/${{ github.repository }}
-          done
         env:
-          HELM_EXPERIMENTAL_OCI: 1
           GITHUB_TOKEN: ${{ github.token }}

@@ -1,9 +1,9 @@
 ROOT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
 DOCKER_COMPOSE_FILE = $(ROOT_DIR)/compose.yaml
-DOCKER_COMPOSE_PORTS_FILE = $(ROOT_DIR)/compose_local_overrides.yaml
-DOCKER_COMPOSE_LOCAL_ARGS = -f $(DOCKER_COMPOSE_FILE) -f $(DOCKER_COMPOSE_PORTS_FILE) --profile development
-DOCKER_COMPOSE_LOCAL_MOCK_CRS_ARGS = -f $(DOCKER_COMPOSE_FILE) -f $(DOCKER_COMPOSE_PORTS_FILE) --profile mock-crs
+DOCKER_COMPOSE_LOCAL_OVERRIDES = $(ROOT_DIR)/compose_local_overrides.yaml
+DOCKER_COMPOSE_LOCAL_ARGS = -f $(DOCKER_COMPOSE_FILE) -f $(DOCKER_COMPOSE_LOCAL_OVERRIDES) --profile development
+DOCKER_COMPOSE_LOCAL_MOCK_CRS_ARGS = -f $(DOCKER_COMPOSE_FILE) -f $(DOCKER_COMPOSE_LOCAL_OVERRIDES) --profile mock-crs
 
 # variables that control the volumes
 export UID=$(shell id -u)
@@ -11,6 +11,10 @@ export GID=$(shell id -g)
 HOST_CRS_SCRATCH = $(ROOT_DIR)/crs_scratch
 HOST_DIND_CACHE = $(ROOT_DIR)/dind_cache
 HOST_CAPI_LOGS = $(ROOT_DIR)/capi_logs
+
+LOCAL_K8S_BASE = $(ROOT_DIR)/sandbox/kustomize/base
+LOCAL_K8S_RESOURCES = $(ROOT_DIR)/.k8s
+
 
 # variables that control the CP repos
 HOST_CP_ROOT_DIR = $(ROOT_DIR)/cp_root
@@ -52,7 +56,7 @@ endif
 CP_TARGETS_DIRS = $(shell yq -r '.cp_targets | keys | .[]' $(CP_CONFIG_FILE))
 CP_MAKE_TARGETS = $(addprefix $(HOST_CP_ROOT_DIR)/.pulled_, $(subst :,_colon_, $(subst /,_slash_, $(CP_TARGETS_DIRS))))
 
-.PHONY: help build up start down destroy stop restart logs logs-crs logs-litellm logs-iapi ps crs-shell litellm-shell cps/clean cps computed-env clear-dind-cache env-file-required github-creds-required
+.PHONY: help build up start down destroy stop restart logs logs-crs logs-litellm logs-iapi ps crs-shell litellm-shell cps/clean cps computed-env clear-dind-cache env-file-required github-creds-required k8s k8s/clean k8s/kustomize/development k8s/kustomize/competition install k8s/development k8s/competition
 
 help: ## Display available targets and their help strings
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_/-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(THIS_FILE) | sort
@@ -83,6 +87,9 @@ up: github-creds-required local-volumes cps computed-env ## Start containers
 up-attached: github-creds-required cps computed-env ## Start containers
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) up --build --abort-on-container-exit $(c)
 
+show-config:
+	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) config $(c)
+
 mock-crs/up-attached: github-creds-required cps computed-env ## Start containers
 	@docker compose $(DOCKER_COMPOSE_LOCAL_MOCK_CRS_ARGS) up --build --abort-on-container-exit $(c)
 
@@ -97,7 +104,7 @@ destroy: clear-dind-cache ## Stop and remove containers with volumes
 
 clear-dind-cache: ## Clears out DIND cached artifacts
 	@echo "Deleting the docker-in-docker cache folder, which requires sudo.  You will be prompted for your password."
-	@sudo rm -rf $(ROOT_DIR)/dind_cache/*
+	@sudo rm -rf $(HOST_DIND_CACHE)
 
 stop: ## Stop containers
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) stop $(c)
@@ -159,45 +166,92 @@ cps: local-volumes $(CP_MAKE_TARGETS) ## Clone CP repos
 cps/clean: ## Clean up the cloned CP repos
 	@rm -rf $(HOST_CP_ROOT_DIR)
 
-loadtest: computed-env ## Run k6 load tests
-	@docker compose -f $(DOCKER_COMPOSE_FILE) --profile loadtest up --exit-code-from test --build $(c)
+loadtest: local-volumes computed-env ## Run k6 load tests
+	@docker compose -f $(DOCKER_COMPOSE_FILE) -f $(DOCKER_COMPOSE_LOCAL_OVERRIDES) --profile loadtest up --exit-code-from test --build $(c)
 loadtest/destroy: ## Stop and remove containers with volumes
-	@docker compose -f $(DOCKER_COMPOSE_FILE) --profile loadtest down --volumes --remove-orphans $(c)
+	@docker compose -f $(DOCKER_COMPOSE_FILE) -f $(DOCKER_COMPOSE_LOCAL_OVERRIDES) --profile loadtest down --volumes --remove-orphans $(c)
 
-k8s: k8s/development build ## Generates helm chart locally for the development profile for kind testing, etc. build is called for local image generation
-	@kind create cluster --wait 1m
-	@docker pull ghcr.io/aixcc-sc/capi:v2.1.4
+k8s: k8s/clean k8s/development k8s/kustomize/development build ## Generates helm chart locally for the development profile for kind testing, etc. build is called for local image generation
+	@docker pull ghcr.io/aixcc-sc/capi:v2.1.8
 	@docker pull ghcr.io/berriai/litellm-database:main-v1.35.10
 	@docker pull nginx:1.25.5
 	@docker pull docker:24-dind
 	@docker pull postgres:16.2-alpine3.19
 	@docker pull ghcr.io/aixcc-sc/crs-sandbox/mock-crs:v2.0.0
-	@kind load docker-image ghcr.io/aixcc-sc/capi:v2.1.4 ghcr.io/berriai/litellm-database:main-v1.35.10 docker:24-dind postgres:16.2-alpine3.19 nginx:1.25.5 ghcr.io/aixcc-sc/load-cp-images:v0.0.1
-	@helm install crs $(ROOT_DIR)/charts/crs
+	@docker pull curlimages/curl:8.8.0
+	@docker pull ghcr.io/aixcc-sc/load-cp-images:v0.0.4
+	@helm repo add longhorn https://charts.longhorn.io
+	@helm repo update
+	@helm install --kube-context crs longhorn longhorn/longhorn --namespace longhorn-system --create-namespace --set defaultSetting.defaultStorageClass=true
+	@kubectl create --context=crs secret docker-registry regcred --docker-server=https://ghcr.io --docker-username=oauth2 --docker-password=$(GITHUB_TOKEN)
+	@kubectl apply --context=crs -f $(LOCAL_K8S_RESOURCES)
 
 k8s/clean:
-	@rm -rf tmp_charts
-	@rm -rf $(ROOT_DIR)/charts
-	@kind delete cluster
+	@rm -rf $(LOCAL_K8S_BASE)/resources.yaml
+	@rm -rf $(LOCAL_K8S_RESOURCES)
+
+install:
+	@echo "Updating package list"
+	sudo apt-get update
+
+	@echo "Installing Docker Compose"
+	sudo curl -L "https://github.com/docker/compose/releases/download/v2.26.1/docker-compose-$$(uname -s)-$$(uname -m)" -o /usr/local/bin/docker-compose
+	sudo chmod +x /usr/local/bin/docker-compose
+
+	@echo "Setting file limits"
+	echo -e "* soft nofile 65536\n* hard nofile 65536" | sudo tee -a /etc/security/limits.conf
+	echo "fs.file-max = 65536" | sudo tee -a /etc/sysctl.conf
+	sudo sysctl -p
+	echo "DefaultLimitNOFILE=65536" | sudo tee -a /etc/systemd/system.conf
+	echo "DefaultLimitNOFILE=65536" | sudo tee -a /etc/systemd/user.conf
+	sudo systemctl daemon-reload
+
+	@echo "Installing required packages"
+	sudo apt-get install -y open-iscsi nfs-common
+
+	@echo "Installing K3s with custom configuration"
+	curl -sfL https://get.k3s.io | sh -
+
+	@echo "Setting up kubeconfig"
+	mkdir -p ~/.kube
+	sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+	sudo chown "$${USER}" ~/.kube/config
+	@echo "Configuring custom Kubernetes context 'crs'"
+	kubectl config rename-context default crs
+
+	@echo "Getting Kubernetes nodes"
+	kubectl get nodes --context=crs
+
+	@echo "Installing mise"
+	curl https://mise.jdx.dev/install.sh | sh
+	mise install
+	echo "eval \"$$(mise activate bash)\"" >> "$${HOME}/.bashrc"
+
+k8s/k3s/clean:
+	@if [ -f /usr/local/bin/k3s-uninstall.sh ]; then \
+		sudo /usr/local/bin/k3s-uninstall.sh \
+	else \
+		echo "K3S Uninstall file does not exist...skipping"; \
+	fi
 
 k8s/development: github-creds-required k8s/clean
-	@COMPOSE_FILE="$(ROOT_DIR)/compose.yaml $(ROOT_DIR)/kompose_development_overrides.yaml" kompose convert --profile development --chart --out tmp_charts
-	@mkdir $(ROOT_DIR)/charts
-	@mv tmp_charts $(ROOT_DIR)/charts/crs
-	@rm -rf ./tmp_charts
-	@yq eval ".description = \"AIxCC Competitor CRS\"" -i $(ROOT_DIR)/charts/crs/Chart.yaml
-	@yq eval ".name = \"crs\"" -i $(ROOT_DIR)/charts/crs/Chart.yaml
+	@mkdir -p $(LOCAL_K8S_RESOURCES)
+	@mkdir -p $(LOCAL_K8S_BASE)
+	@COMPOSE_FILE="$(ROOT_DIR)/compose.yaml $(ROOT_DIR)/kompose_development_overrides.yaml" kompose convert --profile development --out $(LOCAL_K8S_BASE)/resources.yaml
 
-k8s/competition: env-file-required k8s/clean ## Generates the competition helm chart for use during pregame and the competition
-	@COMPOSE_FILE="$(ROOT_DIR)/compose.yaml $(ROOT_DIR)/kompose_competition_overrides.yaml" kompose convert --profile competition --chart --out tmp_charts
-	@mkdir $(ROOT_DIR)/charts
-	@mv tmp_charts $(ROOT_DIR)/charts/crs
-	@rm -rf ./tmp_charts
-	@yq eval ".description = \"AIxCC Competitor CRS\"" -i $(ROOT_DIR)/charts/crs/Chart.yaml
-	@yq eval ".name = \"crs\"" -i $(ROOT_DIR)/charts/crs/Chart.yaml
+k8s/kustomize/development:
+	@kustomize build $(ROOT_DIR)/sandbox/kustomize/development -o $(LOCAL_K8S_RESOURCES)/resources.yaml
 
-clean-volumes:
-	rm -rf $(HOST_CP_ROOT_DIR) $(HOST_CRS_SCRATCH) $(HOST_DIND_CACHE) $(HOST_CAPI_LOGS)
+k8s/competition: env-file-required k8s/clean ## Generates the competition k8s resources for use during the evaluation window and competition
+	@mkdir -p $(LOCAL_K8S_RESOURCES)
+	@mkdir -p $(LOCAL_K8S_BASE)
+	@COMPOSE_FILE="$(ROOT_DIR)/compose.yaml $(ROOT_DIR)/kompose_competition_overrides.yaml" kompose convert --profile competition --out $(LOCAL_K8S_BASE)/resources.yaml
+
+k8s/kustomize/competition:
+	@kustomize build $(ROOT_DIR)/sandbox/kustomize/competition -o $(LOCAL_K8S_RESOURCES)/resources.yaml
+
+clean-volumes: clear-dind-cache
+	rm -rf $(HOST_CP_ROOT_DIR) $(HOST_CRS_SCRATCH) $(HOST_CAPI_LOGS)
 
 clean: cps/clean k8s/clean down clear-dind-cache
 

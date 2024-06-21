@@ -2,7 +2,7 @@
 
 printf "The following is a demonstration of a fake CRS interacting with the competition API (cAPI).  First, we'll make sure the cAPI is available.\n"
 
-CURL="curl --location --silent --user 00000000-0000-0000-0000-000000000000:secret"
+CURL="curl --location --silent"
 
 until $CURL "${AIXCC_API_HOSTNAME}/health/" >/dev/null; do
 	printf "Waiting for the cAPI to be available...\n"
@@ -37,14 +37,14 @@ printf "\nSome CPs may have multiple sources.  The Mock CP has only one source, 
 printf "At this point, a real CRS might send parts of the CP's sources off to LiteLLM (%s using the credential %s).\n" "${AIXCC_LITELLM_HOSTNAME}" "${LITELLM_KEY}"
 
 # Assume the LLM & our CRS have produced these values
-LLM_RESPONSE_COMMIT=9d38fc63bb9ffbc65f976cbca45e096bad3b30e1
+LLM_RESPONSE_COMMIT=11dafa9a5babc127357d710ee090eb4c0c05154f
 read -r -d '' LLM_RESPONSE_BLOB <<-'EOF'
 	abcdefabcdefabcdefabcdefabcdefabcdef
 	b
 
 	1
 EOF
-LLM_RESPONSE_HARNESS=stdin_harness.sh
+LLM_RESPONSE_HARNESS=filein_harness
 LLM_RESPONSE_SANITIZER="AddressSanitizer: global-buffer-overflow"
 
 printf "Then it would test the responses using the local copy of the CP.\n\n"
@@ -55,13 +55,14 @@ cd "${SRC_FOLDER}" || exit 1
 git checkout "${LLM_RESPONSE_COMMIT}" >/dev/null 2>/dev/null
 cd "${CP_FOLDER}" || exit 1
 # First, build the CP
-./run.sh build >/dev/null 2>/dev/null
+./run.sh build
 # Then, test our blob with the harness & check if the sanitizer fired
-POV_OUTPUT=$(
+(
 	set -x
-	./run.sh run_pov "${BLOB_FILE}" "${LLM_RESPONSE_HARNESS}" 2>&1
+	./run.sh run_pov "${BLOB_FILE}" "${LLM_RESPONSE_HARNESS}"
 )
-if printf "%s" "$POV_OUTPUT" | (
+find out -type f -iname 'std*.log' | grep run_pov | xargs cat
+if find out -type f -iname 'std*.log' | grep run_pov | xargs cat | (
 	set -x
 	grep "${LLM_RESPONSE_SANITIZER}" -q
 ); then

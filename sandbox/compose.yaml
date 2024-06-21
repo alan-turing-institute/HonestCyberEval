@@ -4,12 +4,15 @@
 ---
 services:
   load-cp-images:
-    image: ghcr.io/aixcc-sc/load-cp-images:v0.0.1
-    restart: on-failure
+    image: ghcr.io/aixcc-sc/load-cp-images:v0.0.4
+    expose:
+      - "8080"
+    restart: "no"
     build:
-      context: ./cp_image_pull
+      context: ./load_cp_images
     profiles:
       - development
+      - competition
     networks:
       - crs-internal
       - internet
@@ -17,6 +20,8 @@ services:
     environment:
       - DOCKER_HOST=tcp://dind:2375
       - AIXCC_CP_ROOT=/cp_root
+      - "LOAD_CPS=false"
+      - "LOAD_CP_IMAGES=true"
     volumes:
       - type: bind
         source: ${PWD}/cp_root
@@ -85,24 +90,19 @@ services:
     image: docker:24-dind
     command: ["dockerd", "-H", "tcp://0.0.0.0:2375", "--tls=false", "--storage-driver=overlay2"]
     restart: always
-    privileged: true # This must run with privlege to support nested virtualization within the public Linux CP for `virtme-ng`
+    privileged: true  # This must run with privlege to support nested virtualization within the public Linux CP for `virtme-ng`
     environment:
-      - DOCKER_TLS_CERTDIR # intentionally blank to optimize runtime
+      - DOCKER_TLS_CERTDIR  # intentionally blank to optimize runtime
     volumes:
       - type: bind
         source: ${PWD}/crs_scratch
         target: /crs_scratch
         bind:
           propagation: rshared
-      - type: bind
-        source: ${PWD}/dind_cache
-        target: /var/lib/docker
-        bind:
-          propagation: rprivate
   iapi:
     networks:
       - crs-internal
-      - internet # Internal networks can"t have host port mappings
+      - internet  # Internal networks can"t have host port mappings
     expose:
       - "8080"
     profiles:
@@ -112,9 +112,8 @@ services:
       - loadtest
     image: nginx:1.25.5
     env_file: env
-    configs:
-      - source: nginx_config
-        target: /etc/nginx/templates/default.conf.template
+    environment:
+      - CAPI_UPSTREAM_HOST=http://capi:8080
     healthcheck:
       # this passes through to the capi
       test: ["CMD-SHELL", "curl --fail http://127.0.0.1:8080/health/ || exit 1"]
@@ -125,14 +124,14 @@ services:
   capi:
     networks:
       - crs-internal
-      - internet # This needs internet to pull CP container images but not for competition
+      - internet  # This needs internet to pull CP container images but not for competition
     expose:
       - "8080"
     profiles:
       - mock-crs
       - development
       - loadtest
-    image: ghcr.io/aixcc-sc/capi:v2.1.4
+    image: ghcr.io/aixcc-sc/capi:v2.1.8
     restart: always
     env_file: env
     environment:
@@ -180,7 +179,7 @@ services:
     environment:
       - POSTGRES_PASSWORD=aixcc
       - POSTGRES_USER=aixcc
-      - POSTGRES_DATABASE=litellm
+      - POSTGRES_DB=litellm
     configs:
       - source: capi_db_setup
         target: /docker-entrypoint-initdb.d/capi-db-setup.sh
@@ -209,7 +208,7 @@ services:
     command: ["--config", "/app/config.yaml", "--port", "80", "--num_workers", "8"]
     env_file: env
     environment:
-      - DATABASE_URL=postgresql://aixcc:aixcc@db
+      - DATABASE_URL=postgresql://aixcc:aixcc@db:5432/litellm
     healthcheck:
       test: ["CMD-SHELL", "python3", "--version"]
       interval: 5s
@@ -226,8 +225,10 @@ configs:
     file: ./litellm/vertex_key.json
   capi_config:
     file: ./capi/config.yaml
-  nginx_config:
-    file: ./nginx/default.conf.template
+  nginx_local_config:
+    file: ./nginx/local.conf.template
+  nginx_kube_config:
+    file: ./nginx/kube.conf.template
   capi_db_setup:
     file: ./capi/db_setup.sh
 networks:

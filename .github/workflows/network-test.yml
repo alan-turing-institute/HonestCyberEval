@@ -39,7 +39,13 @@ jobs:
           sudo apt-get update
           sudo curl -L "https://github.com/docker/compose/releases/download/v2.26.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
-          sudo curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64
+          sudo bash -c 'echo -e "* soft nofile 65536\n* hard nofile 65536" >> /etc/security/limits.conf && echo "fs.file-max = 65536" >> /etc/sysctl.conf && sysctl -p && echo "DefaultLimitNOFILE=65536" >> /etc/systemd/system.conf && echo "DefaultLimitNOFILE=65536" >> /etc/systemd/user.conf && systemctl daemon-reload && echo "Global open file limits updated system-wide."'
+          sudo apt-get install -y open-iscsi nfs-common
+          curl -sfL https://get.k3s.io | sh -
+          mkdir -p ~/.kube
+          sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+          sudo chown "$USER" ~/.kube/config
+          kubectl get nodes
           curl https://mise.jdx.dev/install.sh | sh
           echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
@@ -89,7 +95,7 @@ jobs:
       - name: Check for any exposed ports
         run: |
           # 22, 8084, and 68 are bound by the workflow / runner somewhere, so we except them from our check
-          EXPOSED_PORTS=$(sudo netstat -tulpn | tail -n +3 | awk '{print $4}' | grep -v -E '(:22|:8084|:68)' | grep -v -E '(127.0.0|::1)' || true)
+          EXPOSED_PORTS=$(sudo netstat -tulpn | tail -n +3 | awk '{print $4}' | grep -v -E '(:22|:8084|:68|:111|:6443|:8472)' | grep -v -E '(127.0.0|::1)' || true)
           if [ -n "${EXPOSED_PORTS}" ]; then
               echo "The following ports are exposed on interfaces other than localhost:"
               echo "${EXPOSED_PORTS}"

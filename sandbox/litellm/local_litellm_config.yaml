@@ -94,22 +94,31 @@ model_list:
       model: azure/gpt-4o  # pinned in Azure deployment as 2024-05-13
       api_base: "os.environ/AZURE_API_BASE"
       api_key: "os.environ/AZURE_API_KEY"
-  # fake endpoint for load testing only.
+  # fake endpoints for load testing only.
   # Do not address this during competition, it is useless!
   - model_name: fake-openai-endpoint
     litellm_params:
       model: openai/fake
       api_key: fake-key
       api_base: https://exampleopenaiendpoint-production.up.railway.app/
+  - model_name: fake-openai-endpoint-rate-limits
+    litellm_params:
+      model: openai/fake
+      api_key: fake-key
+      api_base: https://exampleopenaiendpoint-production.up.railway.app/
+      tpm: 2000
+      rpm: 2
 
 litellm_settings:
   drop_params: true
   max_budget: 100
   budget_duration: 30d
-  num_retries: 3
-  request_timeout: 10
+  num_retries: 10
+  request_timeout: 700
+  max_parallel_requests: 10000
 general_settings:
   master_key: sk-1234  # Leave this default value.
+  database_url: "os.environ/DATABASE_URL"
 router_settings:
   model_group_alias:
     - azure-gpt-3.5-turbo: azure-gpt-3.5-turbo
@@ -119,3 +128,4 @@ router_settings:
     - oai-gpt-3.5-turbo-16k: oai-gpt-3.5-turbo-16k
     - oai-gpt-4: oai-gpt-4
     - oai-gpt-4-turbo: oai-gpt-4-turbo
+  routing_strategy: "usage-based-routing-v2"

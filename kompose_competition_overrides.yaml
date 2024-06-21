@@ -4,24 +4,51 @@
 # Changes the bind mount of ./cp_root to specify Persistent Volume that will be populated at competition time
 
 services:
+  load-cp-images:
+    environment:
+      - DOCKER_HOST=$${DOCKER_HOST:-tcp://dind:2375}
+      - "ENABLE_HEALTH_ENDPOINT=true"
+      - "LOAD_CPS=true"
+    volumes:
+      - cp_root:/cp_root
+  iapi:
+    configs:
+      - source: nginx_kube_config
+        target: /etc/nginx/templates/default.conf.template
+    environment:
+      - CAPI_UPSTREAM_HOST=$${CAPI_UPSTREAM_HOST:-http://capi:8080}
   crs:
     labels:
+      kompose.init.containers.command: '["sh", "-c", "until curl http://load-cp-images:8080; do echo \"Waiting for CP image load to complete\"; sleep 5; done"]'
+      kompose.init.containers.image: curlimages/curl:8.8.0
+      kompose.init.containers.name: wait-for-cp-load
       kompose.volume.type: persistentVolumeClaim
       kompose.volume.size: 1Ti
-      kompose.volume.storage-class-name: managed-csi-premium
+      kompose.volume.storage-class-name: azurefile-csi-premium
     volumes:
       - cp_root:/cp_root
       - crs_scratch:/crs_scratch
+    environment:
+      # These values will be modified automatically at competition time
+      # Competitors MUST map any services which need these environment variables
+      # in the exact same way, or they will not be overridden during competition
+      # By using the double $$ when these values pass from Docker Compose -> Kompose -> Kustomize
+      # they will be available as variables which Kustomize can substitute.
+      - DOCKER_HOST=$${DOCKER_HOST:-tcp://dind:2375}
+      - AIXCC_LITELLM_HOSTNAME=$${AIXCC_LITELLM_HOSTNAME:-http://litellm}
+      - AIXCC_API_HOSTNAME=$${AIXCC_API_HOSTNAME:-http://iapi:8080}
+      - AIXCC_CP_ROOT=$${AIXCC_CP_ROOT:-/cp_root}
+      - AIXCC_CRS_SCRATCH_SPACE=$${AIXCC_CRS_SCRATCH_SPACE:-/crs_scratch}
+      - LITELLM_KEY=$${LITELLM_KEY:-sk-1234}
   dind:
     labels:
       kompose.volume.type: persistentVolumeClaim
       kompose.volume.size: 1Ti
-      kompose.volume.storage-class-name: managed-csi-premium
+      kompose.volume.storage-class-name: azurefile-csi-premium
     volumes:
-      - dind_cache:/var/lib/docker
       - crs_scratch:/crs_scratch
+    command: ["dockerd", "-H", "tcp://0.0.0.0:2375", "--tls=false"]
 
 volumes:
   cp_root:
   crs_scratch:
-  dind_cache:

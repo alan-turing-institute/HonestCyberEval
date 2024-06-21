@@ -30,9 +30,19 @@ services:
   iapi:
     ports:
       - '127.0.0.1:8080:8080'
+    configs:
+      - source: nginx_local_config
+        target: /etc/nginx/templates/default.conf.template
     depends_on:
       capi:
         condition: service_healthy
+  dind:
+    volumes:
+      - type: bind
+        source: ${PWD}/dind_cache
+        target: /var/lib/docker
+        bind:
+          propagation: rprivate
   capi:
     # ports:
     #   - "127.0.0.1:8082:8080"

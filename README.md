@@ -41,16 +41,31 @@ Date: 2024-06-21
 
 On the above date, the AIxCC Game Architecture team will automatically execute competitors CRSs against a subset of published challenge problems.
 
-The CRS MUST be released via [GitHub Release](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository) and all GitHub actions must pass.
+The CRS MUST be released via [GitHub Release](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)
+and you MUST merge at least one pull request with a passing Evaluator workflow.
 
-Competitors must release new versions of their CRS with an updated tag from `main` after the start of Phase 2.
+Competitors must release new versions of their CRS with an updated tag from `main` after the start of Phase 2 in order to trigger provisioning of their cluster.
 
-With each new release of a competitors CRS it will be automatically executed.
+Teams MUST merge the automated upstream pull requests in their repos OR rebase for CRS Sandbox version >= `v2.5.0`.
+
+With each new release of a competitors CRS it will be automatically provisioned.
 
 Only the latest semantic version of a competitors CRS that is properly tagged from `main` will be tested in Phase 2.
 
 During Phase 2, secret keys and tokens for collaborator resources (LLM APIs) and GitHub access will
 be set by the AIxCC infrastructure team.
+
+Competitors will recieve access to a live vCluster environment at the start of Phase 2.
+
+Competitors will be able to evaluate their CRS in this environment each time they make a new release of their CRS.
+
+The vCluster environment will use the same SSO from the [AIxCC Dashboard](https://dashboard.aicyberchallenge.com).
+
+We plan to add another button to the Dashboard for this environment soon.
+
+However, once we announce Phase 2 is live, teams will be able to log into their CRS at
+
+[https://vcluster-platform.aixcc.tech/login](https://vcluster-platform.aixcc.tech/login)
 
 ## Code Owners
 
@@ -108,10 +123,8 @@ patched using the provided Docker container.
 One CP (the public Linux kernel CP) includes `virtme-ng` in its CP-specific
 Docker container for the purposes of testing the built kernel.
 
-This is the only form of nested virtualization or nested containerization that
-will be supported by the competition environment. A CRS **MUST NOT** assume that
-nested containers or another virtualization/hypervisor technology will be
-compatible with the competition environment.
+This is the only supported form of nested virtualization for the competition environment.
+A CRS **MUST NOT** assume that nested virtualization accelerations such as KVM via `/dev/kvm` are supported for their containers.
 
 ## Environment Variables & GitHub Secrets
 
@@ -126,15 +139,22 @@ and at competition, the AIxCC infrastructure team will override these values wit
 
 There are currently 5 LLM Provider environment variables declared but not populated in example.env, which will be populated at competition time:
 
-- OPENAI\_API\_KEY
-- AZURE\_API\_KEY
-- AZURE\_API\_BASE
-- GOOGLE_APPLICATION_CREDENTIAL
-- ANTHROPIC\_API\_KEY
+- `OPENAI_API_KEY`
+- `AZURE_API_KEY`
+- `AZURE_API_BASE`
+- `GOOGLE_APPLICATION_CREDENTIALS`
+- `ANTHROPIC_API_KEY`
 
 Note: For local development, the [./sandbox/example.env](./sandbox/example.env) file should be
 copied to `./sandbox/env`. This file is included in the `.gitignore` so competitors don't
 accidentally push it to their repository.
+
+Also note: `GOOGLE_APPLICATION_CREDENTIALS` does not directly contain the Google credential. It
+contains a path to `vertex_key.json`, which contains the actual credentials.  To get the content of
+`vertex_key.json`, use the [instructions to create a GCP Service
+Account](https://docs.litellm.ai/docs/providers/vertex#using-gcp-service-account) in combination
+with [this document about creating the credential file
+itself](https://cloud.google.com/docs/authentication/application-default-credentials#personal).
 
 *TBD* - These variables and the LiteLLM configuration file are not yet complete. This will be released in a CRS sandbox update.
 We will continue iterating on the CRS sandbox as we grow closer to the competition in order to support newer versions of components.
@@ -157,7 +177,8 @@ secrets on your repository and `gh secrets list` to show which ones exist and wh
 recently set.
 
 The [GitHub CRS Validation workflow](./.github/workflows/evaluator.yml) expects the repo-level
-secrets to have the same names as in `sandbox/env` (`OPENAI_API_KEY`, etc).
+secrets to have the same names as in `sandbox/env` (`OPENAI_API_KEY`, etc). The only exception to
+this is Google's LLM credential, which should be stored in `VERTEX_KEY_JSON`.
 
 ![gh secret set and list demonstration](./.static/gh-secret-list-set-demo.png)
 
@@ -183,7 +204,8 @@ Note: OpenAI Embedding models have not currently been released in more than a si
 All OpenAI models will also be matched by an Azure-hosted version. Competitors will be able to freely request the
 model they like by the Model name in chart above, plus a prefix "oai-" or "azure-".
 Ex. "oai-gpt-4o".
-This was done because of performance differences between the models as hosted on OAI vs Azure infrastructure. The models themselves are guaranteed to be identical but no such promises can be made as regards supporting provider infrastrcture.
+This was done because of performance differences between the models as hosted on OAI vs Azure infrastructure.
+The models themselves are guaranteed to be identical but no such promises can be made as regards supporting provider infrastrcture.
 
 Note: OAI Embedding models have not currently been released in more than a single version.
 
@@ -235,9 +257,18 @@ Most dependencies in this repository can be automatically managed by `mise`, but
 - docker >= 24.0.5
 - docker-compose >= 2.26.1
 - GNU make >= 4.3
-- kind >= 0.23.0 (for running local kubernetes clusters in docker)
 
-Additionally, you will need permissions to interact with the Docker daemon.  Typically this means adding your user to the `docker` group.
+(optional for local kubernetes testing)
+
+- k3s >= v1.29.5
+- nfs-common >= 1:2.6.3ubuntu1
+- open-iscsi >= 2.1.8-1ubuntu2
+
+We've added a Makefile target `make install` which will setup the required dependencies.
+This is the exact same target used by the GitHub workflow evaluator.
+
+Additionally, you will need permissions to interact with the Docker daemon.
+Typically this means adding your user to the `docker` group.
 
 ### Working with Docker-in-Docker
 
@@ -253,6 +284,59 @@ Once you've done that, set `DOCKER_HOST=tcp://127.0.0.1:2375`.
 ```bash
 export DOCKER_HOST=tcp://127.0.0.1:2375
 docker logs <container name>
+```
+
+### Working with K3S Kubernetes
+
+We now use [K3S](https://docs.k3s.io/) for our local Kubernetes w/ the [Longhorn](https://longhorn.io/docs/1.6.2/) storage driver.
+We use a Kubernetes context named `crs` for all `kubectl` targets in the Makefile to prevent modification to other Kubernetes environments.
+
+You MUST set your GitHub [PAT](#setting-github-secrets-with-competitor-repository-permissions) in the `env` file so that Kubernetes can use this to pull images.
+
+#### Install dependencies
+
+`make install`
+
+#### Merge the k3s kubeconfig into your main kubeconfig
+
+```bash
+sudo cp /etc/rancher/k3s/k3s.yaml /tmp/k3s.yaml
+sudo chown $USER /tmp/k3s.yaml
+KUBECONFIG=/tmp/k3s.yaml:~/.kube/config kubectl config view --flatten > ~/.kube/config
+```
+
+#### Rename k3s context
+
+`kubectl config rename-context default k3s`
+
+#### Set the current context to k3s
+
+`kubectl config use-context k3s`
+
+#### Remove k3s
+
+`make k8s/k3s/clean`
+
+### Working with Kubernetes API
+
+Several teams inquired about the ability of their CRS to work directly with the Kubernetes API in a few tickets.
+
+- [#197](https://github.com/aixcc-sc/crs-sandbox/issues/197)
+- [#203](https://github.com/aixcc-sc/crs-sandbox/issues/203)
+
+This functionality has now been added to the CRS Sandbox.
+
+This is approach is purely optional and should be considered an `unsupported expert mode` so teams can perform dynamic orchestraion of their CRS.
+
+Unsupported means that issues in GitHub related to the Kubernetes API access will receive a lower priorty.
+
+Teams using the Kubernetes API MUST manage their own dynamic resources, and their CRS approach MUST have the ability to recover from memory exhaustion, etc.
+
+To enable this feature the `compose.yaml` file must contain the following for each service that needs Kubernetes access.
+
+```yaml
+labels:
+  kompose.service.accountname: "crs"
 ```
 
 #### Dependencies managed using mise
@@ -333,14 +417,16 @@ See [Makefile](./Makefile) for more commands
 
 ### Kubernetes
 
-The Makefile includes endpoints for `make k8s` and `make k8s/competition` which will generate a helm chart in a `./charts/` folder.
-The `make k8s` command uses Kind to run Kubernetes locally and will also apply the generated Helm chart onto your cluster.
+The Makefile includes endpoints for `make k8s`, `make k8s/development` and `make k8s/competition`
+
+This will generate a resources chart in a `.k8s/` folder.
+The `make k8s` command uses Kind to run Kubernetes locally and will also apply the generated Kubernetes resources onto your cluster.
 This process uses a component called [Kompose](https://kompose.io/conversion/) for translating the Docker Compose file into resources.
 The CRS Sandbox will include a CI/CD action which the private repos must also use.
 This will generate and push the container images to the respective per-competitor private GitHub.
-This will also push the Helm chart as an OCI compliant chart to the private GitHub repos.
+This will also push the generated manifest file as an OCI compliant manifest to the private GitHub repos.
 The `evaluator.yml` action runs `make k8s` in every pull request to `main`.
-This is to ensure all resources can be properly translated into a Helm chart and deployed into Kubernetes.
+This is to ensure all resources can be properly translated into a manifests and deployed into Kubernetes.
 
 #### Autoscaling
 
@@ -361,6 +447,24 @@ services:
       kompose.hpa.replicas.min: 3
 ```
 
+#### Deployments, Pods, and replica count
+
+Kompose has some limitations on resource creation.  Depending on what attributes you set on your services, you will get different Kubernetes resource
+types.  Here are some typical use cases.
+
+##### Run forever and never exit
+
+This type of service is never expected to exit cleanly.  If it exits, it will be due to an uncaught exception.  This might be a database or cache.
+
+Set `restart: always` on this service.  This produces a Deployment in Kubernetes.  If you want multiple, you can use the `deploy.replicas` key to
+scale horizontally.
+
+##### Run once and exit cleanly
+
+This type of service is intended to run once, typically when initialized, and not restart upon completion.
+
+Set `restart: on-failure` on this service.  This produces a Pod in Kubernetes.  If you want multiple, you will need to declare multiple services.
+
 ### Architecture Diagram
 
 This diagram depicts the CRS Sandbox during the `development` phase with `--profile development` and during the `competition` phase with `--profile competition`.
@@ -368,3 +472,15 @@ As you can see the iAPI remains as part of the CRS Sanbox but can communicate wi
 However, the LiteLLM component moves to a centralized component that does NOT run within the CRS Sandbox at competition.
 
 ![arch diagram](./.static/architecture.png)
+
+## Competition Details
+
+### Runtime
+
+The ASC will be organized into a series of rounds, and in each round a CRS will analyze a
+single CP (i.e., a single CP folder will be present in `${AIXCC_CP_ROOT}`). Each round will
+last four (4) hours.
+
+At the start of each round, the folders `${AIXCC_CP_ROOT}` and `${AIXCC_CRS_SCRATCH_SPACE}`
+will be reset with only the target CP for that round in `${AIXCC_CP_ROOT}`. The contents of
+`${AIXCC_CRS_SCRATCH_SPACE}` will not persist between rounds.

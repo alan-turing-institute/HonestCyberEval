@@ -25,7 +25,7 @@ jobs:
   trigger_downstream_sync:
     needs: check
     runs-on: ubuntu-latest
-    if: ${{ needs.check.outputs.is_template_repo == 'true' }}
+    if: ${{ needs.check.outputs.is_template_repo == 'true' && !github.event.release.prerelease }}
     steps:
         # Check out code using git
       - uses: actions/checkout@v4

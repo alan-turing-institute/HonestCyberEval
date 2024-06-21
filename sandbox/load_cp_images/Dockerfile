@@ -5,6 +5,7 @@ RUN apk add --no-cache make yq git bash && \
     rm -rf /var/cache/apk/* && \
     ln -s "$(which bash)" /usr/bin/bash
 
+COPY gitconfig /root/.gitconfig
 COPY run.sh /
 
 ENTRYPOINT ["/run.sh"]

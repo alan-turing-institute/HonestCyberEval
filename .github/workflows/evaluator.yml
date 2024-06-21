@@ -34,6 +34,7 @@ jobs:
           VALIDATE_JSCPD: false
           VALIDATE_JAVASCRIPT_STANDARD: false
           FILTER_REGEX_EXCLUDE: ".*crs/.*"
+          KUBERNETES_KUBECONFORM_OPTIONS: --ignore-missing-schemas # added due to missing Kustomization
 
           DEFAULT_BRANCH: "main"
           GITHUB_TOKEN: ${{ github.token }}
@@ -52,7 +53,6 @@ jobs:
           sudo apt-get update
           sudo curl -L "https://github.com/docker/compose/releases/download/v2.26.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
-          sudo curl -Lo ./kind "https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64"
           curl "https://mise.jdx.dev/install.sh" | sh
           echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
@@ -113,7 +113,7 @@ jobs:
 
   run-validate-crs-submissions:
     env:
-      AUDIT_LOG: ./capi_logs/audit.log
+      AUDIT_LOG: "${{ github.workspace }}/capi_logs/audit.log"
       MAX_SECONDS: 600
       POLL_SECONDS: 5
     if: ${{ github.actor != 'robothing[bot]' }}
@@ -134,7 +134,6 @@ jobs:
           sudo apt-get install jq
           sudo curl -L "https://github.com/docker/compose/releases/download/v2.26.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
-          sudo curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64
           curl https://mise.jdx.dev/install.sh | sh
           echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
@@ -156,23 +155,11 @@ jobs:
             exit 1
           fi
 
-          eval_vol_count_dev=$(yq eval '.volumes | length == 3' kompose_development_overrides.yaml)
-          eval_vol_count_comp=$(yq eval '.volumes | length == 3' kompose_competition_overrides.yaml)
+          eval_vol_count_dev=$(yq eval '.volumes | length == 2' kompose_development_overrides.yaml)
+          eval_vol_count_comp=$(yq eval '.volumes | length == 2' kompose_competition_overrides.yaml)
 
           eval_services_dev=$(yq eval '.services | (has("dind") and has("iapi") and has("capi"))' kompose_development_overrides.yaml)
           eval_services_comp=$(yq eval '.services | has("dind")' kompose_competition_overrides.yaml)
-
-          eval_dind_dev=$(yq eval '(
-            .services | to_entries[] |
-            select(.key == "dind") |
-            select(.value.volumes != null) | .value.volumes | all_c(. == "dind_cache:/var/lib/docker" or . == "crs_scratch:/crs_scratch")
-          ) | [.]' kompose_development_overrides.yaml | yq eval 'all')
-
-          eval_dind_comp=$(yq eval '(
-            .services | to_entries[] |
-            select(.key == "dind") |
-            select(.value.volumes != null) | .value.volumes | all_c(. == "dind_cache:/var/lib/docker" or . == "crs_scratch:/crs_scratch")
-          ) | [.]' kompose_competition_overrides.yaml | yq eval 'all')
 
           eval_volume_dev=$(yq eval '(
             .services | to_entries[] |
@@ -193,14 +180,6 @@ jobs:
           fi
           if [ "$eval_vol_count_comp" = "false" ]; then
             echo "Extra volumes found in kompose_competition_overrides.yaml.  Please remove them."
-            EXIT=1
-          fi
-          if [ "$eval_dind_dev" = "false" ]; then
-            echo "dind_cache not found for dind in kompose_development_overrides.yaml.  Please add it."
-            EXIT=1
-          fi
-          if [ "$eval_dind_comp" = "false" ]; then
-            echo "dind_cache not found for dind in kompose_competition_overrides.yaml.  Please add it."
             EXIT=1
           fi
           if [ "$eval_services_dev" = "false" ]; then
@@ -232,10 +211,14 @@ jobs:
           .github/scripts/set-env.sh ANTHROPIC_API_KEY "${{ secrets.ANTHROPIC_API_KEY }}"
           .github/scripts/set-env.sh AZURE_API_BASE "${{ secrets.AZURE_API_BASE }}"
           .github/scripts/set-env.sh AZURE_API_KEY "${{ secrets.AZURE_API_KEY }}"
-          .github/scripts/set-env.sh GEMINI_API_KEY "${{ secrets.GEMINI_API_KEY }}"
           .github/scripts/set-env.sh GITHUB_TOKEN "${{ github.token }}"
           .github/scripts/set-env.sh GITHUB_USER gha
           .github/scripts/set-env.sh OPENAI_API_KEY "${{ secrets.OPENAI_API_KEY }}"
+
+      - name: Create vertex-key for real run
+        run: |
+          printf "%s" "${{ secrets.VERTEX_KEY_JSON }}" > sandbox/litellm/vertex_key.json
+          .github/scripts/set-env.sh GOOGLE_APPLICATION_CREDENTIALS "\/vertex_key.json"
 
       - name: Add SSH key
         env:
@@ -334,7 +317,6 @@ jobs:
           sudo apt-get update
           sudo curl -L "https://github.com/docker/compose/releases/download/v2.26.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
-          sudo curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64
           curl https://mise.jdx.dev/install.sh | sh
           echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
@@ -384,6 +366,9 @@ jobs:
 
   run-kubernetes:
     if: ${{ github.actor != 'robothing[bot]' }}
+    permissions:
+      packages: read
+      contents: read
     runs-on:
       group: large-runners
     steps:
@@ -394,17 +379,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo curl -L "https://github.com/docker/compose/releases/download/v2.26.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-          sudo chmod +x /usr/local/bin/docker-compose
-          sudo curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64
-          curl https://mise.jdx.dev/install.sh | sh
-          echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
-          mise install
 
       - name: Check required files
         run: |
@@ -442,16 +416,27 @@ jobs:
           echo "GITHUB_TOKEN=${{ github.token }}" >> sandbox/env
           echo "GITHUB_USER=gha" >> sandbox/env
 
+      - name: Install dependencies
+        run: |
+          make install
+          echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
+
       - name: Run Local Helm & Kubernetes Validation
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           make k8s
           make k8s/clean
+          make k8s/k3s/clean
+          make k8s/development
+          make k8s/kustomize/development
 
       - name: Run Kompose Generator for ASC Resources
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
         run: |
           make k8s/competition
+          make k8s/kustomize/competition
           make k8s/clean
