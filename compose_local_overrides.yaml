@@ -20,6 +20,13 @@ services:
     depends_on:
       load-cp-images:
         condition: service_completed_successfully
+    # command: ["tail", "-f", "py/run.py"]  # useful to keep CRS container alive in conjunction with `make crs-shell`
+    networks:
+      - crs-internal
+      - internet  # only to be used for langsmith during local CRS run
+    env_file:
+      - path: ./crs/src/env
+        required: false
   iapi:
     ports:
       - '127.0.0.1:8080:8080'

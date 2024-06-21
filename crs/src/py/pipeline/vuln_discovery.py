@@ -1,9 +1,8 @@
 import subprocess
 from collections import namedtuple
-import re
 
 from api.fs import write_file_to_scratch
-from api.llm import send_msg_to_llm
+from api.llm import llm_prompt_harness_input
 
 Vulnerability = namedtuple('Vulnerability', ['commit', 'harness_id', 'sanitizer_id', 'input_data', 'blob_file'])
 
@@ -39,17 +38,6 @@ class VulnDiscovery:
 
         return vulnerabilities
 
-    # TODO: should be moved to api.llm or elsewhere
-    def llm_prompt_harness_input(self, harness_text="", code_snippet="", sanitizer="", error_code=""):
-        message = f""" Generate an input txt file for the following test harness:
-            {harness_text}
-            . The harness should exercise the code:
-            {code_snippet}
-            . The harness should cause the code to trigger a {sanitizer}: {error_code} error.
-            You should output only the txt file, and you should start and end the txt file with the following ```"""
-
-        return message
-
     def llm_harness_input(self, harness_id, sanitizer_id, code_snippet, max_trials=2):
         """
         This function:
@@ -65,29 +53,24 @@ class VulnDiscovery:
         with open(self.project.harnesses[harness_id].file_path, "r") as f:
             harness_text = f.read().replace('\n', '')
 
-        # step 2: Create an input message to the LLM
-        message = self.llm_prompt_harness_input(
-            harness_text=harness_text,
-            code_snippet=code_snippet,
-            sanitizer=sanitizer,
-            error_code=error_code,
-        )
+        models = ["oai-gpt-4o", "claude-3-sonnet"]
 
         for _ in range(max_trials):
-            # step 3: Ask LLM for an input to the harness
-            models = ["oai-gpt-4o", "claude-3-sonnet"]
-            llm_harness_input_list = [
-                (model, send_msg_to_llm(model_name=model, message=message))
-                for model in models
+            # step 2: Ask LLM for an input to the harness
+            inputs = [
+                (
+                    model,
+                    llm_prompt_harness_input(
+                        model_name=model,
+                        harness_text=harness_text,
+                        code_snippet=code_snippet,
+                        sanitizer=sanitizer,
+                        error_code=error_code,
+                    )
+                ) for model in models
             ]
-
-            for model, output in llm_harness_input_list:
-                # step 4: Extract harness input from LLM output
-                found_blobs = re.findall("```[\s\S]*```", output)
-                harness_input = found_blobs[0][3:-3].strip()
-                print(f"Extracted blob from {model}:", "====", harness_input, "====", sep="\n", flush=True)
-
-                #  step 5: Run harness with above input
+            for model, harness_input in inputs:
+                #  step 3: Run harness with above input
                 try:
                     harness_input_file = write_file_to_scratch(f"{harness_id}_{sanitizer_id}input.blob", harness_input)
                     if self.project.run_harness_and_check_sanitizer(harness_input_file, harness_id, sanitizer_id):
@@ -97,7 +80,6 @@ class VulnDiscovery:
                     # malformed input
                     # TODO: ask again?
                     pass
-
 
         # reached max. attempts
         print("FAILED TO TRIGGER THE SANITIZER!!")

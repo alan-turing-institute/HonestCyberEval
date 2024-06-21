@@ -64,6 +64,9 @@ For example, to add code to the vulnerability discovery pipeline:
     `GITHUB_USER` and `GITHUB_TOKEN` variables, respectively, in the `env` file
   - fill in any API keys for the LLMs (e.g., OpenAI key)
   - if you are usure what info you should put there, please let us know
+- run `cp crs/src/env.example crs/src/env` and modify `crs/src/env` as follows:
+  - log into https://smith.langchain.com, create a PAT, and add it to `LANGCHAIN_API_KEY`
+  - to enable logging, such as when changing or debugging LLM code, change `LANGCHAIN_TRACING_V2` to `true`
 - run `docker login -u auth0-660bd3c14d2d6436de9169f3_aixcc -p <your pat> ghcr.io` to be able to pull the competition
   images
 - run `make cps` to pull the CP repos listed in [cp_config.yaml](../cp_config.yaml)

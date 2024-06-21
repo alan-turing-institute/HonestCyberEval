@@ -74,7 +74,7 @@ def submit_vulnerability(cp_name: str, commit_sha1: str, sanitizer_id: str, harn
         json=vds,
     )
     if not response.ok:
-        raise Exception(response.reason, response.status_code)
+        raise Exception(response.reason, response.status_code, cp_name, commit_sha1, harness_id, data)
     content = response.json()
     status, vd_uuid = content.get("status"), content.get("vd_uuid")
     status = "pending"
@@ -85,7 +85,7 @@ def submit_vulnerability(cp_name: str, commit_sha1: str, sanitizer_id: str, harn
             f"{vds_url}{vd_uuid}",
         )
         if not response.ok:
-            raise Exception(response.reason, response.status_code)
+            raise Exception(response.reason, response.status_code, cp_name, commit_sha1, harness_id, data)
         content = response.json()
         status, cpv_uuid = content.get("status"), content.get("cpv_uuid")
         if not status == "pending":

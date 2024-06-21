@@ -1,7 +1,7 @@
 import subprocess
 from pathlib import Path
 
-from config import AIXCC_CP_ROOT, AIXCC_CRS_SCRATCH_SPACE, GITHUB_USER, GITHUB_TOKEN
+from config import AIXCC_CP_ROOT, AIXCC_CRS_SCRATCH_SPACE
 
 
 class RunException(Exception):

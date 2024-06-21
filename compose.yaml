@@ -33,7 +33,7 @@ services:
       - development
       - competition
     # Competitors: You MUST change crs-sandbox to your repo name, change replace-me-crs to your image name, and be versioned pinned to the release intended for competition.
-    image: ghcr.io/aixcc-sc/asc-crs-mindrake/brainbox:v1.0.2
+    image: ghcr.io/aixcc-sc/asc-crs-mindrake/brainbox:v1.0.3
     # Competitors: All services that are expected to have a clean exit must have restart: on-failure
     restart: on-failure
     build:
@@ -45,7 +45,6 @@ services:
       # If you have multiple containers for your CRS you must design your own
       # orchestration and synchronisation mechanisms.
     command: ["python3", "py/run.py"]
-    # command: ["tail", "-f", "py/run.py"]  # useful to keep CRS container alive in conjunction with `make crs-shell`
     volumes:
       #################################################################################
       ### THESE VOLUMES MUST BE INCLUDED WITHOUT MODIFICATION TO ALL CRS CONTAINERS ###
