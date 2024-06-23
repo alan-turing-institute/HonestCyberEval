@@ -18,8 +18,7 @@ class VulnDiscovery:
 
     def detect_vulns_in_file(self, bad_file):
         vulnerabilities = []
-        with self.project.open_project_source_file(self.cp_source, bad_file) as code_file:
-            code_snippet = code_file.read().replace('\n', '')
+        code_snippet = self.project.open_project_source_file(self.cp_source, bad_file).replace('\n', '')
 
         for harness_id in self.project.harnesses.keys():
             for sanitizer_id in self.project.sanitizers.keys():
@@ -33,8 +32,9 @@ class VulnDiscovery:
                         sanitizer_id=sanitizer_id,
                         harness_input_file=harness_input_file,
                     )
-                    vulnerabilities.append(
-                        Vulnerability(bad_commit_sha, harness_id, sanitizer_id, harness_input, harness_input_file))
+                    if bad_commit_sha:
+                        vulnerabilities.append(
+                            Vulnerability(bad_commit_sha, harness_id, sanitizer_id, harness_input, harness_input_file))
 
         return vulnerabilities
 
@@ -50,12 +50,12 @@ class VulnDiscovery:
         """
         sanitizer, error_code = self.project.sanitizers[sanitizer_id]
         # step 1: Read the harness file
-        with open(self.project.harnesses[harness_id].file_path, "r") as f:
-            harness_text = f.read().replace('\n', '')
+        harness_path = self.project.harnesses[harness_id].file_path
+        harness_text = harness_path.read_text().replace('\n', '')
 
         models = ["oai-gpt-4o", "claude-3-sonnet"]
 
-        for _ in range(max_trials):
+        for i in range(max_trials):
             # step 2: Ask LLM for an input to the harness
             inputs = [
                 (
@@ -72,8 +72,15 @@ class VulnDiscovery:
             for model, harness_input in inputs:
                 #  step 3: Run harness with above input
                 try:
-                    harness_input_file = write_file_to_scratch(f"{harness_id}_{sanitizer_id}input.blob", harness_input)
-                    if self.project.run_harness_and_check_sanitizer(harness_input_file, harness_id, sanitizer_id):
+                    harness_input_file = write_file_to_scratch(
+                        f"input_{i}_harness_{harness_id}_sanitizer_{sanitizer_id}_{model}.blob",
+                        harness_input,
+                    )
+                    if self.project.run_harness_and_check_sanitizer(
+                            harness_input_file,
+                            harness_id,
+                            sanitizer_id,
+                    )[0]:
                         print(f"FOUND VULNERABILITY: {sanitizer}: {error_code}")
                         return harness_input, harness_input_file
                 except subprocess.TimeoutExpired:
@@ -98,20 +105,24 @@ class VulnDiscovery:
         # step 1: Get list of commits and loop over them (latest to earliest)
         git_repo, ref = self.project.repos.get(self.cp_source)
         git_log = list(git_repo.iter_commits(ref))
+        # Start at HEAD and go down the commit log; when a good commit is found, the previous commit introduced the bug
         oldest_detected_bad_commit = git_log[0]
-        # we skip HEAD (100% vulnerable) and initial (100% safe)
 
         output = None
-        for inspected_commit in git_log[1:-1]:
+        for inspected_commit in git_log[1:]:
             # step 2: revert the Git repo to the commit
             print("----", f"Reverting to commit: {inspected_commit.hexsha}", sep="\n")
 
             self.project.reset_source_repo(self.cp_source)
-            git_repo.git.checkout(inspected_commit.hexsha)
+            git_repo.git.switch('--detach', inspected_commit.hexsha)
             self.project.build_project()
 
             # step 3: Test the harness on commit i
-            harness_passed = not self.project.run_harness_and_check_sanitizer(harness_input_file, harness_id, sanitizer_id)
+            harness_passed = not self.project.run_harness_and_check_sanitizer(
+                harness_input_file,
+                harness_id,
+                sanitizer_id,
+            )[0]
 
             # step 4: Stop when sanitizer is not triggered, and return the bad commit
             if harness_passed:
@@ -123,7 +134,7 @@ class VulnDiscovery:
             oldest_detected_bad_commit = inspected_commit
 
         # reset repo back to head
-        git_repo.git.checkout(ref)
+        self.project.reset_source_repo(self.cp_source)
         return output
 
     def run(self, project, cp_source):

@@ -10,4 +10,4 @@
 cp_targets:
     mock-cp:
         url: git@github.com:aixcc-sc/mock-cp.git
-        ref: v3.0.0
+        ref: v3.0.2

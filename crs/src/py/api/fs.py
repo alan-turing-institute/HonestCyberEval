@@ -1,12 +1,15 @@
 import subprocess
 from pathlib import Path
+from shutil import rmtree
 
 from config import AIXCC_CP_ROOT, AIXCC_CRS_SCRATCH_SPACE
 
 
 class RunException(Exception):
-    def __init__(self, message, stderr):
-        super().__init__(message)
+    message = ""
+
+    def __init__(self, stderr):
+        super().__init__(self.message)
         self.stderr = stderr
 
     def __str__(self):
@@ -19,17 +22,30 @@ def run_command(*args, **kwargs):
     return result
 
 
+PROJECT_PATH = AIXCC_CRS_SCRATCH_SPACE / AIXCC_CP_ROOT.name
+
+
 def move_projects_to_scratch():
-    run_command("cp", "--recursive", AIXCC_CP_ROOT + "/.", AIXCC_CRS_SCRATCH_SPACE)
+    run_command("cp", "--recursive", AIXCC_CP_ROOT, AIXCC_CRS_SCRATCH_SPACE)
 
 
 def get_projects():
-    return [item for item in Path(AIXCC_CRS_SCRATCH_SPACE).iterdir() if item.is_dir()]
+    return [item for item in PROJECT_PATH.iterdir() if item.is_dir()]
+
+
+OUTPUT_PATH = Path(AIXCC_CRS_SCRATCH_SPACE) / "crs_output"
+
+
+def empty_scratch():
+    if PROJECT_PATH.exists():
+        rmtree(PROJECT_PATH)
+
+    if OUTPUT_PATH.exists():
+        rmtree(OUTPUT_PATH)
 
 
 def write_file_to_scratch(filename, content):
-    file_path = Path(AIXCC_CRS_SCRATCH_SPACE) / filename
-    with open(file_path, "w") as output_file:
-        output_file.write(content)
-        output_file.close()
+    OUTPUT_PATH.mkdir(exist_ok=True)
+    file_path = OUTPUT_PATH / filename
+    file_path.write_text(content)
     return file_path

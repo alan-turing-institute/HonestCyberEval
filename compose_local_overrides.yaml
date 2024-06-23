@@ -11,6 +11,7 @@ services:
   #   ports:
   #     - "127.0.0.1:2375:2375"
   crs:
+    restart: "no"
     volumes:
       - type: bind
         source: ${PWD}/crs/src/py/

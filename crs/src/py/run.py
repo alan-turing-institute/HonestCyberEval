@@ -3,50 +3,61 @@ import time
 from api.submit import healthcheck, submit_vulnerability, submit_patch
 from api.fs import (
     get_projects,
+    empty_scratch,
     move_projects_to_scratch,
 )
 from pipeline.patch_gen import patch_generation
 from pipeline.vuln_discovery import vuln_discovery
 from pipeline.setup_project import setup_project
 
-move_projects_to_scratch()
-projects = get_projects()
-for project_path in projects:
-    if not project_path.name == "mock-cp":
-        # Assuming this is "Mock CP" for now as it's using hardcoded inputs and patches
-        print(f"Skipping {project_path.name}")
-        continue
-    project = setup_project(project_path)
 
-    for cp_source in project.sources:
-        vulnerabilities = vuln_discovery.run(project, cp_source)
+def run():
+    empty_scratch()
+    move_projects_to_scratch()
+    projects = get_projects()
+    for project_path in projects:
+        if not project_path.name == "mock-cp":
+            # Assuming this is "Mock CP" for now as it's using hardcoded inputs and patches
+            print(f"Skipping {project_path.name}")
+            continue
+        project = setup_project(project_path)
 
-        for bad_commit_sha, harness_id, sanitizer_id, input_data, blob_file in vulnerabilities:
-            while not healthcheck():
-                time.sleep(5)
-            else:
-                print("healthcheck passed")
+        for cp_source in project.sources:
+            vulnerabilities = vuln_discovery.run(project, cp_source)
+            print(vulnerabilities)
 
-            # todo: save input to persistent storage and check it to avoid double submissions
-            status, cpv_uuid = submit_vulnerability(
-                cp_name=project.name,
-                commit_sha1=bad_commit_sha,
-                sanitizer_id=sanitizer_id,
-                harness_id=harness_id,
-                data=input_data,
-            )
-            # todo: update input in persistent storage and mark as accepted
-            print("Vulnerability:", status, cpv_uuid)
+            for bad_commit_sha, harness_id, sanitizer_id, input_data, blob_file in vulnerabilities:
+                while not healthcheck():
+                    time.sleep(5)
+                else:
+                    print("healthcheck passed")
 
-            if status != 'rejected':
-                # remove this check once patch generation is not hardcoded:
-                if project.name == "Mock CP" and sanitizer_id == "id_1":
-                    patch = patch_generation.run(
-                        project, cp_source, cpv_uuid, harness_id, blob_file, sanitizer_id
-                    )
+                # todo: save input to persistent storage and check it to avoid double submissions
+                status, cpv_uuid = submit_vulnerability(
+                    cp_name=project.name,
+                    commit_sha1=bad_commit_sha,
+                    sanitizer_id=sanitizer_id,
+                    harness_id=harness_id,
+                    data=input_data,
+                )
+                # todo: update input in persistent storage and mark as accepted
+                print("Vulnerability:", status, cpv_uuid)
 
-                    # todo: save patch to persistent storage and check it to avoid double submissions
-                    print("Submitting patch", flush=True)
-                    status, gp_uuid = submit_patch(cpv_uuid, patch)
-                    print("Patch:", status, gp_uuid, flush=True)
-                    # todo: update patch in persistent storage and mark as accepted
+                print(bad_commit_sha, harness_id, sanitizer_id, input_data, blob_file, flush=True, sep="\n")
+                if status != 'rejected':
+                    # remove this check once patch generation is not hardcoded:
+                    if project.name == "Mock CP":
+                        patch = patch_generation.run(
+                            project, cp_source, cpv_uuid, harness_id, blob_file, sanitizer_id
+                        )
+
+                        # todo: save patch to persistent storage and check it to avoid double submissions
+                        print("Submitting patch", flush=True)
+                        status, gp_uuid = submit_patch(cpv_uuid, patch)
+                        print("Patch:", status, gp_uuid, flush=True)
+                        # todo: update patch in persistent storage and mark as accepted
+
+
+if __name__ == "__main__":
+    # TODO: fallback logging of exceptions
+    run()

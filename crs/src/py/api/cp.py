@@ -11,11 +11,11 @@ Source = namedtuple('Source', ['repo', 'ref'])
 
 
 class ProjectBuildException(RunException):
-    pass
+    message = "Build failed"
 
 
 class ProjectPatchException(RunException):
-    pass
+    message = "Patching failed"
 
 
 # TODO: complete list of flags and better handling
@@ -89,8 +89,8 @@ class ChallengeProject:
                 cflags = set()
                 for sanitizer_name, _ in self.sanitizers.values():
                     cflags |= SANITIZER_COMPILER_FLAGS.get(sanitizer_name)
-                with open(self.path / ".env.docker", "w") as env_file:
-                    env_file.write(f"CP_BASE_EXTRA_CFLAGS={' '.join(cflags)}")
+                docker_env_path = self.path / ".env.docker"
+                docker_env_path.write_text(f"CP_BASE_EXTRA_CFLAGS={' '.join(cflags)}")
             # `JAVA_HOME` - The root directory of installed Java Development Kit (default: `/opt/java/openjdk`)
             # `MAVEN_HOME` - The root directory of the installed Maven package (default: `/usr/share/maven`)
             # `MVN` - Maven's `mvn` binary (default: `/usr/bin/mvn`)
@@ -107,8 +107,10 @@ class ChallengeProject:
                 pass
 
     def _read_project_yaml(self):
-        with open(self.path / "project.yaml", "r") as stream:
-            return yaml.safe_load(stream)
+        project_yaml_path = self.path / "project.yaml"
+        return yaml.safe_load(
+            project_yaml_path.read_text()
+        )
 
     def _run_cp_run_sh(self, *command, **kwargs):
         """
@@ -128,7 +130,9 @@ class ChallengeProject:
         return run_command(self.path / "run.sh", *command, **kwargs)
 
     def reset_source_repo(self, source):
-        self.repos.get(source).repo.git.reset('--hard')
+        git_repo, ref = self.repos.get(source)
+        git_repo.git.restore('.')
+        git_repo.git.switch('--detach', ref)
 
     def build_project(self):
         """Build a project.
@@ -136,7 +140,7 @@ class ChallengeProject:
         """
         result = self._run_cp_run_sh("build")
         if result.stderr:
-            raise ProjectBuildException("Build failed", stderr=result.stderr)
+            raise ProjectBuildException(stderr=result.stderr)
         return result
 
     def patch_and_build_project(self, patch_path, cp_source):
@@ -145,12 +149,12 @@ class ChallengeProject:
         Raises ProjectBuildException, check ProjectBuildException.stderr for output.
         """
         try:
-            result = self._run_cp_run_sh("build", patch_path.absolute(), cp_source)
+            result = self._run_cp_run_sh("build", str(patch_path.absolute()), cp_source)
             if result.stderr:
-                raise ProjectBuildException("Build failed after patch", stderr=result.stderr)
+                raise ProjectBuildException(stderr=result.stderr)
             return result
         except CalledProcessError as err:
-            raise ProjectPatchException("Patching failed", stderr=err.stderr) from err
+            raise ProjectPatchException(stderr=err.stderr) from err
 
     def run_harness(self, harness_input_file, harness_id, timeout=60):
         """Runs a specified project test harness and returns the output of the process.
@@ -169,7 +173,7 @@ class ChallengeProject:
         """
         harness_output = self.run_harness(harness_input_file, harness_id, timeout=timeout)
         sanitizer, error_code = self.sanitizers[sanitizer_id]
-        return sanitizer in harness_output.stderr and error_code in harness_output.stderr
+        return sanitizer in harness_output.stderr and error_code in harness_output.stderr, harness_output.stderr
 
     def run_tests(self):
         """Runs a specified project test suite and returns the output of the process.
@@ -187,4 +191,4 @@ class ChallengeProject:
         """
         if source not in self.sources:
             return None
-        return open(self.path / "src" / source / file_path)
+        return (self.path / "src" / source / file_path).read_text()
