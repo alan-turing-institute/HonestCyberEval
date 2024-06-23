@@ -113,7 +113,6 @@ class VulnDiscovery:
             # step 2: revert the Git repo to the commit
             print("----", f"Reverting to commit: {inspected_commit.hexsha}", sep="\n")
 
-            self.project.reset_source_repo(self.cp_source)
             git_repo.git.switch('--detach', inspected_commit.hexsha)
             self.project.build_project()
 

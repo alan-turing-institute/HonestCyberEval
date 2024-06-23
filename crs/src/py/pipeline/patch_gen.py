@@ -94,15 +94,11 @@ class PatchGen:
         )
 
     def validate_patch(self, patch_path, harness_id, harness_input_file, sanitizer_id):
-        self.project.reset_source_repo(self.cp_source)
-
         print("Re-building CP with patch", flush=True)
         try:
             self.project.patch_and_build_project(patch_path.absolute(), self.cp_source)
         finally:
             self.project.reset_source_repo(self.cp_source)
-
-        self.project.reset_source_repo(self.cp_source)
 
         has_sanitizer_triggered, stderr = self.project.run_harness_and_check_sanitizer(
             harness_input_file,
