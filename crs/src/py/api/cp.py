@@ -3,7 +3,7 @@ from copy import deepcopy
 from subprocess import CalledProcessError
 import yaml
 from git import Repo
-from api.fs import run_command, RunException
+from api.fs import run_command, RunException, PatchException
 
 Sanitizer = namedtuple('Sanitizer', ['name', 'error_code'])
 Harness = namedtuple('Harness', ['name', 'file_path'])
@@ -14,8 +14,12 @@ class ProjectBuildException(RunException):
     message = "Build failed"
 
 
-class ProjectPatchException(RunException):
-    message = "Patching failed"
+class ProjectBuildAfterPatchException(PatchException):
+    message = "Build failed after applying patch"
+
+
+class ProjectPatchException(PatchException):
+    message = "Patching failed using:"
 
 
 # TODO: complete list of flags and better handling
@@ -145,16 +149,17 @@ class ChallengeProject:
 
     def patch_and_build_project(self, patch_path, cp_source):
         """Build a project after applying a patch file to the specified source.
-        Raises ProjectPatchException if patch cannot be applied, check ProjectPatchException.stderr for output.
+        Raises ProjectBuildAfterPatchException if patch cannot be applied, check ProjectBuildAfterPatchException.stderr
+          for output.
         Raises ProjectBuildException, check ProjectBuildException.stderr for output.
         """
         try:
             result = self._run_cp_run_sh("build", str(patch_path.absolute()), cp_source)
             if result.stderr:
-                raise ProjectBuildException(stderr=result.stderr)
+                raise ProjectBuildAfterPatchException(stderr=result.stderr, patch_path=patch_path)
             return result
         except CalledProcessError as err:
-            raise ProjectPatchException(stderr=err.stderr) from err
+            raise ProjectPatchException(stderr=err.stderr, patch_path=patch_path) from err
 
     def run_harness(self, harness_input_file, harness_id, timeout=60):
         """Runs a specified project test harness and returns the output of the process.

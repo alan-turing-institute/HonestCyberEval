@@ -1,0 +1,34 @@
+version: 1
+formatters:
+  simple:
+    format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+handlers:
+  file:
+    class: logging.FileHandler
+    level: DEBUG
+    formatter: simple
+    mode: w
+  stderr:
+    class: logging.StreamHandler
+    level: ERROR
+    formatter: simple
+    stream: ext://sys.stderr
+  stdout:
+    class: logging.StreamHandler
+    level: INFO
+    # level: DEBUG  # this will output detailed logs, including from underlying libraries
+    formatter: simple
+    stream: ext://sys.stdout
+    filters: [warnings_and_below]
+root:
+  level: DEBUG
+  handlers: [file]
+loggers:
+  CRS:
+    level: DEBUG
+    handlers: [stderr, stdout]
+    propagate: yes
+filters:
+  warnings_and_below:
+    "()" : "logger.filter_maker"
+    level: WARNING

@@ -3,13 +3,9 @@ from collections import namedtuple
 
 from api.fs import write_file_to_scratch
 from api.llm import llm_prompt_harness_input
+from logger import logger
 
 Vulnerability = namedtuple('Vulnerability', ['commit', 'harness_id', 'sanitizer_id', 'input_data', 'blob_file'])
-
-mock_input_data = r"""abcdefabcdefabcdefabcdefabcdefabcdef
-b
-
-1"""
 
 
 class VulnDiscovery:
@@ -22,11 +18,15 @@ class VulnDiscovery:
 
         for harness_id in self.project.harnesses.keys():
             for sanitizer_id in self.project.sanitizers.keys():
-                print(f"#######Attempting to trigger sanitizer {sanitizer_id} through the harness {harness_id}", flush=True)
-                harness_input, harness_input_file = self.llm_harness_input(harness_id, sanitizer_id, code_snippet,
-                                                                           max_trials=2)
+                logger.info(f"Attempting to trigger sanitizer {sanitizer_id} through the harness {harness_id}")
+                harness_input, harness_input_file = self.llm_harness_input(
+                    harness_id,
+                    sanitizer_id,
+                    code_snippet,
+                    max_trials=2,
+                )
                 if harness_input:
-                    print("Sanitizer Triggered!!")
+                    logger.info("Sanitizer Triggered!")
                     bad_commit_sha = self.identify_bad_commit(
                         harness_id=harness_id,
                         sanitizer_id=sanitizer_id,
@@ -81,7 +81,7 @@ class VulnDiscovery:
                             harness_id,
                             sanitizer_id,
                     )[0]:
-                        print(f"FOUND VULNERABILITY: {sanitizer}: {error_code}")
+                        logger.info(f"FOUND VULNERABILITY: {sanitizer}: {error_code}")
                         return harness_input, harness_input_file
                 except subprocess.TimeoutExpired:
                     # malformed input
@@ -89,7 +89,7 @@ class VulnDiscovery:
                     pass
 
         # reached max. attempts
-        print("FAILED TO TRIGGER THE SANITIZER!!")
+        logger.warning("FAILED TO TRIGGER THE SANITIZER!")
         return None, None
 
     def identify_bad_commit(self, harness_id, sanitizer_id, harness_input_file):
@@ -111,7 +111,7 @@ class VulnDiscovery:
         output = None
         for inspected_commit in git_log[1:]:
             # step 2: revert the Git repo to the commit
-            print("----", f"Reverting to commit: {inspected_commit.hexsha}", sep="\n")
+            logger.info(f"Reverting to commit: {inspected_commit.hexsha}")
 
             git_repo.git.switch('--detach', inspected_commit.hexsha)
             self.project.build_project()
@@ -125,11 +125,11 @@ class VulnDiscovery:
 
             # step 4: Stop when sanitizer is not triggered, and return the bad commit
             if harness_passed:
-                print(f"VULNERABILITY REMOVED --> bad commit: {oldest_detected_bad_commit.hexsha}")
+                logger.info(f"VULNERABILITY REMOVED --> bad commit: {oldest_detected_bad_commit.hexsha}")
                 output = oldest_detected_bad_commit.hexsha
                 break
 
-            print(f"VULNERABILITY STILL EXISTS: {sanitizer}: {error_code}")
+            logger.info(f"VULNERABILITY STILL EXISTS: {sanitizer}: {error_code}")
             oldest_detected_bad_commit = inspected_commit
 
         # reset repo back to head

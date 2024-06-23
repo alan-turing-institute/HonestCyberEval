@@ -33,6 +33,12 @@ For example, to add code to the vulnerability discovery pipeline:
 - add a function in [vuln_discovery.py](./src/py/pipeline/vuln_discovery.py) or a method to the `VulnDiscovery` class
 - call the new function in `VulnDiscovery.run`
 
+For debugging, logger output is provided.
+By default, only `INFO` and up are printed to the Docker attached tty.
+The full logs, including `DEBUG` and logs from underlying libraries such as git commands and network requests to 
+litellm, are printed to `/crs_scratch/crs.log`.
+
+
 ### Setting up the CRS on a new machine
 
 - Install docker engine >= 24.0.5

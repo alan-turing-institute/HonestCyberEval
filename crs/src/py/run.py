@@ -6,6 +6,7 @@ from api.fs import (
     empty_scratch,
     move_projects_to_scratch,
 )
+from logger import logger
 from pipeline.patch_gen import patch_generation
 from pipeline.vuln_discovery import vuln_discovery
 from pipeline.setup_project import setup_project
@@ -18,19 +19,18 @@ def run():
     for project_path in projects:
         if not project_path.name == "mock-cp":
             # Assuming this is "Mock CP" for now as it's using hardcoded inputs and patches
-            print(f"Skipping {project_path.name}")
+            logger.warning(f"Skipping {project_path.name}")
             continue
         project = setup_project(project_path)
 
         for cp_source in project.sources:
             vulnerabilities = vuln_discovery.run(project, cp_source)
-            print(vulnerabilities)
 
             for bad_commit_sha, harness_id, sanitizer_id, input_data, blob_file in vulnerabilities:
                 while not healthcheck():
                     time.sleep(5)
                 else:
-                    print("healthcheck passed")
+                    logger.info("healthcheck passed")
 
                 # todo: save input to persistent storage and check it to avoid double submissions
                 status, cpv_uuid = submit_vulnerability(
@@ -41,9 +41,8 @@ def run():
                     data=input_data,
                 )
                 # todo: update input in persistent storage and mark as accepted
-                print("Vulnerability:", status, cpv_uuid)
+                logger.info(f"Vulnerability: {status} {cpv_uuid}")
 
-                print(bad_commit_sha, harness_id, sanitizer_id, input_data, blob_file, flush=True, sep="\n")
                 if status != 'rejected':
                     # remove this check once patch generation is not hardcoded:
                     if project.name == "Mock CP":
@@ -52,12 +51,16 @@ def run():
                         )
 
                         # todo: save patch to persistent storage and check it to avoid double submissions
-                        print("Submitting patch", flush=True)
+                        logger.info("Submitting patch")
                         status, gp_uuid = submit_patch(cpv_uuid, patch)
-                        print("Patch:", status, gp_uuid, flush=True)
+                        logger.info(f"Patch: {status} {gp_uuid}")
                         # todo: update patch in persistent storage and mark as accepted
 
 
 if __name__ == "__main__":
-    # TODO: fallback logging of exceptions
-    run()
+    try:
+        run()
+    except Exception as err:
+        logger.exception(err)
+        raise
+
