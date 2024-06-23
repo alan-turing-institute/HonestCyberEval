@@ -1,23 +1,24 @@
 version: 1
 formatters:
-  simple:
+  multiline:
+    class: logger.MultiLineFormatter
     format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 handlers:
   file:
     class: logging.FileHandler
     level: DEBUG
-    formatter: simple
+    formatter: multiline
     mode: w
   stderr:
     class: logging.StreamHandler
     level: ERROR
-    formatter: simple
+    formatter: multiline
     stream: ext://sys.stderr
   stdout:
     class: logging.StreamHandler
     level: INFO
     # level: DEBUG  # this will output detailed logs, including from underlying libraries
-    formatter: simple
+    formatter: multiline
     stream: ext://sys.stdout
     filters: [warnings_and_below]
 root:
