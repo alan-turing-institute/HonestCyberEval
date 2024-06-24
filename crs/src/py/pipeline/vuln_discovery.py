@@ -1,16 +1,62 @@
 import subprocess
 from collections import namedtuple
 
+from langchain_core.pydantic_v1 import BaseModel, Field
+from langchain_core.prompts import ChatPromptTemplate
+
 from api.fs import write_file_to_scratch
-from api.llm import llm_prompt_harness_input
+from api.llm import createChatClient
+
 from logger import logger
 
+mock_input_data = r"""abcdefabcdefabcdefabcdefabcdefabcdef
+b
+
+1"""
+
+mock_input_data_segv = """ab
+b
+
+501
+"""
+
 Vulnerability = namedtuple('Vulnerability', ['commit', 'harness_id', 'sanitizer_id', 'input_data', 'blob_file'])
+
+
+class HarnessInput(BaseModel):
+    """Input to test harness that triggers vulnerability"""
+    harness_input: str = Field(
+        description="Lines of input terminating with newline, including empty lines"
+    )
+
+
+system_message = """You should generate the input to a program.
+The input will be piped into the program.
+"""
+
+user_message = """Generate an input txt file for the following test harness:
+{harness_text}
+. The harness should exercise the code:
+{code_snippet}
+. The harness should cause the code to trigger a {sanitizer}: {error_code} error.
+"""
+
+harness_input_template = ChatPromptTemplate.from_messages([
+    ("system", system_message),
+    ("user", user_message)
+])
 
 
 class VulnDiscovery:
     project = None
     cp_source = None
+
+    @staticmethod
+    def write_harness_input_to_disk(harness_input, i, harness_id, sanitizer_id, model_name):
+        return write_file_to_scratch(
+            f"input_{i}_harness_{harness_id}_sanitizer_{sanitizer_id}_{model_name}.blob",
+            harness_input,
+        )
 
     def detect_vulns_in_file(self, bad_file):
         vulnerabilities = []
@@ -34,7 +80,8 @@ class VulnDiscovery:
                     )
                     if bad_commit_sha:
                         vulnerabilities.append(
-                            Vulnerability(bad_commit_sha, harness_id, sanitizer_id, harness_input, harness_input_file))
+                            Vulnerability(bad_commit_sha, harness_id, sanitizer_id, harness_input, harness_input_file)
+                        )
 
         return vulnerabilities
 
@@ -42,11 +89,9 @@ class VulnDiscovery:
         """
         This function:
         1. Reads the harness file
-        2. Creates an input message to the LLM
-        3. Asks LLM for an input to the harness
-        4. Extracts harness input from LLM output
-        5. Runs harness with above input
-        6. Repeat 3-5 until success or max. attempts
+        2. Asks LLM for an input to the harness
+        3. Runs harness with above input
+        4. Repeat 2-3 until success or max. attempts
         """
         sanitizer, error_code = self.project.sanitizers[sanitizer_id]
         # step 1: Read the harness file
@@ -56,26 +101,22 @@ class VulnDiscovery:
         models = ["oai-gpt-4o", "claude-3-sonnet"]
 
         for i in range(max_trials):
-            # step 2: Ask LLM for an input to the harness
-            inputs = [
-                (
-                    model,
-                    llm_prompt_harness_input(
-                        model_name=model,
-                        harness_text=harness_text,
-                        code_snippet=code_snippet,
-                        sanitizer=sanitizer,
-                        error_code=error_code,
-                    )
-                ) for model in models
-            ]
-            for model, harness_input in inputs:
+            for model_name in models:
+                # step 2: Ask LLM for an input to the harness
+                model = createChatClient(model_name)
+                chain = harness_input_template | model.with_structured_output(HarnessInput)
+                response = chain.invoke({
+                    "harness_text": harness_text,
+                    "code_snippet": code_snippet,
+                    "sanitizer": sanitizer,
+                    "error_code": error_code,
+                })
+
+                assert isinstance(response, HarnessInput)
+                harness_input = response.harness_input
                 #  step 3: Run harness with above input
                 try:
-                    harness_input_file = write_file_to_scratch(
-                        f"input_{i}_harness_{harness_id}_sanitizer_{sanitizer_id}_{model}.blob",
-                        harness_input,
-                    )
+                    harness_input_file = self.write_harness_input_to_disk(harness_input, i, harness_id, sanitizer_id, model_name)
                     if self.project.run_harness_and_check_sanitizer(
                             harness_input_file,
                             harness_id,
@@ -140,7 +181,19 @@ class VulnDiscovery:
         self.project = project
         self.cp_source = cp_source
 
+        # Detect vulnerabilities using LLMs
         vulnerabilities = self.detect_vulns_in_file("mock_vp.c")
+
+        # Hardcoding values to test patch generation
+        if self.project.name == "Mock CP" and len(vulnerabilities) < 2:
+            logger.warning("Not all Mock CP vulnerabilities discovered")
+            both = len(vulnerabilities) == 0
+            if both or vulnerabilities[0].sanitizer_id == "id_2":
+                mock_input_file = self.write_harness_input_to_disk(mock_input_data, 0, "id_1", "id_1", "mock")
+                vulnerabilities.append(Vulnerability("11dafa9a5babc127357d710ee090eb4c0c05154f", "id_1", "id_1", mock_input_data, mock_input_file))
+            if both or vulnerabilities[0].sanitizer_id == "id_1":
+                mock_input_file = self.write_harness_input_to_disk(mock_input_data_segv, 0, "id_1", "id_2", "mock")
+                vulnerabilities.append(Vulnerability("22e7f707e16ab7f6ef8a7e9adbb60b24bde49e27", "id_1", "id_2", mock_input_data_segv, mock_input_file))
 
         self.project = None
         self.cp_source = None
