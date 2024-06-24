@@ -52,7 +52,7 @@ index 9dc6bf0..ca80ed1 100644
      scanf("%d", &j);
 -    buff = &items[j][0];
 -    printf("item %d: %s\n", j, buff);
-+    if (j < 0 || j>0){;}else{
++    if (j < 0 || j>2){;}else{
 +        buff = &items[j][0];
 +        printf("item %d: %s\n", j, buff);
 +    }
