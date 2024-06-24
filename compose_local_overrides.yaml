@@ -19,6 +19,8 @@ services:
         bind:
           propagation: rshared
     depends_on:
+      litellm:
+        condition: service_healthy
       load-cp-images:
         condition: service_completed_successfully
     # command: ["tail", "-f", "py/run.py"]  # useful to keep CRS container alive in conjunction with `make crs-shell`
@@ -64,3 +66,6 @@ services:
   litellm:
     ports:
       - '127.0.0.1:8081:80'
+  load-cp-images:
+    depends_on:
+      - dind

@@ -4,7 +4,7 @@ Competitors should place all source code unless instructed otherwise under this 
 
 We may build this component out as more of a MockCRS in future iterations.
 
-However it is intended that competitors will completely replace all code within this folder with their solutions.
+However, it is intended that competitors will completely replace all code within this folder with their solutions.
 
 The only additional changes to this repository should be to the
 
@@ -53,15 +53,14 @@ litellm, are printed to `/crs_scratch/crs.log`.
   - `echo 'eval "$(~/.local/bin/mise activate bash)"' >> ~/.bashrc`
   - `echo 'export PATH="$HOME/.local/share/mise/shims:$PATH"' >> ~/.bash_profile`
   - if you cannot run `mise --version` then uninstall using `~/.local/bin/mise implode` and start again :/
-- We will supply you with an SSH key so that you can pull and push to the repo
-  - If you get authentication issues, you should use the private SSH key linked to our AIxCC GitHub Account.
-    - move the key to the `~/.ssh/` directory
-    - `chmod 600 ~/.ssh/id_rsa_aicc`
-    - `eval "$(ssh-agent -s)"`
-    - `ssh-add ~/.ssh/id_rsa_aicc`
-- Clone the repo by running `git clone git@github.com:aixcc-sc/asc-crs-mindrake.git`
+- We will supply you with an SSH key which you will need to use to pull and push to the repo: 
+  - move the key to the `~/.ssh/` directory
+  - `chmod 600 ~/.ssh/id_rsa_aicc`
+  - `eval "$(ssh-agent -s)"`
+  - `ssh-add ~/.ssh/id_rsa_aicc`
 - Run `sudo sysctl -w vm.mmap_rnd_bits=28` to avoid issues with address randomisation
   (see https://github.com/aixcc-sc/cp-sandbox/pull/28 and linked issues for extra details)
+- Clone the repo by running `git clone git@github.com:aixcc-sc/asc-crs-mindrake.git`
 - `cd` into repo directory and run `mise install` to install dependencies
 - run `cp sandbox/example.env sandbox/env` and modify `sandbox/env` as follows:
   - generate a new personal access token (PAT) (https://github.com/settings/tokens) with `read:packages` permissions.
@@ -73,22 +72,13 @@ litellm, are printed to `/crs_scratch/crs.log`.
 - run `cp crs/src/env.example crs/src/env` and modify `crs/src/env` as follows:
   - log into https://smith.langchain.com, create a PAT, and add it to `LANGCHAIN_API_KEY`
   - to enable logging, such as when changing or debugging LLM code, change `LANGCHAIN_TRACING_V2` to `true`
-- run `docker login -u auth0-660bd3c14d2d6436de9169f3_aixcc -p <your pat> ghcr.io` to be able to pull the competition
-  images
-- run `make cps` to pull the CP repos listed in [cp_config.yaml](../cp_config.yaml)
-  - If you get authentication issues, you should use the private SSH key linked to our AIxCC GitHub Account.
-    - move the key to the `~/.ssh/` directory
-    - `chmod 600 ~/.ssh/id_rsa_aicc`
-    - `eval "$(ssh-agent -s)"`
-    - `ssh-add ~/.ssh/id_rsa_aicc`
+- run `docker login -u auth0-660bd3c14d2d6436de9169f3_aixcc -p <your pat> ghcr.io` to access the competition images
 - run `make build` to build docker images
   - if you face issues regarding `yq` not installed, then run the following and try again
     - `wget https://github.com/mikefarah/yq/releases/download/v4.44.1/yq_linux_amd64`
     - `chmod +x yq_linux_amd64`
     - `mv yq_linux_amd64 yq`
     - `sudo mv  yq  /bin`
-- run `make up` to start LiteLLM proxy (port 8081 on host), cAPI (scoring server API, port 8080 on host), and `dind`
-  (Docker-in-Docker).
 - _Note_: challenge images are handled by the `load-cp-images` container and are placed into the `dind` cache
   (`dind_cache`).
   - if you want to run Docker commands inside the `dind` container, uncomment the port bindings for `dind`
@@ -96,7 +86,13 @@ litellm, are printed to `/crs_scratch/crs.log`.
     Prefixing Docker commands with `DOCKER_HOST=tcp://localhost:2375` will let you run commands using the Docker
     instance inside the containers, e.g. `DOCKER_HOST=tcp://localhost:2375 docker images` to check which CP images are
     available.
-- to run only the CRS server with attached output stream run `c=crs make up-attached`
+- run `c=crs make up-attached` to bring up th CRS server with attached output stream
+  - this will bring up the other containers in the background and keep them running after the CRS exits, including:
+    - LiteLLM proxy (port 8081 on host)
+    - cAPI (scoring server API, port 8080 on host)
+    - dind (Docker-in-Docker)
+  - to make re-running the CRS easier, consider adding `alias crs="c=crs make up-attached"` to your `~/.bashr`/`~/.zshrc`/etc.
+
 
 ### Development workflow
 
@@ -104,8 +100,8 @@ litellm, are printed to `/crs_scratch/crs.log`.
 2. When you want it tested against the GitHub actions, open a draft pull request (PR) into the `main` branch.
 3. When it's ready to be merged into `main`, press the "Ready for review" button.
 4. Ask for a quick code review in the channel to
-  1. get a second pair of eyes on your code;
-  2. make changes visible to everyone else so there is less potential for toe stepping/duplicate effort.
+   1. get a second pair of eyes on your code;
+   2. make changes visible to everyone else so there is less potential for toe stepping/duplicate effort.
 5. Once you had some peer feedback, hit merge on the GH PR if all tests are green and there's no comments saying you
    should make changes.
 6. Delete branch and start any new work from _1._ after you pull the latest changes to main.
