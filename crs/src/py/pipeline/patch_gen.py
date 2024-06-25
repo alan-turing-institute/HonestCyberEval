@@ -151,7 +151,7 @@ class PatchGen:
 
         # prepare LLM prompt
         sanitizer, error_code = self.project.sanitizers[sanitizer_id]
-        models = ["oai-gpt-4o", "claude-3-sonnet"]
+        models = ["oai-gpt-4o", "claude-3.5-sonnet"]
         for i in range(max_trials):
             for model_name in models:
                 patch_text = self.ask_llm_for_patch(model_name, bad_file, code_snippet, sanitizer, error_code, direct_patch=direct_patch)

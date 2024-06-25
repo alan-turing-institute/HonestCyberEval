@@ -98,7 +98,7 @@ class VulnDiscovery:
         harness_path = self.project.harnesses[harness_id].file_path
         harness_text = harness_path.read_text().replace('\n', '')
 
-        models = ["oai-gpt-4o", "claude-3-sonnet"]
+        models = ["oai-gpt-4o", "claude-3.5-sonnet"]
 
         for i in range(max_trials):
             for model_name in models:

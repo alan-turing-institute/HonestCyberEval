@@ -16,6 +16,7 @@ LLMmodel: TypeAlias = Literal[
     "claude-3-opus",
     "claude-3-sonnet",
     "claude-3-haiku",
+    "claude-3.5-sonnet",
     # Google
     "gemini-1.0-pro",
     "gemini-1.5-pro",
