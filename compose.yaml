@@ -60,7 +60,6 @@ services:
           propagation: rshared
       - ./cp_root:/cp_root
       #################################################################################
-    env_file: sandbox/env  # needed for Docker login details; can be removed when the other Docker code isn't needed
     environment:
       # These values will be modified automatically at competition time
       - DOCKER_HOST=tcp://dind:2375
