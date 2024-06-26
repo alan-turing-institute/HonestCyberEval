@@ -38,6 +38,9 @@ By default, only `INFO` and up are printed to the Docker attached tty.
 The full logs, including `DEBUG` and logs from underlying libraries such as git commands and network requests to 
 litellm, are printed to `/crs_scratch/crs.log`.
 
+The project includes some non-exhaustive type hinting, which is checked through GitHub actions.
+It is there to help, not hinder so if it highlights something being wrong, it's likely a potential source of buggy behaviours.
+You can run it at any time using `pyright -p crs/src/`
 
 ### Setting up the CRS on a new machine
 

@@ -44,12 +44,10 @@ def run():
                 logger.info(f"Vulnerability: {status} {cpv_uuid}")
 
                 if status != 'rejected':
-                    # remove this check once patch generation is not hardcoded:
-                    if project.name == "Mock CP":
-                        patch = patch_generation.run(
-                            project, cp_source, cpv_uuid, harness_id, blob_file, sanitizer_id
-                        )
-
+                    patch = patch_generation.run(
+                        project, cp_source, cpv_uuid, harness_id, blob_file, sanitizer_id
+                    )
+                    if patch:
                         # todo: save patch to persistent storage and check it to avoid double submissions
                         logger.info("Submitting patch")
                         status, gp_uuid = submit_patch(cpv_uuid, patch)

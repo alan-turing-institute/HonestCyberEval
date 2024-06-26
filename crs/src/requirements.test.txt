@@ -1,4 +1,4 @@
 pytest
-mypy
+pyright
 types-PyYAML
 types-requests

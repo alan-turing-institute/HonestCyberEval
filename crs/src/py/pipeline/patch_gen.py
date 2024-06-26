@@ -1,11 +1,13 @@
 import difflib
+from typing import Literal, List
+
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
 
 from logger import logger
-from api.cp import ProjectPatchException, ProjectBuildAfterPatchException
+from api.cp import ProjectPatchException, ProjectBuildAfterPatchException, ChallengeProject
 from api.fs import write_file_to_scratch, PatchException
-from api.llm import createChatClient
+from api.llm import create_chat_client, LLMmodel
 
 mock_patches = {
     "id_1": r"""diff --git a/mock_vp.c b/mock_vp.c
@@ -71,7 +73,7 @@ class TestFailedException(PatchException):
 
 class PatchedFile(BaseModel):
     """Input to test harness that triggers vulnerability"""
-    patched_file: str = Field(
+    code: str = Field(
         description="A program file that does not include a vulnerability"
     )
 
@@ -91,8 +93,8 @@ patched_file_template = ChatPromptTemplate.from_messages(
 
 
 class PatchGen:
-    project = None
-    cp_source = None
+    project: ChallengeProject
+    cp_source: str
 
     @staticmethod
     def gen_mock_patch(i=None):
@@ -101,25 +103,27 @@ class PatchGen:
         return mock_patches[f"id_{i}"]
 
     @staticmethod
-    def write_patch_to_disk(cpv_uuid, patch_text, i, harness_id, sanitizer_id, model_name):
+    def write_patch_to_disk(cpv_uuid, patch_text, i, harness_id, sanitizer_id, model_name: LLMmodel | Literal['mock']):
         return write_file_to_scratch(
             f"patch_{cpv_uuid}_{i}_harness_{harness_id}_sanitizer_{sanitizer_id}_{model_name}.diff",
             patch_text,
         )
 
     @staticmethod
-    def ask_llm_for_patch(model_name, bad_file, code_snippet, sanitizer, error_code, direct_patch=False):
+    def ask_llm_for_patch(model_name: LLMmodel, bad_file, code_snippet, sanitizer, error_code, direct_patch=False):
         logger.info(f"Started Generating Patch with {model_name}")
-        model = createChatClient(model_name)
-        chain = patched_file_template | model.with_structured_output(PatchedFile)
-        response = chain.invoke({
+        model = create_chat_client(model_name)
+        chain = (
+                patched_file_template
+                | model.with_structured_output(PatchedFile)
+                | (lambda response: response.code)
+        )
+        llm_output_patch = chain.invoke({
             "code_snippet": code_snippet,
             "sanitizer": sanitizer,
             "error_code": error_code,
         })
 
-        assert isinstance(response, PatchedFile)
-        llm_output_patch = response.patched_file
 
         # TODO: if direct_patch==True, ask LLM to directly generate the diff patch
         if direct_patch:
@@ -151,7 +155,7 @@ class PatchGen:
 
         # prepare LLM prompt
         sanitizer, error_code = self.project.sanitizers[sanitizer_id]
-        models = ["oai-gpt-4o", "claude-3.5-sonnet"]
+        models: List[LLMmodel] = ["oai-gpt-4o", "claude-3.5-sonnet"]
         for i in range(max_trials):
             for model_name in models:
                 patch_text = self.ask_llm_for_patch(model_name, bad_file, code_snippet, sanitizer, error_code, direct_patch=direct_patch)
@@ -213,7 +217,7 @@ class PatchGen:
                 patch_path=patch_path,
             )
 
-    def run(self, project, cp_source, cpv_uuid, harness_id, harness_input, sanitizer_id):
+    def run(self, project: ChallengeProject, cp_source: str, cpv_uuid, harness_id, harness_input, sanitizer_id):
         self.project = project
         self.cp_source = cp_source
 
@@ -229,8 +233,6 @@ class PatchGen:
                 # some inputs require both hard coded patches applied together to fix
                 potential_patch = self.gen_mock_patch()
 
-        self.project = None
-        self.cp_source = None
         return potential_patch
 
 

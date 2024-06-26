@@ -35,7 +35,7 @@ EmbeddingModel: TypeAlias = Literal[
 ]
 
 
-def createChatClient(model_name):
+def create_chat_client(model_name: LLMmodel) -> ChatOpenAI:
     model = ChatOpenAI(
         model=model_name,
         api_key=SecretStr(LITELLM_KEY),

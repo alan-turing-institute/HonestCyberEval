@@ -40,7 +40,7 @@ class ChallengeProject:
         self.repos = {
             source: Source(
                 repo,
-                repo.refs[self.__config["cp_sources"][source]["ref"]],
+                repo.references[self.__config["cp_sources"][source]["ref"]],
             ) for source in self.sources if (repo := Repo(self.path / "src" / source))
         }
 
@@ -92,7 +92,7 @@ class ChallengeProject:
                 # TODO: more control over C config
                 cflags = set()
                 for sanitizer_name, _ in self.sanitizers.values():
-                    cflags |= SANITIZER_COMPILER_FLAGS.get(sanitizer_name)
+                    cflags |= SANITIZER_COMPILER_FLAGS.get(sanitizer_name, set())
                 docker_env_path = self.path / ".env.docker"
                 docker_env_path.write_text(f"CP_BASE_EXTRA_CFLAGS={' '.join(cflags)}")
             # `JAVA_HOME` - The root directory of installed Java Development Kit (default: `/opt/java/openjdk`)
@@ -134,7 +134,7 @@ class ChallengeProject:
         return run_command(self.path / "run.sh", *command, **kwargs)
 
     def reset_source_repo(self, source):
-        git_repo, ref = self.repos.get(source)
+        git_repo, ref = self.repos[source]
         git_repo.git.restore('.')
         git_repo.git.switch('--detach', ref)
 
@@ -194,6 +194,4 @@ class ChallengeProject:
         source must be one of self.sources
         file_path must be relative to source folder (can be obtained from git history)
         """
-        if source not in self.sources:
-            return None
         return (self.path / "src" / source / file_path).read_text()

@@ -1,2 +1,4 @@
-[tool.mypy]
-python_version = "3.10"
+[tool.pyright]
+pythonVersion = "3.10"
+pythonPlatform = "Linux"
+reportMissingTypeStubs = true

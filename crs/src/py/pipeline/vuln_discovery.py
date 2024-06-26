@@ -1,13 +1,13 @@
 import subprocess
 from collections import namedtuple
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
 
 from api.cp import ChallengeProject
 from api.fs import write_file_to_scratch
-from api.llm import createChatClient
+from api.llm import create_chat_client, LLMmodel
 
 from logger import logger
 
@@ -55,7 +55,7 @@ class VulnDiscovery:
     cp_source: str
 
     @staticmethod
-    def write_harness_input_to_disk(harness_input, i, harness_id, sanitizer_id, model_name):
+    def write_harness_input_to_disk(harness_input, i, harness_id, sanitizer_id, model_name: LLMmodel | Literal['mock']):
         return write_file_to_scratch(
             f"input_harness_{harness_id}_sanitizer_{sanitizer_id}_{model_name}_{i}.blob",
             harness_input,
@@ -89,13 +89,13 @@ class VulnDiscovery:
         harness_path = self.project.harnesses[harness_id].file_path
         harness_text = harness_path.read_text().replace('\n', '')
 
-        models = ["oai-gpt-4o", "claude-3.5-sonnet"]
+        models: List[LLMmodel] = ["oai-gpt-4o", "claude-3.5-sonnet"]
 
         for model_name in models:
             for i in range(max_trials):
                 # step 2: Ask LLM for an input to the harness
                 logger.info(f"Attempting to trigger sanitizer {sanitizer_id} through the harness {harness_id} using model {model_name}")
-                model = createChatClient(model_name)
+                model = create_chat_client(model_name)
                 chain = (
                         harness_input_template
                         | model.with_structured_output(HarnessInput)
@@ -142,7 +142,7 @@ class VulnDiscovery:
         """
 
         # step 1: Get list of commits and loop over them (latest to earliest)
-        git_repo, ref = self.project.repos.get(self.cp_source)
+        git_repo, ref = self.project.repos[self.cp_source]
         git_log = list(git_repo.iter_commits(ref))
         # Start at HEAD and go down the commit log
         previous_commit = git_log[0]
