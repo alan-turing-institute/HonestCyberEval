@@ -70,25 +70,22 @@ You can run it at any time using `pyright -p crs/src/`
   - authorise the token by clicking "Configure SSO" next to it and then "aixcc-sc".
   - include our GitHub username (`auth0-660bd3c14d2d6436de9169f3_aixcc`) and personal access token in the
     `GITHUB_USER` and `GITHUB_TOKEN` variables, respectively, in the `env` file
-  - fill in any API keys for the LLMs (e.g., OpenAI key)
+  - fill in API keys for the LLMs (`ANTHROPIC_API_KEY`, `AZURE_API_KEY`, `OPENAI_API_KEY`)
   - if you are usure what info you should put there, please let us know
-- run `cp crs/src/env.example crs/src/env` and modify `crs/src/env` as follows:
-  - log into https://smith.langchain.com, create a PAT, and add it to `LANGCHAIN_API_KEY`
-  - to enable logging, such as when changing or debugging LLM code, change `LANGCHAIN_TRACING_V2` to `true`
+- (OPTIONAL) To enable [LangSmith](https://docs.smith.langchain.com/) integration to help with debugging LangChain:
+  - run `cp crs/src/env.example crs/src/env`
+  - modify `crs/src/env` as follows:
+    - log into https://smith.langchain.com, create a PAT, and add it to `LANGCHAIN_API_KEY`
+    - to enable logging, such as when changing or debugging LLM code, change `LANGCHAIN_TRACING_V2` to `true`
+    - change it back to `false` when no longer required to avoid using up the limited quota on our free account
 - run `docker login -u auth0-660bd3c14d2d6436de9169f3_aixcc -p <your pat> ghcr.io` to access the competition images
-- run `make build` to build docker images
-  - if you face issues regarding `yq` not installed, then run the following and try again
-    - `wget https://github.com/mikefarah/yq/releases/download/v4.44.1/yq_linux_amd64`
-    - `chmod +x yq_linux_amd64`
-    - `mv yq_linux_amd64 yq`
-    - `sudo mv  yq  /bin`
-- _Note_: challenge images are handled by the `load-cp-images` container and are placed into the `dind` cache
-  (`dind_cache`).
-  - if you want to run Docker commands inside the `dind` container, uncomment the port bindings for `dind`
-    in [compose_local_overrides.yaml](../compose_local_overrides.yaml) and run `make up`.
-    Prefixing Docker commands with `DOCKER_HOST=tcp://localhost:2375` will let you run commands using the Docker
-    instance inside the containers, e.g. `DOCKER_HOST=tcp://localhost:2375 docker images` to check which CP images are
-    available.
+  - _Note_: challenge images are handled by the `load-cp-images` container and are placed into the `dind` cache
+    (`dind_cache`).
+    - if you want to run Docker commands inside the `dind` container, uncomment the port bindings for `dind`
+      in [compose_local_overrides.yaml](../compose_local_overrides.yaml) and run `make up`.
+      Prefixing Docker commands with `DOCKER_HOST=tcp://localhost:2375` will let you run commands using the Docker
+      instance inside the containers, e.g. `DOCKER_HOST=tcp://localhost:2375 docker images` to check which CP images are
+      available.
 - run `c=crs make up-attached` to bring up th CRS server with attached output stream
   - this will bring up the other containers in the background and keep them running after the CRS exits, including:
     - LiteLLM proxy (port 8081 on host)
