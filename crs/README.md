@@ -87,7 +87,8 @@ You can run it at any time using `pyright -p crs/src/`
       instance inside the containers, e.g. `DOCKER_HOST=tcp://localhost:2375 docker images` to check which CP images are
       available.
 - run `c=crs make up-attached` to bring up th CRS server with attached output stream
-  - if this fails and brings up a permission error, restart your VM and try this command again
+  - if this fails and brings up a permission error for `/var/run/docker.sock` despite running the instructions for 
+    running Docker as a non-root user, restart your VM and try this command again.
   - this will bring up the other containers in the background and keep them running after the CRS exits, including:
     - LiteLLM proxy (port 8081 on host)
     - cAPI (scoring server API, port 8080 on host)
