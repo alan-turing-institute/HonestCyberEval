@@ -132,6 +132,7 @@ jobs:
 
       - name: Create Competition Helm Resources
         run: |
+          export RELEASE_TAG=${{ github.event.release.tag_name }}
           make k8s/competition
           tar -czf kustomize.tar.gz -C sandbox/kustomize .
 

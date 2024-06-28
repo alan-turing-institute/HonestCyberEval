@@ -2,4 +2,4 @@
 # Custom Github hosted runner name
 self-hosted-runner:
   labels:
-    - large-runner
+    - large-runners

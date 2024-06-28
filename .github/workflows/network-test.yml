@@ -53,8 +53,8 @@ jobs:
 
       - name: Check required files
         run: |
-          if [ ! -f "${{ github.workspace }}/cp_config.yaml" ]; then
-            echo "Required file not found: cp_config.yaml"
+          if [ ! -f "${{ github.workspace }}/cp_config/cp_config.yaml" ]; then
+            echo "Required file not found: cp_config/cp_config.yaml"
             exit 1
           fi
 

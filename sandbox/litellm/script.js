@@ -122,21 +122,6 @@ export default function () {
     }
   })
 
-  group('/team/info', () => {
-    const teamId = '1' // specify value as there is no example value for this parameter in OpenAPI spec
-
-    // Request No. 1: team_info_team_info_get
-    {
-      const url = BASE_URL + `/team/info?team_id=${teamId}`
-      const params = { headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `${authorization}` } }
-      const request = http.get(url, params)
-
-      check(request, {
-        'Successful Response': (r) => r.status === 200
-      })
-    }
-  })
-
   group('/spend/users', () => {
     const userId = '1' // specify value as there is no example value for this parameter in OpenAPI spec
 
@@ -184,11 +169,26 @@ export default function () {
     // Request No. 1: new_team_team_new_post
     {
       const url = BASE_URL + '/team/new'
-      const teamName = makeTestId(10)
+      const teamName = "test-team-1"
       // TODO: edit the parameters of the request body.
-      const body = { teamAlias: teamName, teamId: 5, admins: ['testuser-1'], members: ['testuser-1'], membersWithRoles: [], metadata: {}, tpmLimit: {}, rpmLimit: {}, maxBudget: {}, models: models_list }
+      const body = { team_alias: teamName, team_id: "18fd5e80-2a13-4812-a13a-7562d2ae2050", admins: ['testuser-1'], members: ['testuser-1'], membersWithRoles: [], metadata: {}, tpmLimit: {}, rpmLimit: {}, maxBudget: {}, models: models_list }
       const params = { headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `${authorization}` } }
       const request = http.post(url, JSON.stringify(body), params)
+
+      check(request, {
+        'Successful Response': (r) => r.status === 200
+      })
+    }
+  })
+
+  group('/team/info', () => {
+    const teamId = "18fd5e80-2a13-4812-a13a-7562d2ae2050" // specify value as there is no example value for this parameter in OpenAPI spec
+
+    // Request No. 1: team_info_team_info_get
+    {
+      const url = BASE_URL + `/team/info?team_id=${teamId}`
+      const params = { headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `${authorization}` } }
+      const request = http.get(url, params)
 
       check(request, {
         'Successful Response': (r) => r.status === 200

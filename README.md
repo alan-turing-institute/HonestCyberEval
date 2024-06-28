@@ -7,6 +7,19 @@ from each competitors private copy of the `CRS Sandbox`.
 
 Competitor SSO accounts to GitHub will be limited to a basic set of actions for making modifications and merging PRs within the GitHub repository.
 
+## Reporting Bugs & Issues
+
+Competitors should use GitHub issues to report bugs on the respective repositories.
+
+Competitors are also welcome to comment in tickets assisting others.
+
+We encourae all competitors to read through issues (open & closed) within the following repos.
+
+- [CRS Sandbox](https://github.com/aixcc-sc/crs-sandbox/issues)
+- [CP Sandbox](https://github.com/aixcc-sc/cp-sandbox/issues)
+- [Mock CP](https://github.com/aixcc-sc/mock-cp/issues)
+- [Competition API (cAPI)](https://github.com/aixcc-sc/cAPI/issues)
+
 ## Evaluation Window
 
 ### Phase 1 - GitHub Actions Passing
@@ -76,6 +89,14 @@ However, once we announce Phase 2 is live, teams will be able to log into their 
 
 [https://vcluster-platform.aixcc.tech/login](https://vcluster-platform.aixcc.tech/login)
 
+During competition, CRSs may only submit a single working vulnerability discovery on any single
+commit, and must use that issued CPV UUID for any generated patches.  Any further VDSs will be
+rejected as duplicates.  During phase 2, however, **duplicate submissions will not be rejected** in
+order to facilitate rapid CRS testing.  We may turn rejection back on towards the end of phase 2.
+
+By modifying [cp_config/cp_config.yaml](./cp_config/cp_config.yaml), competitors can change the CPs
+presented to their CRS during phase 2.
+
 ## Code Owners
 
 Please review the [.github/CODEOWNERS](.github/CODEOWNERS) file.
@@ -132,8 +153,13 @@ patched using the provided Docker container.
 One CP (the public Linux kernel CP) includes `virtme-ng` in its CP-specific
 Docker container for the purposes of testing the built kernel.
 
-This is the only supported form of nested virtualization for the competition environment.
-A CRS **MUST NOT** assume that nested virtualization accelerations such as KVM via `/dev/kvm` are supported for their containers.
+The `virtme-ng` program will automatically use `/dev/kvm` for acceleration if it is present and the CRS is running as root [See Linux CP #10](https://github.com/aixcc-sc/challenge-001-linux-cp/issues/10#issuecomment-2186565915).
+
+Competitors are permitted to add `privileged: true` to any container under [./compose.yaml](./compose.yaml).
+
+The Game Architecture team has confirmed the CRS execution environment supports nested virtualization for KVM.
+
+There is no need or support for competitors to map devices directly, they must add the `privleged: true` to containers which need it.
 
 ## Environment Variables & GitHub Secrets
 
@@ -284,9 +310,10 @@ This is the exact same target used by the GitHub workflow evaluator.
 Additionally, you will need permissions to interact with the Docker daemon.
 Typically this means adding your user to the `docker` group.
 
-### Working with Docker-in-Docker
+### Working with Docker
 
-The `crs-sandbox` contains its own Docker daemon inside of a Docker container.
+The `crs-sandbox` contains its own Docker daemon inside of a container. With `make up` this runs docker-in-docker.
+However with Kubernetes via `make k8s` and at competition this runs the `dockerD daemon container within Kubernetes.
 By default this is not accessible on the host machine, but you can enable the
 port mapping by editing
 [`./compose_local_overrides.yaml`](./compose_local_overrides.yaml).  Note that
@@ -460,6 +487,20 @@ services:
       kompose.hpa.replicas.max: 12
       kompose.hpa.replicas.min: 3
 ```
+
+#### Resource Requests & Limits
+
+Docker Compose and Kubernetes both support the concepts of requests and limits.
+
+We recommend that teams review [Docker Compose Deploy Specification](https://docs.docker.com/compose/compose-file/deploy/#resources).
+
+Kompose V3 will automatically convert these requests and limits into requests and limits within Kubernetes.
+
+Teams may use the following files to add requests and limits onto any containers within a CRS.
+
+- [./compose_local_overrides.yaml](./compose_local_overrides.yaml)
+- [./kompose_development_overrides.yaml](./kompose_development_overrides.yaml)
+- [./kompose_competition_overrides.yaml](./kompose_competition_overrides.yaml)
 
 #### Deployments, Pods, and replica count
 

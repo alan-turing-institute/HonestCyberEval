@@ -8,16 +8,10 @@ resources:
   - service-account.yaml
   - service-role.yaml
   - service-role-binding.yaml
+  - ../../../cp_config
 
 patches:
   - path: load-cp-images-config.json
     target:
       kind: Pod
       name: load-cp-images
-
-configMapGenerator:
-  - name: cp-config
-    files:
-      - configs/cp_config.yaml
-    options:
-      disableNameSuffixHash: true

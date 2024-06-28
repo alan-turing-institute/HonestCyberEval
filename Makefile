@@ -18,7 +18,7 @@ LOCAL_K8S_RESOURCES = $(ROOT_DIR)/.k8s
 
 # variables that control the CP repos
 HOST_CP_ROOT_DIR = $(ROOT_DIR)/cp_root
-CP_CONFIG_FILE ?= $(ROOT_DIR)/cp_config.yaml
+CP_CONFIG_FILE ?= $(ROOT_DIR)/cp_config/cp_config.yaml
 
 # location of local env file
 HOST_ENV_FILE = $(ROOT_DIR)/sandbox/env
@@ -172,7 +172,7 @@ loadtest/destroy: ## Stop and remove containers with volumes
 	@docker compose -f $(DOCKER_COMPOSE_FILE) -f $(DOCKER_COMPOSE_LOCAL_OVERRIDES) --profile loadtest down --volumes --remove-orphans $(c)
 
 k8s: k8s/clean k8s/development k8s/kustomize/development build ## Generates helm chart locally for the development profile for kind testing, etc. build is called for local image generation
-	@docker pull ghcr.io/aixcc-sc/capi:v2.1.8
+	@docker pull ghcr.io/aixcc-sc/capi:v2.1.9
 	@docker pull ghcr.io/berriai/litellm-database:main-v1.35.10
 	@docker pull nginx:1.25.5
 	@docker pull docker:24-dind
@@ -246,6 +246,13 @@ k8s/competition: env-file-required k8s/clean ## Generates the competition k8s re
 	@mkdir -p $(LOCAL_K8S_RESOURCES)
 	@mkdir -p $(LOCAL_K8S_BASE)
 	@COMPOSE_FILE="$(ROOT_DIR)/compose.yaml $(ROOT_DIR)/kompose_competition_overrides.yaml" kompose convert --profile competition --out $(LOCAL_K8S_BASE)/resources.yaml
+
+	@if grep -qr "$(RELEASE_TAG)" $(LOCAL_K8S_BASE); then \
+		echo "RELEASE_TAG $(RELEASE_TAG) was found in $(LOCAL_K8S_BASE)"; \
+	else \
+		echo "var RELEASE_TAG $(RELEASE_TAG) not found in the K8S folder $(LOCAL_K8S_BASE)"; \
+		exit 1; \
+	fi
 
 k8s/kustomize/competition:
 	@kustomize build $(ROOT_DIR)/sandbox/kustomize/competition -o $(LOCAL_K8S_RESOURCES)/resources.yaml

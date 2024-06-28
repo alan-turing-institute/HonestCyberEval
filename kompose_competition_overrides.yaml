@@ -1,5 +1,6 @@
 ---
 # This file can only be modified to add services which need access to /crs_scratch or read-only access to /cp_root.
+# Competitors may also use this to tune the deploy section of services as needed.
 # Do not define new volumes, edit services other than the CRS, or attach any volumes other than those two to your services.
 # Changes the bind mount of ./cp_root to specify Persistent Volume that will be populated at competition time
 
@@ -41,6 +42,14 @@ services:
       - AIXCC_CRS_SCRATCH_SPACE=$${AIXCC_CRS_SCRATCH_SPACE:-/crs_scratch}
       - LITELLM_KEY=$${LITELLM_KEY:-sk-1234}
   dind:
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '8'
+    #       memory: 8GB
+    #     reservations:
+    #       cpus: '1'
+    #       memory: 256M
     labels:
       kompose.volume.type: persistentVolumeClaim
       kompose.volume.size: 1Ti

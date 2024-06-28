@@ -1,5 +1,6 @@
 ---
 # This file can only be modified to add services which need access to /crs_scratch or read-only access to /cp_root.
+# Competitors may also use this to tune the deploy section of services as needed.
 # Do not define new volumes, edit services other than the CRS, or attach any volumes other than those two to your services.
 # Changes the bind mount of ./cp_root to specify Persistent Volume that will be populated at competition time
 services:
@@ -31,6 +32,14 @@ services:
       load-cp-images:
         condition: service_completed_successfully
   dind:
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '8'
+    #       memory: 8GB
+    #     reservations:
+    #       cpus: '1'
+    #       memory: 256M
     volumes:
       - crs_scratch:/crs_scratch
     command: ["dockerd", "-H", "tcp://0.0.0.0:2375", "--tls=false"]
