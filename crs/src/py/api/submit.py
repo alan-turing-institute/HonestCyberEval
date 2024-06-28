@@ -3,7 +3,10 @@ import time
 from typing import TypedDict, Literal, TypeAlias
 from requests import Session
 from requests.auth import HTTPBasicAuth
+
+from api.data_types import Patch
 from config import AIXCC_API_HOSTNAME
+from pipeline.vuln_discovery import VulnerabilityWithSha
 
 CPVuuid: TypeAlias = str
 GPuuid: TypeAlias = str
@@ -42,30 +45,37 @@ session.headers = {
     "Content-Type": "application/json",
 }
 
+__capi_up = False
+
 
 def healthcheck() -> bool:
+    global __capi_up
+    if __capi_up:
+        return True
+
     response = session.get(
         f"{AIXCC_API_HOSTNAME}/health/",
     )
     try:
-        return response.json().get("status") == "ok"
+        __capi_up = response.json().get("status") == "ok"
     except ValueError:
-        return False
+        pass
+    return __capi_up
 
 
-def submit_vulnerability(cp_name: str, commit_sha1: str, sanitizer_id: str, harness_id: str, data: str) \
-        -> tuple[CAPIStatus, CPVuuid]:
+def submit_vulnerability(cp_name: str, vulnerability: VulnerabilityWithSha) -> tuple[CAPIStatus, CPVuuid]:
+
     vds_url = f"{AIXCC_API_HOSTNAME}/submission/vds/"
 
     vds: VDSubmission = {
         "cp_name": cp_name,
         "pou": {
-            "commit_sha1": commit_sha1,
-            "sanitizer": sanitizer_id,
+            "commit_sha1": vulnerability.commit,
+            "sanitizer": vulnerability.sanitizer_id,
         },
         "pov": {
-            "harness": harness_id,
-            "data": base64.b64encode(data.encode()).decode('ascii'),
+            "harness": vulnerability.harness_id,
+            "data": base64.b64encode(vulnerability.input_data.encode()).decode('ascii'),
         }
     }
 
@@ -74,7 +84,7 @@ def submit_vulnerability(cp_name: str, commit_sha1: str, sanitizer_id: str, harn
         json=vds,
     )
     if not response.ok:
-        raise Exception(response.reason, response.status_code, cp_name, commit_sha1, harness_id, data)
+        raise Exception(response.reason, response.status_code, cp_name, vulnerability)
     content = response.json()
     status, vd_uuid = content.get("status"), content.get("vd_uuid")
     status = "pending"
@@ -85,22 +95,22 @@ def submit_vulnerability(cp_name: str, commit_sha1: str, sanitizer_id: str, harn
             f"{vds_url}{vd_uuid}",
         )
         if not response.ok:
-            raise Exception(response.reason, response.status_code, cp_name, commit_sha1, harness_id, data)
+            raise Exception(response.reason, response.status_code, cp_name, vulnerability)
         content = response.json()
         status, cpv_uuid = content.get("status"), content.get("cpv_uuid")
         if not status == "pending":
             return status, cpv_uuid
 
 
-def _encode_patch(cpv_uuid: CPVuuid, patch: str) -> GPSubmission:
-    encoded_patch = base64.b64encode(patch.encode()).decode('ascii')
+def _encode_patch(cpv_uuid: CPVuuid, patch: Patch) -> GPSubmission:
+    encoded_patch = base64.b64encode(patch.diff.encode()).decode('ascii')
     return {
         "cpv_uuid": cpv_uuid,
         "data": encoded_patch,
     }
 
 
-def submit_patch(cpv_uuid: CPVuuid, patch: str) -> tuple[CAPIStatus, GPuuid]:
+def submit_patch(cpv_uuid: CPVuuid, patch: Patch) -> tuple[CAPIStatus, GPuuid]:
     gp_url = f"{AIXCC_API_HOSTNAME}/submission/gp/"
     gp = _encode_patch(cpv_uuid, patch)
     response = session.post(

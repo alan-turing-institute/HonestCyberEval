@@ -25,8 +25,7 @@ def run():
 
         for cp_source in project.sources:
             vulnerabilities = vuln_discovery.run(project, cp_source)
-
-            for bad_commit_sha, harness_id, sanitizer_id, input_data, blob_file in vulnerabilities:
+            for vulnerability in vulnerabilities:
                 while not healthcheck():
                     time.sleep(5)
                 else:
@@ -35,17 +34,14 @@ def run():
                 # todo: save input to persistent storage and check it to avoid double submissions
                 status, cpv_uuid = submit_vulnerability(
                     cp_name=project.name,
-                    commit_sha1=bad_commit_sha,
-                    sanitizer_id=sanitizer_id,
-                    harness_id=harness_id,
-                    data=input_data,
+                    vulnerability=vulnerability
                 )
                 # todo: update input in persistent storage and mark as accepted
                 logger.info(f"Vulnerability: {status} {cpv_uuid}")
 
                 if status != 'rejected':
                     patch = patch_generation.run(
-                        project, cp_source, cpv_uuid, harness_id, blob_file, sanitizer_id
+                        project, cp_source, cpv_uuid, vulnerability
                     )
                     if patch:
                         # todo: save patch to persistent storage and check it to avoid double submissions

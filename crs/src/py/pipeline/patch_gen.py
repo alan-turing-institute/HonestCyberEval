@@ -1,13 +1,15 @@
 import difflib
-from typing import Literal, List
+from typing import Literal, List, Optional
 
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
 
 from logger import logger
 from api.cp import ProjectPatchException, ProjectBuildAfterPatchException, ChallengeProject
+from api.data_types import VulnerabilityWithSha, Patch
 from api.fs import write_file_to_scratch, PatchException
 from api.llm import create_chat_client, LLMmodel
+
 
 mock_patches = {
     "id_1": r"""diff --git a/mock_vp.c b/mock_vp.c
@@ -49,20 +51,18 @@ index 9dc6bf0..ca80ed1 100644
 class HarnessTriggeredAfterPatchException(PatchException):
     message = "The patch does not solve the error"
 
-    def __init__(self, stderr, patch_path, harness_input_file, harness_id, sanitizer_id):
-        super().__init__(stderr, patch_path)
-        self.harness_input_file = harness_input_file
-        self.harness_id = harness_id
-        self.sanitizer_id = sanitizer_id
+    def __init__(self, stderr, patch, vuln):
+        super().__init__(stderr, patch=patch)
+        self.vuln = vuln
 
     def __str__(self):
         return "\n".join(
             [
                 super().__str__(),
-                f"Harness {self.harness_id} with input:",
-                str(self.harness_input_file.absolute()),
-                self.harness_input_file.read_text(),
-                f"still triggers sanitizer {self.sanitizer_id}",
+                f"Harness {self.vuln.harness_id} with input:",
+                str(self.vuln.input_file.absolute()),
+                self.vuln.input_data,
+                f"still triggers sanitizer {self.vuln.sanitizer_id}",
             ]
         )
 
@@ -102,10 +102,9 @@ class PatchGen:
             return "\n".join([mock_patches[f"id_1"], mock_patches[f"id_2"]])
         return mock_patches[f"id_{i}"]
 
-    @staticmethod
-    def write_patch_to_disk(cpv_uuid, patch_text, i, harness_id, sanitizer_id, model_name: LLMmodel | Literal['mock']):
+    def write_patch_to_disk(self, cpv_uuid, patch_text, i, vulnerability: VulnerabilityWithSha, model_name: LLMmodel | Literal['mock']):
         return write_file_to_scratch(
-            f"patch_{cpv_uuid}_{i}_harness_{harness_id}_sanitizer_{sanitizer_id}_{model_name}.diff",
+            self.project.patch_path / f"{cpv_uuid}_{i}_harness_{vulnerability.harness_id}_sanitizer_{vulnerability.sanitizer_id}_{model_name}.diff",
             patch_text,
         )
 
@@ -124,7 +123,6 @@ class PatchGen:
             "error_code": error_code,
         })
 
-
         # TODO: if direct_patch==True, ask LLM to directly generate the diff patch
         if direct_patch:
             patch_text = llm_output_patch
@@ -140,7 +138,7 @@ class PatchGen:
             patch_text = "".join(diff_obj) + "\n"
         return patch_text
 
-    def gen_patch_llm(self, cpv_uuid, harness_id, harness_input, sanitizer_id, bad_file, max_trials=3, direct_patch=False):
+    def gen_patch_llm(self, cpv_uuid, vulnerability: VulnerabilityWithSha, bad_file, max_trials=3, direct_patch=False) -> Optional[Patch]:
         """
         This function does the following:
         1. Load a suspected file
@@ -154,15 +152,15 @@ class PatchGen:
         code_snippet = self.project.open_project_source_file(self.cp_source, bad_file)
 
         # prepare LLM prompt
-        sanitizer, error_code = self.project.sanitizers[sanitizer_id]
+        sanitizer, error_code = self.project.sanitizers[vulnerability.sanitizer_id]
         models: List[LLMmodel] = ["oai-gpt-4o", "claude-3.5-sonnet"]
         for i in range(max_trials):
             for model_name in models:
                 patch_text = self.ask_llm_for_patch(model_name, bad_file, code_snippet, sanitizer, error_code, direct_patch=direct_patch)
-
+                patch_path = self.write_patch_to_disk(cpv_uuid, patch_text, i, vulnerability, model_name)
+                patch = Patch(diff=patch_text, diff_file=patch_path)
                 try:
-                    patch_path = self.write_patch_to_disk(cpv_uuid, patch_text, i, harness_id, sanitizer_id, model_name)
-                    self.validate_patch(patch_path, harness_id, harness_input, sanitizer_id)
+                    self.validate_patch(vulnerability, patch)
                 # TODO: if validation fails, do something
                 except ProjectPatchException as err:
                     # todo: patch was not a valid patch, try again?
@@ -185,55 +183,55 @@ class PatchGen:
                     logger.debug(f"Patching failed, trying again: {err}")
                     continue
                 logger.info(f"Patching succeeded using {model_name}")
-                return patch_text
+                return patch
         logger.warning("COULD NOT FIND GOOD PATCH! GIVING UP!")
         return None
 
-    def validate_patch(self, patch_path, harness_id, harness_input_file, sanitizer_id):
+    def validate_patch(self, vuln: VulnerabilityWithSha, patch: Patch):
         logger.info("Re-building CP with patch")
         try:
-            self.project.patch_and_build_project(patch_path.absolute(), self.cp_source)
+            self.project.patch_and_build_project(patch, self.cp_source)
         finally:
             self.project.reset_source_repo(self.cp_source)
 
         has_sanitizer_triggered, stderr = self.project.run_harness_and_check_sanitizer(
-            harness_input_file,
-            harness_id,
-            sanitizer_id,
+            vuln.input_file,
+            vuln.harness_id,
+            vuln.sanitizer_id,
         )
         if has_sanitizer_triggered:
             raise HarnessTriggeredAfterPatchException(
                 stderr=stderr,
-                patch_path=patch_path,
-                harness_input_file=harness_input_file,
-                harness_id=harness_id,
-                sanitizer_id=sanitizer_id,
+                vuln=vuln,
+                patch=patch,
             )
 
         result = self.project.run_tests()
         if result.stderr:
             raise TestFailedException(
                 stderr=result.stderr,
-                patch_path=patch_path,
+                patch=patch,
             )
 
-    def run(self, project: ChallengeProject, cp_source: str, cpv_uuid, harness_id, harness_input, sanitizer_id):
+    def run(self, project: ChallengeProject, cp_source: str, cpv_uuid, vulnerability: VulnerabilityWithSha) -> Optional[Patch]:
         self.project = project
         self.cp_source = cp_source
 
-        potential_patch = self.gen_patch_llm(cpv_uuid, harness_id, harness_input, sanitizer_id, "mock_vp.c")
+        patch = self.gen_patch_llm(cpv_uuid, vulnerability, "mock_vp.c")
 
         # For now, we hard code the patch here to avoid exceptions
-        if not potential_patch and self.project.name == "Mock CP":
+        if not patch and self.project.name == "Mock CP":
             potential_patch = self.gen_mock_patch(1)
+            patch_path = self.write_patch_to_disk(cpv_uuid, potential_patch, 0, vulnerability, "mock")
+            patch = Patch(diff=potential_patch, diff_file=patch_path)
             try:
-                patch_path = self.write_patch_to_disk(cpv_uuid, potential_patch, 0, harness_id, sanitizer_id, "mock")
-                self.validate_patch(patch_path, harness_id, harness_input, sanitizer_id)
+                self.validate_patch(vulnerability, patch)
             except HarnessTriggeredAfterPatchException:
                 # some inputs require both hard coded patches applied together to fix
                 potential_patch = self.gen_mock_patch()
+                patch = Patch(diff_file=patch_path, diff=potential_patch)
 
-        return potential_patch
+        return patch
 
 
 patch_generation = PatchGen()

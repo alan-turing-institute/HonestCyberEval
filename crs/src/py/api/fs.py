@@ -1,8 +1,9 @@
 import subprocess
-from shutil import rmtree
+from shutil import rmtree, copy, copytree
 
 from config import AIXCC_CP_ROOT, AIXCC_CRS_SCRATCH_SPACE, OUTPUT_PATH, PROJECT_PATH
 from logger import logger
+from api.data_types import VulnerabilityWithSha, Patch
 
 
 class RunException(Exception):
@@ -17,16 +18,16 @@ class RunException(Exception):
 
 
 class PatchException(RunException):
-    def __init__(self, stderr, patch_path):
+    def __init__(self, stderr, patch: Patch):
         super().__init__(stderr)
-        self.patch_path = patch_path
+        self.patch = patch
 
     def __str__(self):
         return "\n".join([
             super().__str__(),
             "Patch applied to cause exception:",
-            str(self.patch_path.absolute()),
-            self.patch_path.read_text(),
+            str(self.patch.diff_file.absolute()),
+            self.patch.diff,
         ])
 
 
@@ -43,7 +44,7 @@ def run_command(*args, **kwargs):
 
 
 def move_projects_to_scratch():
-    run_command("cp", "--recursive", AIXCC_CP_ROOT, AIXCC_CRS_SCRATCH_SPACE)
+    copytree(AIXCC_CP_ROOT, AIXCC_CRS_SCRATCH_SPACE / AIXCC_CP_ROOT.name, copy_function=copy, dirs_exist_ok=True)
 
 
 def get_projects():

@@ -1,11 +1,11 @@
 import subprocess
-from collections import namedtuple
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, NamedTuple
 
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
 
 from api.cp import ChallengeProject
+from api.data_types import Vulnerability, VulnerabilityWithSha
 from api.fs import write_file_to_scratch
 from api.llm import create_chat_client, LLMmodel
 
@@ -21,9 +21,6 @@ b
 
 501
 """
-
-Vulnerability = namedtuple('Vulnerability', ['harness_id', 'sanitizer_id', 'input_data', 'blob_file'])
-VulnerabilityWithSha = namedtuple('VulnerabilityWithSha', ['commit', 'harness_id', 'sanitizer_id', 'input_data', 'blob_file'])
 
 
 class HarnessInput(BaseModel):
@@ -54,10 +51,9 @@ class VulnDiscovery:
     project: ChallengeProject
     cp_source: str
 
-    @staticmethod
-    def write_harness_input_to_disk(harness_input, i, harness_id, sanitizer_id, model_name: LLMmodel | Literal['mock']):
+    def write_harness_input_to_disk(self, harness_input, i, harness_id, sanitizer_id, model_name: LLMmodel | Literal['mock']):
         return write_file_to_scratch(
-            f"input_harness_{harness_id}_sanitizer_{sanitizer_id}_{model_name}_{i}.blob",
+            self.project.input_path / f"harness_{harness_id}_sanitizer_{sanitizer_id}_{model_name}_{i}.blob",
             harness_input,
         )
 
@@ -112,9 +108,9 @@ class VulnDiscovery:
                 harness_input_file = self.write_harness_input_to_disk(harness_input, i, harness_id, sanitizer_id, model_name)
                 try:
                     has_sanitizer_triggered, stderr = self.project.run_harness_and_check_sanitizer(
-                            harness_input_file,
-                            harness_id,
-                            sanitizer_id,
+                        harness_input_file,
+                        harness_id,
+                        sanitizer_id,
                     )
                     if has_sanitizer_triggered:
                         logger.info(f"Found vulnerability using harness {harness_id}: {sanitizer}: {error_code}")
@@ -167,9 +163,9 @@ class VulnDiscovery:
             for vuln in vulnerabilities_left:
                 sanitizer, error_code = self.project.sanitizers[vuln.sanitizer_id]
 
-            # step 3: Test the harness on commit i
+                # step 3: Test the harness on commit i
                 harness_triggered, _ = self.project.run_harness_and_check_sanitizer(
-                    vuln.blob_file,
+                    vuln.input_file,
                     vuln.harness_id,
                     vuln.sanitizer_id,
                 )
@@ -180,7 +176,7 @@ class VulnDiscovery:
                 # step 4: When sanitizer is not triggered the previous commit introduced the vulnerability, assign previous commit as bug introducing
                 else:
                     logger.info(f"Found bad commit: {previous_commit.hexsha} that introduced vulnerability {sanitizer}: {error_code}  ")
-                    vulnerabilities_with_sha.append(VulnerabilityWithSha(previous_commit.hexsha, *vuln))
+                    vulnerabilities_with_sha.append(VulnerabilityWithSha(*vuln, commit=previous_commit.hexsha))
             previous_commit = inspected_commit
 
         # cleaning up:

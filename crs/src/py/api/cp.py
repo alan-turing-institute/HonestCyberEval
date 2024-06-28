@@ -3,7 +3,10 @@ from copy import deepcopy
 from subprocess import CalledProcessError
 import yaml
 from git import Repo
+
+from api.data_types import Patch
 from api.fs import run_command, RunException, PatchException
+from config import OUTPUT_PATH
 
 Sanitizer = namedtuple('Sanitizer', ['name', 'error_code'])
 Harness = namedtuple('Harness', ['name', 'file_path'])
@@ -35,6 +38,11 @@ class ChallengeProject:
         self.__config = self._read_project_yaml()
         self.name = self.__config["cp_name"]
 
+        path_common = OUTPUT_PATH / self.path.name
+        self.input_path = path_common / "harness_input"
+        self.patch_path = path_common / "patches"
+        self._create_dirs()
+
         self.sources = list(self.__config["cp_sources"].keys())
         self.repo = Repo(self.path)
         self.repos = {
@@ -65,6 +73,10 @@ class ChallengeProject:
     @property
     def config(self):
         return deepcopy(self.__config)
+
+    def _create_dirs(self):
+        for p in [self.input_path, self.patch_path]:
+            p.mkdir(parents=True, exist_ok=True),
 
     def _set_docker_env(self):
         match self.__config["language"]:
@@ -142,24 +154,27 @@ class ChallengeProject:
         """Build a project.
         Raises ProjectBuildException, check ProjectBuildException.stderr for output
         """
-        result = self._run_cp_run_sh("build")
-        if result.stderr:
-            raise ProjectBuildException(stderr=result.stderr)
+        try:
+            result = self._run_cp_run_sh("build")
+            if result.stderr:
+                raise ProjectBuildException(stderr=result.stderr)
+        except CalledProcessError as err:
+            raise ProjectBuildException(stderr=err.stderr) from err
         return result
 
-    def patch_and_build_project(self, patch_path, cp_source):
+    def patch_and_build_project(self, patch: Patch, cp_source):
         """Build a project after applying a patch file to the specified source.
         Raises ProjectBuildAfterPatchException if patch cannot be applied, check ProjectBuildAfterPatchException.stderr
           for output.
         Raises ProjectBuildException, check ProjectBuildException.stderr for output.
         """
         try:
-            result = self._run_cp_run_sh("build", str(patch_path.absolute()), cp_source)
+            result = self._run_cp_run_sh("build", str(patch.diff_file.absolute()), cp_source)
             if result.stderr:
-                raise ProjectBuildAfterPatchException(stderr=result.stderr, patch_path=patch_path)
+                raise ProjectBuildAfterPatchException(stderr=result.stderr, patch=patch)
             return result
         except CalledProcessError as err:
-            raise ProjectPatchException(stderr=err.stderr, patch_path=patch_path) from err
+            raise ProjectPatchException(stderr=err.stderr, patch=patch) from err
 
     def run_harness(self, harness_input_file, harness_id, timeout=60):
         """Runs a specified project test harness and returns the output of the process.
