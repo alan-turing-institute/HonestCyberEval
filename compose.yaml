@@ -35,7 +35,10 @@ services:
       - development
       - competition
     # Competitors: You MUST change crs-sandbox to your repo name, change replace-me-crs to your image name, and be versioned pinned to the release intended for competition.
-    image: ghcr.io/aixcc-sc/asc-crs-mindrake/brainbox:v1.0.4
+    # The example show uses RELEASE_TAG variable if it is set.
+    # The `-` before `v1.0.*` is used with interpolation to specify that v1.0.* should be used if RELEASE_TAG is not set.
+    # The .github/workflows/package.yaml script will set the RELEASE_TAG environment variable so it is used correctly on release.
+    image: ghcr.io/aixcc-sc/asc-crs-mindrake/brainbox:${RELEASE_TAG-v1.0.4}
     # Competitors: All services that are expected to have a clean exit must have restart: on-failure
     restart: on-failure
     build:
