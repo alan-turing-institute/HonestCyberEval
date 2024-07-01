@@ -10,6 +10,8 @@ services:
   # dind:
   #   ports:
   #     - "127.0.0.1:2375:2375"
+  load-cp-images:
+    restart: "no"
   crs:
     restart: "no"
     volumes:

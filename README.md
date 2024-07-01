@@ -144,6 +144,11 @@ GitHub has the following [Container Registry](https://docs.github.com/en/package
 
 Failure to follow these steps will prevent your CRS images from being able to execute at the competition.
 
+Competitors SHOULD use a tag similar to `:${RELEASE_TAG-v1.0.0}` for all images in their [./compose.yaml](./compose.yaml) that are built
+and pushed automatically with [.github/workflows/package.yml](.github/workflows/package.yml).
+
+This will make releases update automatically in the Kubernetes resources.
+
 ## CRS Constraints on Docker and Virtualization
 
 In the competition environment, a CRS is expected to use Docker (via `run.sh`)

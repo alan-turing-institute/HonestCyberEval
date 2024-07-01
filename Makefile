@@ -179,7 +179,7 @@ k8s: k8s/clean k8s/development k8s/kustomize/development build ## Generates helm
 	@docker pull postgres:16.2-alpine3.19
 	@docker pull ghcr.io/aixcc-sc/crs-sandbox/mock-crs:v2.0.0
 	@docker pull curlimages/curl:8.8.0
-	@docker pull ghcr.io/aixcc-sc/load-cp-images:v0.0.4
+	@docker pull ghcr.io/aixcc-sc/load-cp-images:v0.0.5
 	@helm repo add longhorn https://charts.longhorn.io
 	@helm repo update
 	@helm install --kube-context crs longhorn longhorn/longhorn --namespace longhorn-system --create-namespace --set defaultSetting.defaultStorageClass=true
@@ -238,6 +238,7 @@ k8s/development: github-creds-required k8s/clean
 	@mkdir -p $(LOCAL_K8S_RESOURCES)
 	@mkdir -p $(LOCAL_K8S_BASE)
 	@COMPOSE_FILE="$(ROOT_DIR)/compose.yaml $(ROOT_DIR)/kompose_development_overrides.yaml" kompose convert --profile development --out $(LOCAL_K8S_BASE)/resources.yaml
+	@cp cp_config/cp_config.yaml $(LOCAL_K8S_BASE)/cp_config.yaml
 
 k8s/kustomize/development:
 	@kustomize build $(ROOT_DIR)/sandbox/kustomize/development -o $(LOCAL_K8S_RESOURCES)/resources.yaml
@@ -246,12 +247,12 @@ k8s/competition: env-file-required k8s/clean ## Generates the competition k8s re
 	@mkdir -p $(LOCAL_K8S_RESOURCES)
 	@mkdir -p $(LOCAL_K8S_BASE)
 	@COMPOSE_FILE="$(ROOT_DIR)/compose.yaml $(ROOT_DIR)/kompose_competition_overrides.yaml" kompose convert --profile competition --out $(LOCAL_K8S_BASE)/resources.yaml
-
+	@cp cp_config/cp_config.yaml $(LOCAL_K8S_BASE)/cp_config.yaml
 	@if grep -qr "$(RELEASE_TAG)" $(LOCAL_K8S_BASE); then \
 		echo "RELEASE_TAG $(RELEASE_TAG) was found in $(LOCAL_K8S_BASE)"; \
 	else \
-		echo "var RELEASE_TAG $(RELEASE_TAG) not found in the K8S folder $(LOCAL_K8S_BASE)"; \
-		exit 1; \
+		echo "[+] WARNING: var RELEASE_TAG $(RELEASE_TAG) not found. Specify this tag in compose.yaml  for each of your service container images to be tagged with your release version"; \
+		echo "[+] 	Please make sure to add :\${RELEASE_TAG-v1.0.0} where v1.0.0 is the fallback default to your CRS containers so they automatically update on release"; \
 	fi
 
 k8s/kustomize/competition:

@@ -4,6 +4,7 @@
 
 ## Generated Kubernetes Resources
 sandbox/kustomize/base/resources.yaml
+sandbox/kustomize/base/cp_config.yaml
 .k8s
 
 ## Cloned exemplar repositories

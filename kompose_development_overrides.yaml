@@ -5,6 +5,7 @@
 # Changes the bind mount of ./cp_root to specify Persistent Volume that will be populated at competition time
 services:
   load-cp-images:
+    restart: always
     environment:
       - "ENABLE_HEALTH_ENDPOINT=true"
       - "LOAD_CPS=true"

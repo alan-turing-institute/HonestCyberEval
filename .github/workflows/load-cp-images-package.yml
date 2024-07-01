@@ -47,4 +47,4 @@ jobs:
           context: ./sandbox/load_cp_images
           file: ./sandbox/load_cp_images/Dockerfile
           push: true
-          tags: ghcr.io/aixcc-sc/load-cp-images:v0.0.4
+          tags: ghcr.io/aixcc-sc/load-cp-images:v0.0.5
