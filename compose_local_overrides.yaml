@@ -12,6 +12,8 @@ services:
   #     - "127.0.0.1:2375:2375"
   load-cp-images:
     restart: "no"
+    depends_on:
+      - dind
   crs:
     restart: "no"
     volumes:
@@ -61,6 +63,3 @@ services:
   litellm:
     ports:
       - '127.0.0.1:8081:80'
-  load-cp-images:
-    depends_on:
-      - dind
