@@ -76,7 +76,7 @@ class ChallengeProject:
 
     def _create_dirs(self):
         for p in [self.input_path, self.patch_path]:
-            p.mkdir(parents=True, exist_ok=True),
+            p.mkdir(parents=True, exist_ok=True)
 
     def _set_docker_env(self):
         match self.__config["language"]:
