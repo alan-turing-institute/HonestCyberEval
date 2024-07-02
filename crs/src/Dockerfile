@@ -22,6 +22,7 @@ RUN set -eux; \
         build-essential \
         binutils \
         ca-certificates \
+        clang \
         curl \
         file \
         gnupg2 \
@@ -30,6 +31,8 @@ RUN set -eux; \
         gzip \
         jq \
         libcap2 \
+        libclang-14-dev \
+        llvm-14 \
         ltrace \
         make \
         openssl \
@@ -79,7 +82,6 @@ RUN set -eux; \
 # copy requirements first so changes to code don't invalidate pip install layer
 COPY crs/src/requirements.txt .
 RUN pip3 install -r requirements.txt
-
 
 # Copy your source code
 COPY crs/src .

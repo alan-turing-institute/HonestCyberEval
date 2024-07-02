@@ -3,8 +3,10 @@ from typing import Optional
 from api.cp import ChallengeProject
 from api.data_types import Vulnerability, VulnerabilityWithSha
 from api.llm import LLMmodel
+
 from logger import logger
 from pipeline.langgraph_vuln import run_vuln_langraph, write_harness_input_to_disk
+from pipeline.preprocess_commits import find_diff_between_commits
 
 mock_input_data = r"""abcdefabcdefabcdefabcdefabcdefabcdef
 b
@@ -120,9 +122,45 @@ class VulnDiscovery:
 
         return vulnerabilities_with_sha
 
+    def find_functional_changes(self):
+
+        # get relevant repo
+        repo, ref = self.project.repos[self.cp_source]
+
+        # firstly get all the commits needed:
+        # Iterate over all branches to get all commits
+        all_commits_set = set()
+
+        # Get commits from all branches
+        for commit in repo.iter_commits(ref):
+            all_commits_set.add(commit)
+
+        # Sort commits by date
+        all_commits = sorted(all_commits_set, key=lambda c: c.committed_datetime)
+
+        # then for each commit and compare with it's parent to find the relevant files changed and the functional changes within each file
+        preprocessed_commits = {}
+
+        for commit in all_commits:
+            # print(f"\nCommit Hash: {commit.hexsha}")
+
+            if commit.parents:
+                parent_commit = commit.parents[0]
+                diffs = find_diff_between_commits(parent_commit, commit)
+
+                if diffs:
+                    preprocessed_commits[commit.hexsha] = diffs
+                    # TODO: do we want the commit objects in here too?
+
+        return preprocessed_commits
+
     def run(self, project: ChallengeProject, cp_source: str) -> list[VulnerabilityWithSha]:
         self.project = project
         self.cp_source = cp_source
+
+        # Find functional changes in diffs
+        preprocessed_commits = self.find_functional_changes()
+        logger.debug(f"Preprocessed Commits:\n {preprocessed_commits}\n")
 
         # Detect vulnerabilities using LLMs
         vulnerabilities = self.detect_vulns_in_file("mock_vp.c")
