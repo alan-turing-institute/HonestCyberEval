@@ -7,9 +7,23 @@
 
 ---
 services:
-  # dind:
-  #   ports:
-  #     - "127.0.0.1:2375:2375"
+  dind:
+    #  deploy:
+    #    resources:
+    #      limits:
+    #        cpus: '8'
+    #        memory: 8GB
+    #      reservations:
+    #        cpus: '1'
+    #        memory: 256M
+    #  ports:
+    #    - "127.0.0.1:2375:2375"
+    volumes:
+      - type: bind
+        source: ${PWD}/dind_cache
+        target: /var/lib/docker
+        bind:
+          propagation: rprivate
   load-cp-images:
     restart: "no"
     depends_on:
