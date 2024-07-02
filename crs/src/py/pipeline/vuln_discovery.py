@@ -1,15 +1,10 @@
-import subprocess
-from typing import List, Optional, Literal, NamedTuple
-
-from langchain_core.pydantic_v1 import BaseModel, Field
-from langchain_core.prompts import ChatPromptTemplate
+from typing import Optional
 
 from api.cp import ChallengeProject
 from api.data_types import Vulnerability, VulnerabilityWithSha
-from api.fs import write_file_to_scratch
-from api.llm import create_chat_client, LLMmodel
-
+from api.llm import LLMmodel
 from logger import logger
+from pipeline.langgraph_vuln import run_vuln_langraph, write_harness_input_to_disk
 
 mock_input_data = r"""abcdefabcdefabcdefabcdefabcdefabcdef
 b
@@ -23,46 +18,16 @@ b
 """
 
 
-class HarnessInput(BaseModel):
-    """Input to test harness that triggers vulnerability"""
-    harness_input: str = Field(
-        description="Lines of input terminating with newline, including empty lines"
-    )
-
-
-system_message = """You should generate the input to a program.
-The input will be piped into the program.
-"""
-
-user_message = """Generate an input txt file for the following test harness:
-{harness_text}
-. The harness should exercise the code:
-{code_snippet}
-. The harness should cause the code to trigger a {sanitizer}: {error_code} error.
-"""
-
-harness_input_template = ChatPromptTemplate.from_messages([
-    ("system", system_message),
-    ("user", user_message)
-])
-
-
 class VulnDiscovery:
     project: ChallengeProject
     cp_source: str
 
-    def write_harness_input_to_disk(self, harness_input, i, harness_id, sanitizer_id, model_name: LLMmodel | Literal['mock']):
-        return write_file_to_scratch(
-            self.project.input_path / f"harness_{harness_id}_sanitizer_{sanitizer_id}_{model_name}_{i}.blob",
-            harness_input,
-        )
-
-    def detect_vulns_in_file(self, bad_file: str) -> List[Vulnerability]:
+    def detect_vulns_in_file(self, bad_file: str) -> list[Vulnerability]:
         code_snippet = self.project.open_project_source_file(self.cp_source, bad_file).replace('\n', '')
         vulnerabilities = []
         for harness_id in self.project.harnesses.keys():
             for sanitizer_id in self.project.sanitizers.keys():
-                vuln = self.llm_harness_input(
+                vuln = self.harness_input_langgraph(
                     harness_id,
                     sanitizer_id,
                     code_snippet,
@@ -72,63 +37,31 @@ class VulnDiscovery:
                     vulnerabilities.append(vuln)
         return vulnerabilities
 
-    def llm_harness_input(self, harness_id, sanitizer_id, code_snippet, max_trials=2) -> Optional[Vulnerability]:
-        """
-        This function:
-        1. Reads the harness file
-        2. Asks LLM for an input to the harness
-        3. Runs harness with above input
-        4. Repeat 2-3 until success or max. attempts
-        """
+    def harness_input_langgraph(self, harness_id, sanitizer_id, code_snippet, max_trials=2) -> Optional[Vulnerability]:
         sanitizer, error_code = self.project.sanitizers[sanitizer_id]
-        # step 1: Read the harness file
-        harness_path = self.project.harnesses[harness_id].file_path
-        harness_text = harness_path.read_text().replace('\n', '')
-
-        models: List[LLMmodel] = ["oai-gpt-4o", "claude-3.5-sonnet"]
-
+        models: list[LLMmodel] = ["oai-gpt-4o", "claude-3.5-sonnet"]
         for model_name in models:
-            for i in range(max_trials):
-                # step 2: Ask LLM for an input to the harness
-                logger.info(f"Attempting to trigger sanitizer {sanitizer_id} through the harness {harness_id} using model {model_name}")
-                model = create_chat_client(model_name)
-                chain = (
-                        harness_input_template
-                        | model.with_structured_output(HarnessInput)
-                        | (lambda response: response.harness_input)
-                )
-                harness_input = chain.invoke({
-                    "harness_text": harness_text,
-                    "code_snippet": code_snippet,
-                    "sanitizer": sanitizer,
-                    "error_code": error_code,
-                })
+            output = run_vuln_langraph(
+                model_name=model_name,
+                project=self.project,
+                harness_id=harness_id,
+                sanitizer_id=sanitizer_id,
+                code_snippet=code_snippet,
+                max_iterations=max_trials,
+            )
+            logger.debug(f"LangGraph Message History \n\n {output['messages']}\n\n")
+            if not output["error"]:
+                logger.info(f"Found vulnerability using harness {harness_id}: {sanitizer}: {error_code}")
+                harness_input = output["solution"]
+                harness_input_file = write_harness_input_to_disk(self.project, harness_input, "work", harness_id, sanitizer_id, model_name)
+                return Vulnerability(harness_id, sanitizer_id, harness_input, harness_input_file)
 
-                #  step 3: Run harness with above input
-                harness_input_file = self.write_harness_input_to_disk(harness_input, i, harness_id, sanitizer_id, model_name)
-                try:
-                    has_sanitizer_triggered, stderr = self.project.run_harness_and_check_sanitizer(
-                        harness_input_file,
-                        harness_id,
-                        sanitizer_id,
-                    )
-                    if has_sanitizer_triggered:
-                        logger.info(f"Found vulnerability using harness {harness_id}: {sanitizer}: {error_code}")
-                        return Vulnerability(harness_id, sanitizer_id, harness_input, harness_input_file)
-                    else:
-                        # TODO: give feedback to LLM using stderr?
-                        ...
-
-                except subprocess.TimeoutExpired:
-                    # malformed input
-                    # TODO: ask again?
-                    ...
-
-        # reached max. attempts
+            logger.info(f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id}")
+            logger.debug(f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id} with error: \n {output['error']}")
         logger.warning(f"Failed to trigger sanitizer {sanitizer_id} using {harness_id}!")
         return None
 
-    def identify_bad_commits(self, vulnerabilities: List[Vulnerability]) -> List[VulnerabilityWithSha]:
+    def identify_bad_commits(self, vulnerabilities: list[Vulnerability]) -> list[VulnerabilityWithSha]:
         """
         Given a list of Vulnerabilities, this function:
         1. Gets list of commits and loops over them (latest to earliest)
@@ -187,7 +120,7 @@ class VulnDiscovery:
 
         return vulnerabilities_with_sha
 
-    def run(self, project: ChallengeProject, cp_source: str) -> List[VulnerabilityWithSha]:
+    def run(self, project: ChallengeProject, cp_source: str) -> list[VulnerabilityWithSha]:
         self.project = project
         self.cp_source = cp_source
 
@@ -199,10 +132,10 @@ class VulnDiscovery:
             logger.warning("Not all Mock CP vulnerabilities discovered")
             both = len(vulnerabilities) == 0
             if both or vulnerabilities[0].sanitizer_id == "id_2":
-                mock_input_file = self.write_harness_input_to_disk(mock_input_data, 0, "id_1", "id_1", "mock")
+                mock_input_file = write_harness_input_to_disk(self.project, mock_input_data, 0, "id_1", "id_1", "mock")
                 vulnerabilities.append(Vulnerability("id_1", "id_1", mock_input_data, mock_input_file))
             if both or vulnerabilities[0].sanitizer_id == "id_1":
-                mock_input_file = self.write_harness_input_to_disk(mock_input_data_segv, 0, "id_1", "id_2", "mock")
+                mock_input_file = write_harness_input_to_disk(self.project, mock_input_data_segv, 0, "id_1", "id_2", "mock")
                 vulnerabilities.append(Vulnerability("id_1", "id_2", mock_input_data_segv, mock_input_file))
 
         vulnerabilities_with_sha = self.identify_bad_commits(vulnerabilities)

@@ -3,7 +3,6 @@ import logging.config
 from pathlib import Path
 
 import yaml
-
 from config import AIXCC_CRS_SCRATCH_SPACE
 
 
@@ -51,3 +50,12 @@ def make_logger():
 
 
 logger = make_logger()
+
+
+class PrefixAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        return f"[{self.extra['prefix']}] {msg}", kwargs  # type: ignore
+
+
+def add_prefix_to_logger(logger: logging.Logger, prefix: str):
+    return PrefixAdapter(logger, {"prefix": prefix})

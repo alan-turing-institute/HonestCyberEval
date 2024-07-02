@@ -37,6 +37,7 @@ class ChallengeProject:
         self.path = path
         self.__config = self._read_project_yaml()
         self.name = self.__config["cp_name"]
+        self.language = self.__config["language"].title()
 
         path_common = OUTPUT_PATH / self.path.name
         self.input_path = path_common / "harness_input"
@@ -79,7 +80,7 @@ class ChallengeProject:
             p.mkdir(parents=True, exist_ok=True)
 
     def _set_docker_env(self):
-        match self.__config["language"]:
+        match self.language:
             # `CC` - C compiler binary
             # `CXX` - C++ compiler binary
             # `CCC` - C++ compiler binary
@@ -99,7 +100,7 @@ class ChallengeProject:
             # `CP_HARNESS_EXTRA_LDFLAGS` - Supplemental linker flags for CP harness(es) target (default: empty)
             # `CP_HARNESS_LIBS` - Libraries to be linked for CP harness(es) target (default: CP-specific)
             # `CP_HARNESS_EXTRA_LIBS` - Supplemental libraries to be linked for CP harness(es) target (default: empty)
-            case 'c':
+            case 'C':
                 # TODO: linux kernel uses specific build flags e.g. CONFIG_KFENCE=y, CONFIG_KASAN=y
                 # TODO: more control over C config
                 cflags = set()
@@ -118,7 +119,7 @@ class ChallengeProject:
             # `CP_HARNESS_EXTRA_MAVEN_ARGS` - Supplemental arguments passed to Maven before the CLI for building the CP harness(es) (default: empty)
             # `CP_HARNESS_MAVEN_OPTS` - Parameters passed to JVM running Maven for building the CP harness(es) (default: CP-specific)
             # `CP_HARNESS_EXTRA_MAVEN_OPTS` - Supplemental parameters passed to JVM running Maven for building the CP harness(es) (default: empty)
-            case 'java':
+            case 'Java':
                 # TODO: configure Java compilation
                 pass
 
