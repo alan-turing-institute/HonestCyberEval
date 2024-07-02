@@ -61,7 +61,7 @@ You can run it at any time using `pyright -p crs/src/`
   - `chmod 600 ~/.ssh/id_rsa_aicc`
   - `eval "$(ssh-agent -s)"`
   - `ssh-add ~/.ssh/id_rsa_aicc`
-- Run `sudo sysctl -w vm.mmap_rnd_bits=28` to avoid issues with address randomisation
+- Run `echo "vm.mmap_rnd_bits=28" | sudo tee -a /etc/sysctl.conf` to avoid issues with address randomisation
   (see https://github.com/aixcc-sc/cp-sandbox/pull/28 and linked issues for extra details)
 - Clone the repo by running `git clone git@github.com:aixcc-sc/asc-crs-mindrake.git`
 - `cd` into repo directory and run `mise install` to install dependencies
