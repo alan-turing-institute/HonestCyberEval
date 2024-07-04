@@ -41,7 +41,17 @@ class BaseDiff:
     
     def join_lines(self, lines, indent=''):
         return ("\n" + indent).join(lines)
+    
+    def ast_string(self, ast, string_to_print='', depth=0):
+        indent = '  ' * depth
+        if ast.spelling:
+            string_to_print += f'{indent}Kind: {ast.kind}, Spelling: {ast.spelling}, Location: {ast.location}\n'
+        else:
+            string_to_print += f'{indent}Kind: {ast.kind}, Location: {ast.location}\n'
+        for child in ast.get_children():
+            string_to_print = self.ast_string(child, string_to_print, depth + 1)
 
+        return string_to_print
 
 class FunctionDiff(BaseDiff):
     def __init__(self, function_name, before_lines=None, after_lines=None, diff_lines=None):
@@ -71,7 +81,7 @@ class FileDiff(BaseDiff):
         self.change_type = change_type
         self.before_commit = before_commit
         self.after_commit = after_commit
-        self.filename = filename
+        self.name = filename
         self.before_ast = before_ast
         self.after_ast = after_ast
         self.diff_functions = diff_functions
@@ -81,7 +91,7 @@ class FileDiff(BaseDiff):
 
     def print_full(self, indent='\t'):
         string_to_print = f"{indent}Change type: {self.change_type}"
-        string_to_print += f"{indent}Filename: {self.filename}"
+        string_to_print += f"{indent}Filename: {self.name}"
         string_to_print += f"{indent}Function Diffs:"
         for function_diff in self.diff_functions:
             string_to_print += str(self.diff_functions[function_diff])
@@ -97,7 +107,7 @@ class FileDiff(BaseDiff):
         return string_to_print
 
     def build_full_string(self, indent):
-        string_to_print = f'{indent}File {self.filename}:\n'
+        string_to_print = f'{indent}File {self.name}:\n'
         indent += '\t'
         string_to_print += f'{indent}Change Type: {self.change_type}\n'
         string_to_print += f'{indent}Diff:\n'
@@ -106,19 +116,15 @@ class FileDiff(BaseDiff):
         string_to_print += f'{indent}\tCode:\n'
         indent_plus = indent + "\t"
         string_to_print += f'{indent}\t{self.join_lines(self.before_lines, indent_plus)}\n\n'
-        # string_to_print += f'{indent}\AST:\n'
-        # string_to_print += f'{indent}\t{self.ast_string(self.before_ast)}\n\n'        
+        string_to_print += f'{indent}\AST:\n'
+        string_to_print += f'{indent}\t{self.ast_string(self.before_ast)}\n\n'        
         string_to_print += f'{indent}After this commit:\n'
         string_to_print += f'{indent}\tCode:\n'
         string_to_print += f'{indent}\t{self.join_lines(self.after_lines, indent_plus)}\n\n'
-        # string_to_print += f'{indent}\AST:\n'
-        # string_to_print += f'{indent}\t{self.ast_string(self.after_ast)}\n\n'     
+        string_to_print += f'{indent}\AST:\n'
+        string_to_print += f'{indent}\t{self.ast_string(self.after_ast)}\n\n'     
 
         return string_to_print
-
-    # def find_diff(self):
-
-
 
 
 # TODO: set up the cleaned commits as a class so that it can have the C/Java swap stuff more easily maybe?
@@ -136,23 +142,6 @@ def build_regex_pattern_from_list(pattern_list):
             regex_pattern += r')'
         
     return regex_pattern
-
-def print_ast(cursor, depth=0):
-    indent = '  ' * depth
-    print(f'{indent}Kind: {cursor.kind}, Spelling: {cursor.spelling}, Location: {cursor.location}')
-    if 'printf' in cursor.spelling:
-        info = {'Location': cursor.location,
-            'Extent Start': cursor.extent.start,
-            'Extent End': cursor.extent.end,
-            'semantic_parent': cursor.semantic_parent,
-            'Linkage': cursor.linkage,
-            'Storage Class': cursor.storage_class,
-            'Access Specifier': cursor.access_specifier,
-            'USR': cursor.get_usr(),
-            'Mangling': cursor.mangled_name}
-        print(info)
-    for child in cursor.get_children():
-        print_ast(child, depth + 1)
 
 # def abstract_code(code_snippet, ast, filename):
 #     types = {VAR_TYPE: getattr(clang.cindex.CursorKind, 'VAR_DECL', None), 
@@ -401,12 +390,12 @@ def get_function_diffs(before, after):
 
                     diff_functions[function_name] = FunctionDiff(function_name, before_lines=before[function_name], after_lines=after[function_name], diff_lines=diff)
             else:
-                diff = difflib.unified_diff(before[function_name], after[function_name], lineterm='') #[f"-{line}" for line in before[function_name]]
+                diff = make_diff(before[function_name], after[function_name]) #[f"-{line}" for line in before[function_name]]
                 diff_functions[function_name] = FunctionDiff(function_name, before_lines=before[function_name], diff_lines=diff)
 
     if after_functions is not None:
         for function_name in after_functions:
-            diff = difflib.unified_diff(before[function_name], after[function_name], lineterm='') #[f"+{line}" for line in after[function_name]]
+            diff = make_diff(before[function_name], after[function_name]) #[f"+{line}" for line in after[function_name]]
             diff_functions[function_name] = FunctionDiff(function_name, after_lines=after[function_name], diff_lines=diff)
 
     return diff_functions
@@ -415,9 +404,9 @@ def get_full_function_snippets(full_file, functions):
 
     open_code_block_pattern = r'{'
     close_code_block_pattern = r'}'
-    lines = full_file
+    lines = copy.deepcopy(full_file)
 
-    if len(lines) == 0:
+    if not isinstance(lines, list):
         # should already be split into lines by the time it gets here?
         lines = clean_up_snippet(lines)
 
@@ -425,10 +414,9 @@ def get_full_function_snippets(full_file, functions):
     file_code = []
 
     while lines:
-
         function_name_mentioned = None
         for function_name in functions:
-            function_name_pattern = r'\b' + function_name + '\\b'
+            function_name_pattern = r'\b' + function_name + r'\b'
             if re.search(function_name_pattern, lines[0]):
                 function_name_mentioned = function_name
                 break
@@ -464,6 +452,7 @@ def get_full_function_snippets(full_file, functions):
 def get_variable_snippets(full_snippet, variable_name):
 
     variable_refs = []
+    full_snippet = copy.deepcopy(full_snippet)
 
     for line in full_snippet:
         if variable_name in line:
