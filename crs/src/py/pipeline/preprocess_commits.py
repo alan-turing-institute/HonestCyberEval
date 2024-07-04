@@ -30,20 +30,19 @@ class BaseDiff:
         self.diff_lines = diff_lines
 
     def print(self, info, lines):
-        print(f'Function {self.name} {info}:')
-        print('\n'.join(lines))
+        string_to_print = f'{type(self)} - {self.name} - {info}:\n'
+        string_to_print += '\n'.join(lines)
+
+        return string_to_print
 
     def print_before(self):
-        self.print('Before', self.before_lines)
-        return
+        return self.print('Before', self.before_lines)
 
     def print_after(self):
-        self.print('After', self.after_lines)
-        return
+        return self.print('After', self.after_lines)
 
     def print_diff(self):
-        self.print('Diff', self.diff_lines)
-        return
+        return self.print('Diff', self.diff_lines)
     
     def join_lines(self, lines, indent=''):
         return ("\n" + indent).join(lines)
