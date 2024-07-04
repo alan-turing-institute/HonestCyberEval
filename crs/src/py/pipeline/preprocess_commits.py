@@ -1,6 +1,9 @@
 import re
 import copy
 import clang.cindex
+import difflib
+
+from logger import logger
 
 # Set the path to the libclang shared library
 clang.cindex.Config.set_library_file('/usr/lib/x86_64-linux-gnu/libclang-14.so')
@@ -19,19 +22,52 @@ FUNCTION_TYPE = "function"
 VAR_TYPE = "variables"
 TYPES = {VAR_TYPE: getattr(clang.cindex.CursorKind, 'VAR_DECL', None), FUNCTION_TYPE: getattr(clang.cindex.CursorKind, 'FUNCTION_DECL', None)}
 
-class FunctionDiffs:
-    def __init__(self, before_lines=None, after_lines=None, diff_lines=None):
+class BaseDiff:
+    def print(self, info, lines):
+        print(f'Function {self.name} {info}:')
+        print('\n'.join(lines))
+
+    def print_before(self):
+        self.print('Before', self.before_lines)
+        return
+
+    def print_after(self):
+        self.print('After', self.after_lines)
+        return
+
+    def print_diff(self):
+        self.print('Diff', self.diff_lines)
+        return
+    
+    def join_lines(self, lines, indent=''):
+        return ("\n" + indent).join(lines)
+
+
+class FunctionDiff(BaseDiff):
+    def __init__(self, function_name, before_lines=None, after_lines=None, diff_lines=None):
+        self.name = function_name
         self.before_lines = before_lines
         self.after_lines = after_lines
         self.diff_lines = diff_lines
 
-    def print(self):
-        print(f"\t\tbefore: {self.before_lines}")
-        print(f"\t\tafter: {self.after_lines}")
-        print(f"\t\tdiff: {self.diff_lines}")
+    def __str__(self):
+        return self.build_full_string(indent='')
+    
+    def build_full_string(self, indent):
+        string_to_print = f'{indent}Function {self.name}:\n'
+        indent += '\t'
+        string_to_print += f'{indent}Diff:\n'
+        string_to_print += f'{indent}{self.join_lines(self.diff_lines, indent)}\n\n'
+        string_to_print += f'{indent}Before this commit:\n'
+        string_to_print += f'{indent}{self.join_lines(self.before_lines, indent)}\n\n'
+        string_to_print += f'{indent}After this commit:\n'
+        string_to_print += f'{indent}{self.join_lines(self.after_lines, indent)}\n\n'
 
-class FileDiff:
-    def __init__(self, change_type, before_commit, after_commit, filename, before_ast, after_ast, diff_functions, before_lines, after_lines):
+        return string_to_print
+
+
+class FileDiff(BaseDiff):
+    def __init__(self, change_type, before_commit, after_commit, filename, before_ast, after_ast, diff_functions, before_lines, after_lines, diff_lines):
         self.change_type = change_type
         self.before_commit = before_commit
         self.after_commit = after_commit
@@ -41,13 +77,49 @@ class FileDiff:
         self.diff_functions = diff_functions
         self.before_lines = before_lines
         self.after_lines = after_lines
+        self.diff_lines = diff_lines
 
-    def print(self):
-        print(f"\tchange type: {self.change_type}")
-        print(f"\tfilename: {self.filename}")
-        print(f"\tfunction diffs:")
+    def print_full(self, indent='\t'):
+        string_to_print = f"{indent}Change type: {self.change_type}"
+        string_to_print += f"{indent}Filename: {self.filename}"
+        string_to_print += f"{indent}Function Diffs:"
         for function_diff in self.diff_functions:
-            self.diff_functions[function_diff].print()
+            string_to_print += str(self.diff_functions[function_diff])
+
+        return string_to_print
+
+    def __str__(self):
+        string_to_print = self.build_full_string('')
+
+        for function_diff in self.diff_functions:
+            string_to_print += self.diff_functions[function_diff].build_full_string('\t\t')
+
+        return string_to_print
+
+    def build_full_string(self, indent):
+        string_to_print = f'{indent}File {self.filename}:\n'
+        indent += '\t'
+        string_to_print += f'{indent}Change Type: {self.change_type}\n'
+        string_to_print += f'{indent}Diff:\n'
+        string_to_print += f'{indent}{self.join_lines(self.diff_lines, indent)}\n\n'
+        string_to_print += f'{indent}Before this commit:\n'
+        string_to_print += f'{indent}\tCode:\n'
+        indent_plus = indent + "\t"
+        string_to_print += f'{indent}\t{self.join_lines(self.before_lines, indent_plus)}\n\n'
+        # string_to_print += f'{indent}\AST:\n'
+        # string_to_print += f'{indent}\t{self.ast_string(self.before_ast)}\n\n'        
+        string_to_print += f'{indent}After this commit:\n'
+        string_to_print += f'{indent}\tCode:\n'
+        string_to_print += f'{indent}\t{self.join_lines(self.after_lines, indent_plus)}\n\n'
+        # string_to_print += f'{indent}\AST:\n'
+        # string_to_print += f'{indent}\t{self.ast_string(self.after_ast)}\n\n'     
+
+        return string_to_print
+
+    # def find_diff(self):
+
+
+
 
 # TODO: set up the cleaned commits as a class so that it can have the C/Java swap stuff more easily maybe?
 # TODO: set up a refactoring check using the asts maybe? if code is 'x = a + b; y = x + z;' -> 'y = a + b + z;' kind of check?
@@ -59,9 +131,9 @@ def build_regex_pattern_from_list(pattern_list):
     for i, pattern_item in enumerate(pattern_list):
         regex_pattern += pattern_item
         if i < (len(pattern_list) - 1):
-            regex_pattern += '|'
+            regex_pattern += r'|'
         else:
-            regex_pattern += ')'
+            regex_pattern += r')'
         
     return regex_pattern
 
@@ -215,7 +287,7 @@ def find_diff_between_commits(before_commit, after_commit):
     files_checked = []
 
     for diff in diffs:
-        # print(f"\nDiff for file: {diff.b_path}")
+        logger.debug(f"\nDiff for file: {diff.b_path}")
 
         filename = diff.b_path
 
@@ -224,9 +296,12 @@ def find_diff_between_commits(before_commit, after_commit):
             if not (".c" in filename or ".h" in filename):
                 continue
         else:
-            # print(f"diff b_path is none: {diff}")
-            continue
-
+            if diff.a_path is None:
+                continue
+            else:
+                filename = diff.a_path
+                logger.debug(f"diff b_path is none, diff a_path is: {filename}, file deleted.")
+        
         change_type = FUNCTIONAL_CHANGE
 
         before_file = None
@@ -282,16 +357,16 @@ def find_diff_between_commits(before_commit, after_commit):
             diff_functions = new_diff_functions
 
         if diff_functions:
-            filename_diffs[filename] = FileDiff(change_type, before_commit, after_commit, filename, before_file_ast, after_file_ast, diff_functions, before_file_lines, after_file_lines)
+            full_file_diff_lines = make_diff(before_file_lines, after_file_lines)
+            filename_diffs[filename] = FileDiff(change_type, before_commit, after_commit, filename, before_file_ast, after_file_ast, diff_functions, before_file_lines, after_file_lines, full_file_diff_lines)
 
-    # TODO: check if I even need this bit? Was to catch file added things but think they might be caught already?
-    # diffs = after_commit.diff(before_commit)
-
-    # for diff in diffs:
-    #     if diff.b_path is not None and diff.b_path not in files_checked:
-    #         print(diff.b_path)
+            logger.debug(f'FileDiffs print for {filename}:')
+            logger.debug(str(filename_diffs[filename]))
 
     return filename_diffs
+
+def make_diff(before, after):
+    return list(difflib.unified_diff(before, after, lineterm=''))
 
 def get_function_diffs(before, after):
 
@@ -314,24 +389,25 @@ def get_function_diffs(before, after):
 
                 if not functions_same:
                     # diff in these functions so make the diff
-                    diff = []
-                    for line in before[function_name]:
-                        if line not in after[function_name]:
-                            diff.append(f"-{line}")
+                    diff = make_diff(before[function_name], after[function_name])
 
-                    for line in after[function_name]:
-                        if line not in before[function_name]:
-                            diff.append(f"+{line}")
+                    # for line in before[function_name]:
+                    #     if line not in after[function_name]:
+                    #         diff.append(f"-{line}")
 
-                    diff_functions[function_name] = FunctionDiffs(before_lines=before[function_name], after_lines=after[function_name], diff_lines=diff)
+                    # for line in after[function_name]:
+                    #     if line not in before[function_name]:
+                    #         diff.append(f"+{line}")
+
+                    diff_functions[function_name] = FunctionDiff(function_name, before_lines=before[function_name], after_lines=after[function_name], diff_lines=diff)
             else:
-                diff = [f"-{line}" for line in before[function_name]]
-                diff_functions[function_name] = FunctionDiffs(before_lines=before[function_name], diff_lines=diff)
+                diff = difflib.unified_diff(before[function_name], after[function_name], lineterm='') #[f"-{line}" for line in before[function_name]]
+                diff_functions[function_name] = FunctionDiff(function_name, before_lines=before[function_name], diff_lines=diff)
 
     if after_functions is not None:
         for function_name in after_functions:
-            diff = [f"+{line}" for line in after[function_name]]
-            diff_functions[function_name] = FunctionDiffs(after_lines=after[function_name], diff_lines=diff)
+            diff = difflib.unified_diff(before[function_name], after[function_name], lineterm='') #[f"+{line}" for line in after[function_name]]
+            diff_functions[function_name] = FunctionDiff(function_name, after_lines=after[function_name], diff_lines=diff)
 
     return diff_functions
 
@@ -670,17 +746,24 @@ int main(int argc, char **argv)
 }
 '''
 
-ast = parse_snippet(code, "test.c")
+# code_lines = clean_up_snippet(code)
+# ast = parse_snippet(code, "test.c")
 
-# types = {VAR_TYPE: clang.cindex.CursorKind.VAR_DECL, FUNCTION_TYPE: clang.cindex.CursorKind.FUNCTION_DECL}
 
-nodes = search_ast_for_node_types(ast, TYPES, "test.c")
+# # types = {VAR_TYPE: clang.cindex.CursorKind.VAR_DECL, FUNCTION_TYPE: clang.cindex.CursorKind.FUNCTION_DECL}
 
-code_lines = clean_up_snippet(code)
+# # after_nodes = search_ast_for_node_types(after_file_ast, TYPES, filename)
+# # after_function_lines = get_full_function_snippets(after_file_lines, after_nodes[FUNCTION_TYPE][FILE_LOCAL])
 
-functions = get_full_function_snippets(code_lines, nodes[FUNCTION_TYPE][FILE_LOCAL])
 
-# print_ast(nodes[FUNCTION_TYPE][FILE_LOCAL]['protect'])
-print(functions['protect'])
+# nodes = search_ast_for_node_types(ast, TYPES, "test.c")
+
+# code_lines = clean_up_snippet(code)
+
+# functions = get_full_function_snippets(code_lines, nodes[FUNCTION_TYPE][FILE_LOCAL])
+
+# # print_ast(nodes[FUNCTION_TYPE][FILE_LOCAL]['protect'])
+# print(functions['protect'])
+
 
 # variables = get_function_variables(functions["func_a"], nodes[VAR_TYPE])
