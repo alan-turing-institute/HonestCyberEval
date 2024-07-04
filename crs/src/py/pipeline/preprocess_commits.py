@@ -31,7 +31,7 @@ class FunctionDiffs:
         print(f"\t\tdiff: {self.diff_lines}")
 
 class FileDiff:
-    def __init__(self, change_type, before_commit, after_commit, filename, before_ast, after_ast, diff_functions):
+    def __init__(self, change_type, before_commit, after_commit, filename, before_ast, after_ast, diff_functions, before_lines, after_lines):
         self.change_type = change_type
         self.before_commit = before_commit
         self.after_commit = after_commit
@@ -39,6 +39,8 @@ class FileDiff:
         self.before_ast = before_ast
         self.after_ast = after_ast
         self.diff_functions = diff_functions
+        self.before_lines = before_lines
+        self.after_lines = after_lines
 
     def print(self):
         print(f"\tchange type: {self.change_type}")
@@ -50,6 +52,61 @@ class FileDiff:
 # TODO: set up the cleaned commits as a class so that it can have the C/Java swap stuff more easily maybe?
 # TODO: set up a refactoring check using the asts maybe? if code is 'x = a + b; y = x + z;' -> 'y = a + b + z;' kind of check?
 # TODO: set up using Java
+
+def build_regex_pattern_from_list(pattern_list):
+    regex_pattern = r'('
+
+    for i, pattern_item in enumerate(pattern_list):
+        regex_pattern += pattern_item
+        if i < (len(pattern_list) - 1):
+            regex_pattern += '|'
+        else:
+            regex_pattern += ')'
+        
+    return regex_pattern
+
+def print_ast(cursor, depth=0):
+    indent = '  ' * depth
+    print(f'{indent}Kind: {cursor.kind}, Spelling: {cursor.spelling}, Location: {cursor.location}')
+    if 'printf' in cursor.spelling:
+        info = {'Location': cursor.location,
+            'Extent Start': cursor.extent.start,
+            'Extent End': cursor.extent.end,
+            'semantic_parent': cursor.semantic_parent,
+            'Linkage': cursor.linkage,
+            'Storage Class': cursor.storage_class,
+            'Access Specifier': cursor.access_specifier,
+            'USR': cursor.get_usr(),
+            'Mangling': cursor.mangled_name}
+        print(info)
+    for child in cursor.get_children():
+        print_ast(child, depth + 1)
+
+# def abstract_code(code_snippet, ast, filename):
+#     types = {VAR_TYPE: getattr(clang.cindex.CursorKind, 'VAR_DECL', None), 
+#              FUNCTION_TYPE: getattr(clang.cindex.CursorKind, 'FUNCTION_DECL', None),
+#              'CUSTOM_TYPES': getattr(clang.cindex.CursorKind, '')}
+# STRING_LITERAL, INTEGER_LITERAL
+#     nodes = search_ast_for_node_types(ast, TYPES, filename)
+#     custom_variables_pattern = build_regex_pattern_from_list(nodes[VAR_TYPE][FILE_LOCAL])
+#     imported_variables_pattern = build_regex_pattern_from_list(nodes[VAR_TYPE][IMPORTED])
+#     custom_functions_pattern = build_regex_pattern_from_list(nodes[FUNCTION_TYPE][FILE_LOCAL])
+#     imported_functions_pattern = build_regex_pattern_from_list(nodes[FUNCTION_TYPE][IMPORTED])
+#     custom_type_pattern = build_regex_pattern_from_list(nodes[FUNCTION_TYPE][IMPORTED])
+#     numbers_pattern = r'\b[0-9]\b'
+
+#     for i, line in enumerate(code_snippet):
+
+#         # replace custom variables
+#         code_snippet[i] = re.sub(custom_variables_pattern, 'LOCAL_VARIABLE', line)
+#         # replace imported variables
+#         code_snippet[i] = re.sub(imported_variables_pattern, 'IMPORTED_VARIABLE', line)
+#         # replace custom functions
+#         code_snippet[i] = re.sub(custom_functions_pattern, 'CUS_FUNC', line)
+#         # replace imported functions
+#         code_snippet[i] = re.sub(imported_functions_pattern, 'IMPORTED_FUNC', line)
+#         # replace numbers??
+#         code_snippet[i] = re.sub(numbers_pattern, 'NUM', line)
 
 def is_node_local(cursor, filename):
     # check if the node passed in is defined in this file or elsewhere
@@ -102,6 +159,10 @@ def _search_ast_for_node_type(node, types, nodes, filename):
     return nodes
 
 def clean_up_snippet(snippet):
+
+    if isinstance(snippet, list):
+        # should be just a string to begin with in here, but can make it into a single string?
+        snippet = "\n".join(snippet)
 
     function_def_pattern = r'\)\s*{'
     new_function_def = "){"
@@ -221,7 +282,7 @@ def find_diff_between_commits(before_commit, after_commit):
             diff_functions = new_diff_functions
 
         if diff_functions:
-            filename_diffs[filename] = FileDiff(change_type, before_commit, after_commit, filename, before_file_ast, after_file_ast, diff_functions)
+            filename_diffs[filename] = FileDiff(change_type, before_commit, after_commit, filename, before_file_ast, after_file_ast, diff_functions, before_file_lines, after_file_lines)
 
     # TODO: check if I even need this bit? Was to catch file added things but think they might be caught already?
     # diffs = after_commit.diff(before_commit)
@@ -278,7 +339,11 @@ def get_full_function_snippets(full_file, functions):
 
     open_code_block_pattern = r'{'
     close_code_block_pattern = r'}'
-    lines = full_file#.splitlines()
+    lines = full_file
+
+    if len(lines) == 0:
+        # should already be split into lines by the time it gets here?
+        lines = clean_up_snippet(lines)
 
     functions_code = {}
     file_code = []
@@ -287,7 +352,8 @@ def get_full_function_snippets(full_file, functions):
 
         function_name_mentioned = None
         for function_name in functions:
-            if function_name in lines[0]:
+            function_name_pattern = r'\b' + function_name + '\\b'
+            if re.search(function_name_pattern, lines[0]):
                 function_name_mentioned = function_name
                 break
 
@@ -428,61 +494,193 @@ def is_diff_functional(function_before_code, function_after_code, before_variabl
 
 # test code below -> leaving for now so that I can use again when setting up the Java stuff
 # C code string
-# code = '''
-# #include <stdio.h>
-# #include <string.h>
-# #include <unistd.h>
+code = '''
+// SPDX-License-Identifier: GPL-2.0-only
+/* Disk protection for HP/DELL machines.
+ *
+ * Copyright 2008 Eric Piel
+ * Copyright 2009 Pavel Machek <pavel@ucw.cz>
+ * Copyright 2012 Sonal Santan
+ * Copyright 2014 Pali Rohár <pali@kernel.org>
+ */
 
-# char items[3][10];
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <string.h>
+#include <stdint.h>
+#include <errno.h>
+#include <signal.h>
+#include <sys/mman.h>
+#include <sched.h>
+#include <syslog.h>
 
-# void func_a(){
-#     char* buff;
-#     int i = 0;
-#     do{
-#         printf("input item:");
-#         buff = &items[i][0];
-#         i++;
-#         fgets(buff, 40, stdin);
-#         buff[strcspn(buff, "\\n")] = 0;
-#     }while(strlen(buff)!=0);
-#     i--;
-# }
-# void func_b(){
-#     char *buff;
-#     printf("done adding items\\n");
-#     int j;
-#     printf("display item #:");
-#     scanf("%d", &j);
-#     buff = &items[j][0];
-#     printf("item %d: %s\\n", j, buff);
-# }
+static int noled;
+static char unload_heads_path[64];
+static char device_path[32];
+static const char app_name[] = "FREE FALL";
 
-# #ifndef ___TEST___
-# int main()
-# {
+static int set_unload_heads_path(char *device)
+{
+	if (strlen(device) <= 5 || strncmp(device, "/dev/", 5) != 0)
+		return -EINVAL;
+	strncpy(device_path, device, sizeof(device_path) - 1);
 
-#     func_a();
+	snprintf(unload_heads_path, sizeof(unload_heads_path) - 1,
+				"/sys/block/%s/device/unload_heads", device+5);
+	return 0;
+}
 
-#     func_b();
+static int valid_disk(void)
+{
+	int fd = open(unload_heads_path, O_RDONLY);
 
+	if (fd < 0) {
+		perror(unload_heads_path);
+		return 0;
+	}
 
-#     return 0;
-# }
-# #endif
-# '''
+	close(fd);
+	return 1;
+}
 
-# ast = parse_snippet(code, "test.c")
+static void write_int(char *path, int i)
+{
+	char buf[1024];
+	int fd = open(path, O_RDWR);
+
+	if (fd < 0) {
+		perror("open");
+		exit(1);
+	}
+
+	sprintf(buf, "%d", i);
+
+	if (write(fd, buf, strlen(buf)) != strlen(buf)) {
+		perror("write");
+		exit(1);
+	}
+
+	close(fd);
+}
+
+static void set_led(int on)
+{
+	if (noled)
+		return;
+	write_int("/sys/class/leds/hp::hddprotect/brightness", on);
+}
+
+static void protect(int seconds)
+{
+	const char *str = (seconds == 0) ? "Unparked" : "Parked";
+
+	write_int(unload_heads_path, seconds*1000);
+	syslog(LOG_INFO, "%s %s disk head\n", str, device_path);
+}
+
+static int on_ac(void)
+{
+	/* /sys/class/power_supply/AC0/online */
+	return 1;
+}
+
+static int lid_open(void)
+{
+	/* /proc/acpi/button/lid/LID/state */
+	return 1;
+}
+
+static void ignore_me(int signum)
+{
+	protect(0);
+	set_led(0);
+}
+
+int main(int argc, char **argv)
+{
+	int fd, ret;
+	struct stat st;
+	struct sched_param param;
+
+	if (argc == 1)
+		ret = set_unload_heads_path("/dev/sda");
+	else if (argc == 2)
+		ret = set_unload_heads_path(argv[1]);
+	else
+		ret = -EINVAL;
+
+	if (ret || !valid_disk()) {
+		fprintf(stderr, "usage: %s <device> (default: /dev/sda)\n",
+				argv[0]);
+		exit(1);
+	}
+
+	fd = open("/dev/freefall", O_RDONLY);
+	if (fd < 0) {
+		perror("/dev/freefall");
+		return EXIT_FAILURE;
+	}
+
+	if (stat("/sys/class/leds/hp::hddprotect/brightness", &st))
+		noled = 1;
+
+	if (daemon(0, 0) != 0) {
+		perror("daemon");
+		return EXIT_FAILURE;
+	}
+
+	openlog(app_name, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
+
+	param.sched_priority = sched_get_priority_max(SCHED_FIFO);
+	sched_setscheduler(0, SCHED_FIFO, &param);
+	mlockall(MCL_CURRENT|MCL_FUTURE);
+
+	signal(SIGALRM, ignore_me);
+
+	for (;;) {
+		unsigned char count;
+
+		ret = read(fd, &count, sizeof(count));
+		alarm(0);
+		if ((ret == -1) && (errno == EINTR)) {
+			/* Alarm expired, time to unpark the heads */
+			continue;
+		}
+
+		if (ret != sizeof(count)) {
+			perror("read");
+			break;
+		}
+
+		protect(21);
+		set_led(1);
+		if (1 || on_ac() || lid_open())
+			alarm(2);
+		else
+			alarm(20);
+	}
+
+	closelog();
+	close(fd);
+	return EXIT_SUCCESS;
+}
+'''
+
+ast = parse_snippet(code, "test.c")
 
 # types = {VAR_TYPE: clang.cindex.CursorKind.VAR_DECL, FUNCTION_TYPE: clang.cindex.CursorKind.FUNCTION_DECL}
 
-# nodes = search_ast_for_node_types(ast.cursor, types, "test.c")
+nodes = search_ast_for_node_types(ast, TYPES, "test.c")
 
-# functions = get_full_function_snippets(code.splitlines(), nodes[FUNCTION_TYPE][FILE_LOCAL])
+code_lines = clean_up_snippet(code)
+
+functions = get_full_function_snippets(code_lines, nodes[FUNCTION_TYPE][FILE_LOCAL])
+
+# print_ast(nodes[FUNCTION_TYPE][FILE_LOCAL]['protect'])
+print(functions['protect'])
 
 # variables = get_function_variables(functions["func_a"], nodes[VAR_TYPE])
-
-# print(functions["func_a"])
-# print(variables)
-
-# print(functions["main"])
-# print(functions["func_b"])
