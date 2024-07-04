@@ -79,13 +79,14 @@ class FunctionDiff(BaseDiff):
 
 
 class FileDiff(BaseDiff):
-    def __init__(self, change_type, before_commit, after_commit, filename, before_ast, after_ast, diff_functions, before_lines, after_lines, diff_lines):
+    def __init__(self, change_type, before_commit, after_commit, filename, before_ast, after_ast, diff_functions, before_lines, after_lines, diff_lines, og_diff):
         self.change_type = change_type
         self.before_commit = before_commit
         self.after_commit = after_commit
         self.before_ast = before_ast
         self.after_ast = after_ast
         self.diff_functions = diff_functions
+        self.og_diff = og_diff
 
         super().__init__(filename, before_lines, after_lines, diff_lines)
 
@@ -260,7 +261,7 @@ def clean_up_snippet(snippet):
 def find_diff_between_commits(before_commit, after_commit):
 
     # find the diffs:
-    diffs = before_commit.diff(after_commit)
+    diffs = before_commit.diff(after_commit, create_patch=True)
     filename_diffs = {}
 
     files_checked = []
@@ -339,7 +340,8 @@ def find_diff_between_commits(before_commit, after_commit):
 
         if diff_functions:
             full_file_diff_lines = make_diff(before_file_lines, after_file_lines)
-            filename_diffs[filename] = FileDiff(change_type, before_commit, after_commit, filename, before_file_ast, after_file_ast, diff_functions, before_file_lines, after_file_lines, full_file_diff_lines)
+            og_diff = diff.diff.decode('utf-8')
+            filename_diffs[filename] = FileDiff(change_type, before_commit, after_commit, filename, before_file_ast, after_file_ast, diff_functions, before_file_lines, after_file_lines, full_file_diff_lines, og_diff)
 
             logger.debug(f'FileDiffs print for {filename}:')
             logger.debug(str(filename_diffs[filename]))
