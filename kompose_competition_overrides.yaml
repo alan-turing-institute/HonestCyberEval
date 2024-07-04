@@ -26,7 +26,7 @@ services:
       kompose.init.containers.name: wait-for-cp-load
       kompose.volume.type: persistentVolumeClaim
       kompose.volume.size: 1Ti
-      kompose.volume.storage-class-name: azurefile-csi-premium
+      kompose.volume.storage-class-name: rook-cephfs
     volumes:
       - cp_root:/cp_root
       - crs_scratch:/crs_scratch
@@ -54,7 +54,7 @@ services:
     labels:
       kompose.volume.type: persistentVolumeClaim
       kompose.volume.size: 1Ti
-      kompose.volume.storage-class-name: azurefile-csi-premium
+      kompose.volume.storage-class-name: rook-cephfs
     volumes:
       - crs_scratch:/crs_scratch
     command: ["dockerd", "-H", "tcp://0.0.0.0:2375", "--tls=false"]

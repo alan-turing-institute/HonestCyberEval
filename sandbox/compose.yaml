@@ -4,7 +4,7 @@
 ---
 services:
   load-cp-images:
-    image: ghcr.io/aixcc-sc/load-cp-images:v0.0.5
+    image: ghcr.io/aixcc-sc/load-cp-images:v0.0.9
     expose:
       - "8080"
     build:
@@ -183,7 +183,7 @@ services:
       - source: capi_db_setup
         target: /docker-entrypoint-initdb.d/capi-db-setup.sh
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready", "-d", "capi"]
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
       interval: 10s
       timeout: 3s
       retries: 15
@@ -197,7 +197,7 @@ services:
       - mock-crs
       - development
       - loadtest
-    image: ghcr.io/berriai/litellm-database:main-v1.37.19-stable
+    image: ghcr.io/berriai/litellm-database:main-v1.41.2-stable
     restart: always
     configs:
       - source: litellm_config

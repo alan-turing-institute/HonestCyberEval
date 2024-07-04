@@ -39,6 +39,7 @@ Failure to do so will prevent a team's CRS from moving forward to Phase 2.
 During Phase 1, teams must use their own secret keys and tokens to access collaborator resources
 (LLM APIs) and authenticate against GitHub.
 
+
 #### Interpreting Results in GitHub Actions
 
 The job that evaluates the CRS's performance is part of the [CRS Evaluator](https://github.com/aixcc-sc/crs-sandbox/actions/workflows/evaluator.yml) and is called `run-validate-crs-submissions`.
@@ -47,6 +48,10 @@ It runs the CRS as defined in the [./compose.yaml](./compose.yaml) and evaluates
 Check the output of the validation steps, CRS submission log step, and CRS logs step for introspection into what happened.
 
 ![GitHub Actions output showing a CRS submitting a working VD and a failing GP](./.static/crs-logs-example.png)
+
+
+<https://github.com/aixcc-sc/crs-sandbox/assets/165228747/f758d4cf-c597-41f3-b2c8-986250e954e3>
+
 
 ### Phase 2 - Automated Execution of your CRS
 
@@ -96,6 +101,10 @@ order to facilitate rapid CRS testing.  We may turn rejection back on towards th
 
 By modifying [cp_config/cp_config.yaml](./cp_config/cp_config.yaml), competitors can change the CPs
 presented to their CRS during phase 2.
+
+
+<https://github.com/aixcc-sc/crs-sandbox/assets/165228747/771850a7-7019-4199-aa3f-c705bcffe37d>
+
 
 ## Code Owners
 
@@ -244,16 +253,23 @@ this is Google's LLM credential, which should be stored in `VERTEX_KEY_JSON`.
 
 Note: OpenAI Embedding models have not currently been released in more than a single version, thus pinned/name strings are identical.
 
-All OpenAI models will also be matched by an Azure-hosted version. Competitors will be able to freely request the
-model they like by the Model name in chart above, plus a prefix "oai-" or "azure-".
+Some OpenAI models will also be matched by an Azure-hosted version:
+| Provider | Model                  | Pinned Version         | Requests per Minute (RPM) | Tokens per Minute (TPM) |
+| -------- | ---------------------- | ---------------------- | ------------------------- | ----------------------- |
+| Azure    | gpt-3.5-turbo          | gpt-3.5-turbo-0613     | 100                       | 80,000                  |
+| Azure    | gpt-4o                 | gpt-4o-2024-05-13      | 100                       | 300,000                 |
+| Azure    | text-embedding-3-large | text-embedding-3-large | 100                       | 120,000                 |
+| Azure    | text-embedding-3-small | text-embedding-3-small | 100                       | 120,000                 |
+
+Competitors will be able to freely request the model they like by the Model name in chart above, plus a prefix "oai-" or "azure-".
 Ex. "oai-gpt-4o".
 This was done because of performance differences between the models as hosted on OAI vs Azure infrastructure.
 The models themselves are guaranteed to be identical but no such promises can be made as regards supporting provider infrastrcture.
 
 Note: OAI Embedding models have not currently been released in more than a single version.
 
-These are utilized by hitting the LiteLLM /chat/completions endpoint, specifying model and message using the OpenAI JSON request format.
-Note: Further models will be supported in subsequent iterations.
+These models are all utilized by hitting the LiteLLM /chat/completions endpoint, specifying model and message using the OpenAI JSON request format.
+This is the tentative complete list of models.
 
 The Requests per Minute (RPM) and Tokens per Minute (TPM) columns in the table above are
 rate limits that are enforced per CRS for the ASC. The LiteLLM proxy will be responsible for
@@ -262,7 +278,7 @@ models or providers.
 
 Note: the "\*" next to model "textembedding-gecko" indicates this model target is still in flux.
 The AIxCC infrastructure team is still waiting on LiteLLM to finalize support for the model
-"text-embedding-04". If this newer model is not integrated in time to support its use during the
+"text-embedding-004". If this newer model is not integrated in time to support its use during the
 ASC, then the fallback will likely be "textembedding-gecko@003".
 
 ## Local Development
@@ -337,7 +353,7 @@ docker logs <container name>
 We now use [K3S](https://docs.k3s.io/) for our local Kubernetes w/ the [Longhorn](https://longhorn.io/docs/1.6.2/) storage driver.
 We use a Kubernetes context named `crs` for all `kubectl` targets in the Makefile to prevent modification to other Kubernetes environments.
 
-You MUST set your GitHub [PAT](#setting-github-secrets-and-variables-with-competitor-repository-permissions) in the `env` file so that Kubernetes can use this to pull images.
+You MUST set your GitHub [PAT](#github-personal-access-token) in the `env` file so that Kubernetes can use this to pull images.
 
 #### Install dependencies
 
@@ -378,11 +394,11 @@ Unsupported means that issues in GitHub related to the Kubernetes API access wil
 
 Teams using the Kubernetes API MUST manage their own dynamic resources, and their CRS approach MUST have the ability to recover from memory exhaustion, etc.
 
-To enable this feature the `compose.yaml` file must contain the following for each service that needs Kubernetes access.
+To enable this feature the `compose.yaml` file must contain the following for each service that needs Kubernetes API access.
 
 ```yaml
 labels:
-  kompose.service.accountname: "crs"
+  kompose.serviceaccount-name: crs
 ```
 
 #### Dependencies managed using mise

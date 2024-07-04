@@ -25,7 +25,7 @@ model_list:
       api_key: "os.environ/OPENAI_API_KEY"
       tpm: 60000
       rpm: 400
-  - model_name: text-embedding-3-large
+  - model_name: oai-text-embedding-3-large
     litellm_params:
       model: openai/text-embedding-3-large
       api_key: os.environ/OPENAI_API_KEY
@@ -34,7 +34,7 @@ model_list:
     model_info:
       mode: embedding
       base_model: text-embedding-3-large
-  - model_name: text-embedding-3-small
+  - model_name: oai-text-embedding-3-small
     litellm_params:
       model: openai/text-embedding-3-small
       api_key: os.environ/OPENAI_API_KEY
@@ -103,6 +103,26 @@ model_list:
       api_base: "os.environ/AZURE_API_BASE"
       api_key: "os.environ/AZURE_API_KEY"
       tpm: 150000
+  - model_name: azure-text-embedding-3-large
+    litellm_params:
+      model: azure/text-embedding-3-large
+      api_base: "os.environ/AZURE_API_BASE"
+      api_key: "os.environ/AZURE_API_KEY"
+      tpm: 120000
+      rpm: 100
+    model_info:
+      mode: embedding
+      base_model: text-embedding-3-large
+  - model_name: azure-text-embedding-3-small
+    litellm_params:
+      model: azure/text-embedding-3-small
+      api_base: "os.environ/AZURE_API_BASE"
+      api_key: "os.environ/AZURE_API_KEY"
+      tpm: 120000
+      rpm: 100
+    model_info:
+      mode: embedding
+      base_model: text-embedding-3-small
   # fake endpoints for load testing only.
   # Do not address this during competition, it is useless!
   - model_name: fake-openai-endpoint

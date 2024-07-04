@@ -8,7 +8,7 @@ resources:
 patches:
   - path: load-cp-images-config.json
     target:
-      kind: Pod
+      kind: Deployment
       name: load-cp-images
 
 configMapGenerator:

@@ -69,7 +69,7 @@ github-creds-required: env-file-required
 	@if [ "$(GITHUB_ENV_VAR_COUNT)" -lt 2 ]; then exit 1; fi
 
 build: ## Build the project
-	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) build $(c)
+	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) build --pull $(c)
 
 computed-env: env-file-required
 	@sed -i '/CAPI_AUTH_HEADER=*/d' sandbox/env
@@ -179,7 +179,7 @@ k8s: k8s/clean k8s/development k8s/kustomize/development build ## Generates helm
 	@docker pull postgres:16.2-alpine3.19
 	@docker pull ghcr.io/aixcc-sc/crs-sandbox/mock-crs:v2.0.0
 	@docker pull curlimages/curl:8.8.0
-	@docker pull ghcr.io/aixcc-sc/load-cp-images:v0.0.5
+	@docker pull ghcr.io/aixcc-sc/load-cp-images:v0.0.9
 	@helm repo add longhorn https://charts.longhorn.io
 	@helm repo update
 	@helm install --kube-context crs longhorn longhorn/longhorn --namespace longhorn-system --create-namespace --set defaultSetting.defaultStorageClass=true
@@ -237,7 +237,7 @@ k8s/k3s/clean:
 k8s/development: github-creds-required k8s/clean
 	@mkdir -p $(LOCAL_K8S_RESOURCES)
 	@mkdir -p $(LOCAL_K8S_BASE)
-	@COMPOSE_FILE="$(ROOT_DIR)/compose.yaml $(ROOT_DIR)/kompose_development_overrides.yaml" kompose convert --profile development --out $(LOCAL_K8S_BASE)/resources.yaml
+	@COMPOSE_FILE="$(ROOT_DIR)/compose.yaml $(ROOT_DIR)/kompose_development_overrides.yaml" kompose convert --service-group-mode=label --profile development --out $(LOCAL_K8S_BASE)/resources.yaml
 	@cp cp_config/cp_config.yaml $(LOCAL_K8S_BASE)/cp_config.yaml
 
 k8s/kustomize/development:
@@ -246,7 +246,7 @@ k8s/kustomize/development:
 k8s/competition: env-file-required k8s/clean ## Generates the competition k8s resources for use during the evaluation window and competition
 	@mkdir -p $(LOCAL_K8S_RESOURCES)
 	@mkdir -p $(LOCAL_K8S_BASE)
-	@COMPOSE_FILE="$(ROOT_DIR)/compose.yaml $(ROOT_DIR)/kompose_competition_overrides.yaml" kompose convert --profile competition --out $(LOCAL_K8S_BASE)/resources.yaml
+	@COMPOSE_FILE="$(ROOT_DIR)/compose.yaml $(ROOT_DIR)/kompose_competition_overrides.yaml" kompose convert --service-group-mode=label --profile competition --out $(LOCAL_K8S_BASE)/resources.yaml
 	@cp cp_config/cp_config.yaml $(LOCAL_K8S_BASE)/cp_config.yaml
 	@if grep -qr "$(RELEASE_TAG)" $(LOCAL_K8S_BASE); then \
 		echo "RELEASE_TAG $(RELEASE_TAG) was found in $(LOCAL_K8S_BASE)"; \

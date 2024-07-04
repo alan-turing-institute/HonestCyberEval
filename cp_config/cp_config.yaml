@@ -17,8 +17,8 @@ cp_targets:
 #
 #  jenkins-cp:
 #    url: git@github.com:aixcc-sc/challenge-002-jenkins-cp.git
-#    ref: v3.0.1
+#    ref: v3.1.0
 #
 #  nginx-cp:
 #    url: git@github.com:aixcc-sc/challenge-004-nginx-cp.git
-#    ref: v1.0.2
+#    ref: v1.0.3

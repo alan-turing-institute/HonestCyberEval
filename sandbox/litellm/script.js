@@ -196,6 +196,22 @@ export default function () {
     }
   })
 
+  group('/team/delete', () => {
+    // Request No. 1: new_team_team_new_post
+    {
+      const url = BASE_URL + '/team/delete'
+      const teamName = "test-team-1"
+      // TODO: edit the parameters of the request body.
+      const body = { team_ids: ["18fd5e80-2a13-4812-a13a-7562d2ae2050"]}
+      const params = { headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `${authorization}` } }
+      const request = http.post(url, JSON.stringify(body), params)
+
+      check(request, {
+        'Successful Response': (r) => r.status === 200
+      })
+    }
+  })
+
   group('/v1/models', () => {
     // Request No. 1: model_list_v1_models_get
     {
