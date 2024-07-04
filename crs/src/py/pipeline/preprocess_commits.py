@@ -23,6 +23,12 @@ VAR_TYPE = "variables"
 TYPES = {VAR_TYPE: getattr(clang.cindex.CursorKind, 'VAR_DECL', None), FUNCTION_TYPE: getattr(clang.cindex.CursorKind, 'FUNCTION_DECL', None)}
 
 class BaseDiff:
+    def __init__(self, name, before_lines, after_lines, diff_lines) -> None:
+        self.name = name
+        self.before_lines = before_lines
+        self.after_lines = after_lines
+        self.diff_lines = diff_lines
+
     def print(self, info, lines):
         print(f'Function {self.name} {info}:')
         print('\n'.join(lines))
@@ -55,10 +61,7 @@ class BaseDiff:
 
 class FunctionDiff(BaseDiff):
     def __init__(self, function_name, before_lines=None, after_lines=None, diff_lines=None):
-        self.name = function_name
-        self.before_lines = before_lines
-        self.after_lines = after_lines
-        self.diff_lines = diff_lines
+        super().__init__(function_name, before_lines, after_lines, diff_lines)
 
     def __str__(self):
         return self.build_full_string(indent='')
@@ -81,22 +84,11 @@ class FileDiff(BaseDiff):
         self.change_type = change_type
         self.before_commit = before_commit
         self.after_commit = after_commit
-        self.name = filename
         self.before_ast = before_ast
         self.after_ast = after_ast
         self.diff_functions = diff_functions
-        self.before_lines = before_lines
-        self.after_lines = after_lines
-        self.diff_lines = diff_lines
 
-    def print_full(self, indent='\t'):
-        string_to_print = f"{indent}Change type: {self.change_type}"
-        string_to_print += f"{indent}Filename: {self.name}"
-        string_to_print += f"{indent}Function Diffs:"
-        for function_diff in self.diff_functions:
-            string_to_print += str(self.diff_functions[function_diff])
-
-        return string_to_print
+        super().__init__(filename, before_lines, after_lines, diff_lines)
 
     def __str__(self):
         string_to_print = self.build_full_string('')
@@ -126,7 +118,6 @@ class FileDiff(BaseDiff):
 
         return string_to_print
 
-
 # TODO: set up the cleaned commits as a class so that it can have the C/Java swap stuff more easily maybe?
 # TODO: set up a refactoring check using the asts maybe? if code is 'x = a + b; y = x + z;' -> 'y = a + b + z;' kind of check?
 # TODO: set up using Java
@@ -137,9 +128,9 @@ def build_regex_pattern_from_list(pattern_list):
     for i, pattern_item in enumerate(pattern_list):
         regex_pattern += pattern_item
         if i < (len(pattern_list) - 1):
-            regex_pattern += r'|'
+            regex_pattern += '|'
         else:
-            regex_pattern += r')'
+            regex_pattern += ')'
         
     return regex_pattern
 
@@ -294,7 +285,9 @@ def find_diff_between_commits(before_commit, after_commit):
         change_type = FUNCTIONAL_CHANGE
 
         before_file = None
+        before_file_lines = None
         after_file = None
+        after_file_lines = None
 
         try:
             before_file = (before_commit.tree/filename).data_stream.read().decode('utf-8')
