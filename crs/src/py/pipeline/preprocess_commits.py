@@ -1,7 +1,14 @@
 import re
 import copy
+from dataclasses import dataclass, field, KW_ONLY
+from enum import IntEnum, auto, Enum
+from typing import Optional, TypeAlias
 import clang.cindex
+from clang.cindex import Cursor, CursorKind
 import difflib
+
+from git import Commit
+from strenum import StrEnum
 
 from logger import logger
 
@@ -10,26 +17,48 @@ clang.cindex.Config.set_library_file('/usr/lib/x86_64-linux-gnu/libclang-14.so')
 
 # constants used throughout this
 FILE_CODE = "file_code"
-FUNCTIONAL_CHANGE = 0
-FILE_REMOVED = 1
-FILE_ADDED = 2
 
-FUNCTION_LOCAL = "function_local"
-OTHER = "other"
-FILE_LOCAL = "file local"
-IMPORTED = "imported"
-FUNCTION_TYPE = "function"
-VAR_TYPE = "variables"
-TYPES = {VAR_TYPE: getattr(clang.cindex.CursorKind, 'VAR_DECL', None), FUNCTION_TYPE: getattr(clang.cindex.CursorKind, 'FUNCTION_DECL', None)}
 
+class ChangeType(IntEnum):
+    FUNCTIONAL_CHANGE = auto()
+    FILE_REMOVED = 1
+    FILE_ADDED = 2
+
+
+class VarType(StrEnum):
+    FUNCTION_LOCAL = auto()
+    OTHER = auto()
+
+
+class VarSourceType(StrEnum):
+    FILE_LOCAL = auto()
+    IMPORTED = auto()
+
+
+class DeclType(StrEnum):
+    FUNCTION_TYPE = auto()
+    VAR_TYPE = auto()
+
+
+TypesDictType: TypeAlias = dict[DeclType, CursorKind]
+VarsDictType: TypeAlias = dict[VarSourceType, dict[str, Cursor]]
+NodesDictType: TypeAlias = dict[DeclType, VarsDictType]
+FunctionDictType: TypeAlias = dict[str, list[str]]
+
+TYPES: TypesDictType = {
+    DeclType.VAR_TYPE: CursorKind.VAR_DECL,  # type: ignore
+    DeclType.FUNCTION_TYPE: CursorKind.FUNCTION_DECL,  # type: ignore
+}
+
+
+@dataclass
 class BaseDiff:
-    def __init__(self, name, before_lines, after_lines, diff_lines) -> None:
-        self.name = name
-        self.before_lines = before_lines
-        self.after_lines = after_lines
-        self.diff_lines = diff_lines
+    name: str
+    before_lines: list[str] = field(default_factory=list)
+    after_lines: list[str] = field(default_factory=list)
+    diff_lines: list[str] = field(default_factory=list)
 
-    def print(self, info, lines):
+    def print(self, info: str, lines: list[str]) -> str:
         string_to_print = f'{type(self)} - {self.name} - {info}:\n'
         string_to_print += '\n'.join(lines)
 
@@ -47,7 +76,7 @@ class BaseDiff:
     def join_lines(self, lines, indent=''):
         return ("\n" + indent).join(lines)
     
-    def ast_string(self, ast, string_to_print='', depth=0):
+    def ast_string(self, ast: Cursor, string_to_print: str='', depth: int=0) -> str:
         indent = '  ' * depth
         if ast.spelling:
             string_to_print += f'{indent}Kind: {ast.kind}, Spelling: {ast.spelling}, Location: {ast.location}\n'
@@ -58,10 +87,9 @@ class BaseDiff:
 
         return string_to_print
 
-class FunctionDiff(BaseDiff):
-    def __init__(self, function_name, before_lines=None, after_lines=None, diff_lines=None):
-        super().__init__(function_name, before_lines, after_lines, diff_lines)
 
+@dataclass
+class FunctionDiff(BaseDiff):
     def __str__(self):
         return self.build_full_string(indent='')
     
@@ -78,17 +106,16 @@ class FunctionDiff(BaseDiff):
         return string_to_print
 
 
+@dataclass()
 class FileDiff(BaseDiff):
-    def __init__(self, change_type, before_commit, after_commit, filename, before_ast, after_ast, diff_functions, before_lines, after_lines, diff_lines, og_diff):
-        self.change_type = change_type
-        self.before_commit = before_commit
-        self.after_commit = after_commit
-        self.before_ast = before_ast
-        self.after_ast = after_ast
-        self.diff_functions = diff_functions
-        self.og_diff = og_diff
-
-        super().__init__(filename, before_lines, after_lines, diff_lines)
+    _: KW_ONLY
+    change_type: ChangeType
+    before_commit: Commit
+    after_commit: Commit
+    before_ast: Optional[Cursor]
+    after_ast: Optional[Cursor]
+    diff_functions: dict[str, FunctionDiff]
+    og_diff: list[str]
 
     def __str__(self):
         string_to_print = self.build_full_string('')
@@ -108,12 +135,12 @@ class FileDiff(BaseDiff):
         string_to_print += f'{indent}\tCode:\n'
         indent_plus = indent + "\t"
         string_to_print += f'{indent}\t{self.join_lines(self.before_lines, indent_plus)}\n\n'
-        string_to_print += f'{indent}\AST:\n'
+        string_to_print += f'{indent}\tAST:\n'
         string_to_print += f'{indent}\t{self.ast_string(self.before_ast)}\n\n'        
         string_to_print += f'{indent}After this commit:\n'
         string_to_print += f'{indent}\tCode:\n'
         string_to_print += f'{indent}\t{self.join_lines(self.after_lines, indent_plus)}\n\n'
-        string_to_print += f'{indent}\AST:\n'
+        string_to_print += f'{indent}\tAST:\n'
         string_to_print += f'{indent}\t{self.ast_string(self.after_ast)}\n\n'     
 
         return string_to_print
@@ -160,11 +187,11 @@ def build_regex_pattern_from_list(pattern_list):
 #         # replace numbers??
 #         code_snippet[i] = re.sub(numbers_pattern, 'NUM', line)
 
-def is_node_local(cursor, filename):
+def is_node_local(cursor: Cursor, filename: str) -> bool:
     # check if the node passed in is defined in this file or elsewhere
     return cursor.location.file and cursor.location.file.name == filename
 
-def parse_snippet(snippet, filepath):
+def parse_snippet(snippet: str, filepath: str) -> Cursor:
 
     filename = filepath.split("/")[-1] # only take filename bit of the filepath
 
@@ -183,38 +210,34 @@ def parse_snippet(snippet, filepath):
 
     return translation_unit.cursor
 
-def search_ast_for_node_types(node, types, filename):
-    # types is dictionary of string type and then the CursorKind
+
+def search_ast_for_node_types(node: Cursor, types: TypesDictType, filename: str) -> NodesDictType:
     # returns a dict with the type as the key and a nested dict containing the separated local and imported sets of the relevant nodes
-    nodes = {}
+    nodes: NodesDictType = {}
 
     # initialise the empty sets
     for node_type in types:
-        nodes[node_type] = {FILE_LOCAL: {}, IMPORTED: {}}
+        nodes[node_type] = {VarSourceType.FILE_LOCAL: {}, VarSourceType.IMPORTED: {}}
 
     # recursively search AST (might need to change this to for loop though as python isn't that good with high recursion depths?)
     nodes = _search_ast_for_node_type(node, types, nodes, filename)
 
     return nodes
 
-def _search_ast_for_node_type(node, types, nodes, filename):
+def _search_ast_for_node_type(node: Cursor, types: TypesDictType, nodes: NodesDictType, filename: str) -> NodesDictType:
 
     for node_type in types:
         if node.kind == types[node_type]:
             if is_node_local(node, filename):
-                nodes[node_type][FILE_LOCAL][node.spelling] = node
+                nodes[node_type][VarSourceType.FILE_LOCAL][node.spelling] = node
             else:
-                nodes[node_type][IMPORTED][node.spelling] = node
+                nodes[node_type][VarSourceType.IMPORTED][node.spelling] = node
     for child in node.get_children():
         nodes = _search_ast_for_node_type(child, types, nodes, filename)
 
     return nodes
 
-def clean_up_snippet(snippet):
-
-    if isinstance(snippet, list):
-        # should be just a string to begin with in here, but can make it into a single string?
-        snippet = "\n".join(snippet)
+def clean_up_snippet(snippet: str) -> list[str]:
 
     function_def_pattern = r'\)\s*{'
     new_function_def = "){"
@@ -235,7 +258,7 @@ def clean_up_snippet(snippet):
             # ignore comments
             continue
         if line.strip() != "":
-            # reduce any occurences of multiple whitespaces to just one
+            # reduce any occurrences of multiple whitespaces to just one
             line = re.sub(whitespace_pattern, ' ', line)
             line = re.sub(comment_in_code_line_pattern, '', line) # remove comments
 
@@ -258,13 +281,13 @@ def clean_up_snippet(snippet):
 
     return stripped_lines
 
-def find_diff_between_commits(before_commit, after_commit):
+def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> dict[str, FileDiff]:
 
     # find the diffs:
     diffs = before_commit.diff(after_commit, create_patch=True)
-    filename_diffs = {}
+    filename_diffs: dict[str, FileDiff] = {}
 
-    files_checked = []
+    files_checked: list[str] = []
 
     for diff in diffs:
         logger.debug(f"\nDiff for file: {diff.b_path}")
@@ -282,49 +305,49 @@ def find_diff_between_commits(before_commit, after_commit):
                 filename = diff.a_path
                 logger.debug(f"diff b_path is none, diff a_path is: {filename}, file deleted.")
         
-        change_type = FUNCTIONAL_CHANGE
+        change_type = ChangeType.FUNCTIONAL_CHANGE
 
-        before_file = None
-        before_file_lines = None
-        after_file = None
-        after_file_lines = None
+        before_file: Optional[str] = None
+        before_file_lines: list[str] = []
+        after_file: Optional[str] = None
+        after_file_lines: list[str] = []
 
         try:
             before_file = (before_commit.tree/filename).data_stream.read().decode('utf-8')
 
         except KeyError:
-            change_type = FILE_ADDED
+            change_type = ChangeType.FILE_ADDED
 
         try:
             after_file = (after_commit.tree/filename).data_stream.read().decode('utf-8')
 
         except KeyError:
-            change_type = FILE_REMOVED
+            change_type = ChangeType.FILE_REMOVED
 
-        before_function_lines = None
-        after_function_lines = None
-        before_file_ast = None
-        after_file_ast = None
-        before_nodes = None
-        after_nodes = None
+        before_function_lines: FunctionDictType = {}
+        after_function_lines: FunctionDictType = {}
+        before_file_ast: Optional[Cursor] = None
+        after_file_ast: Optional[Cursor] = None
+        before_nodes: NodesDictType = {}
+        after_nodes: NodesDictType = {}
 
-        if change_type in {FUNCTIONAL_CHANGE, FILE_REMOVED} and before_file is not None:
+        if change_type in {ChangeType.FUNCTIONAL_CHANGE, ChangeType.FILE_REMOVED} and before_file is not None:
             before_file_lines = clean_up_snippet(before_file)
             before_file_ast = parse_snippet(before_file, filename)
             before_nodes = search_ast_for_node_types(before_file_ast, TYPES, filename)
-            before_function_lines = get_full_function_snippets(before_file_lines, before_nodes[FUNCTION_TYPE][FILE_LOCAL])
+            before_function_lines = get_full_function_snippets(before_file_lines, before_nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL])
 
-        if change_type in {FUNCTIONAL_CHANGE, FILE_ADDED} and after_file is not None:
+        if change_type in {ChangeType.FUNCTIONAL_CHANGE, ChangeType.FILE_ADDED} and after_file is not None:
             after_file_lines = clean_up_snippet(after_file)
             after_file_ast = parse_snippet(after_file, filename)
             after_nodes = search_ast_for_node_types(after_file_ast, TYPES, filename)
-            after_function_lines = get_full_function_snippets(after_file_lines, after_nodes[FUNCTION_TYPE][FILE_LOCAL])
+            after_function_lines = get_full_function_snippets(after_file_lines, after_nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL])
 
         diff_functions = get_function_diffs(before_function_lines, after_function_lines)
 
-        if change_type == FUNCTIONAL_CHANGE:
-            before_variables = None if before_nodes is None else before_nodes[VAR_TYPE]
-            after_variables = None if after_nodes is None else after_nodes[VAR_TYPE]
+        if change_type == ChangeType.FUNCTIONAL_CHANGE:
+            before_variables: VarsDictType = before_nodes[DeclType.VAR_TYPE] if before_nodes else {}
+            after_variables: VarsDictType = after_nodes[DeclType.VAR_TYPE] if after_nodes else {}
 
             new_diff_functions = {}
             for function_name in diff_functions:
@@ -341,28 +364,40 @@ def find_diff_between_commits(before_commit, after_commit):
         if diff_functions:
             full_file_diff_lines = make_diff(before_file_lines, after_file_lines)
             og_diff = diff.diff.decode('utf-8')
-            filename_diffs[filename] = FileDiff(change_type, before_commit, after_commit, filename, before_file_ast, after_file_ast, diff_functions, before_file_lines, after_file_lines, full_file_diff_lines, og_diff)
+            filename_diffs[filename] = FileDiff(
+                filename,
+                before_file_lines,
+                after_file_lines,
+                full_file_diff_lines,
+                change_type=change_type,
+                before_commit=before_commit,
+                after_commit=after_commit,
+                before_ast=before_file_ast,
+                after_ast=after_file_ast,
+                diff_functions=diff_functions,
+                og_diff=og_diff,
+            )
 
             logger.debug(f'FileDiffs print for {filename}:')
             logger.debug(str(filename_diffs[filename]))
 
     return filename_diffs
 
-def make_diff(before, after):
+def make_diff(before: list[str], after: list[str]) -> list[str]:
     return list(difflib.unified_diff(before, after, lineterm=''))
 
-def get_function_diffs(before, after):
+def get_function_diffs(before: FunctionDictType, after: FunctionDictType) -> dict[str, FunctionDiff]:
 
-    diff_functions = {}
+    diff_functions: dict[str, FunctionDiff] = {}
 
-    after_functions = None
-    if after is not None:
+    after_functions: list[str] = []
+    if after:
         after_functions = list(after.keys())
 
     if before is not None:
         for function_name in before:
 
-            if after_functions is not None and function_name in after:
+            if after_functions and function_name in after:
                 # function exists in both files
 
                 after_functions.remove(function_name)
@@ -387,22 +422,18 @@ def get_function_diffs(before, after):
                 diff = make_diff(before[function_name], after[function_name]) #[f"-{line}" for line in before[function_name]]
                 diff_functions[function_name] = FunctionDiff(function_name, before_lines=before[function_name], diff_lines=diff)
 
-    if after_functions is not None:
+    if after_functions:
         for function_name in after_functions:
             diff = make_diff(before[function_name], after[function_name]) #[f"+{line}" for line in after[function_name]]
             diff_functions[function_name] = FunctionDiff(function_name, after_lines=after[function_name], diff_lines=diff)
 
     return diff_functions
 
-def get_full_function_snippets(full_file, functions):
+def get_full_function_snippets(full_file: list[str], functions: dict[str, Cursor]) -> FunctionDictType:
 
     open_code_block_pattern = r'{'
     close_code_block_pattern = r'}'
     lines = copy.deepcopy(full_file)
-
-    if not isinstance(lines, list):
-        # should already be split into lines by the time it gets here?
-        lines = clean_up_snippet(lines)
 
     functions_code = {}
     file_code = []
@@ -417,7 +448,7 @@ def get_full_function_snippets(full_file, functions):
 
         if function_name_mentioned is not None and function_name_mentioned not in functions_code:
             # assuming that the first instance of a file local function name appearing will be in the function definition
-            # so if it hasn't been added to the keys yet then it should be the first declaration?
+            # so if it hasn't been added to the keys yet, then it should be the first declaration?
             function_lines = []
             open_brackets = 0
 
@@ -443,7 +474,7 @@ def get_full_function_snippets(full_file, functions):
 
     return functions_code
 
-def get_variable_snippets(full_snippet, variable_name):
+def get_variable_snippets(full_snippet: list[str], variable_name: str) -> list[str]:
 
     variable_refs = []
     full_snippet = copy.deepcopy(full_snippet)
@@ -454,25 +485,25 @@ def get_variable_snippets(full_snippet, variable_name):
 
     return variable_refs
 
-def get_function_variables(code_lines, variables):
+def get_function_variables(code_lines: list[str], variables: VarsDictType) -> dict[VarType, list[str]]:
 
     local_variables = []
     other_variables = []
 
     for line in code_lines:
-        for variable in variables[FILE_LOCAL]:
+        for variable in variables[VarSourceType.FILE_LOCAL]:
             if variable in line:
                 if variable not in local_variables:
                     local_variables.append(variable)
         
-        for variable in variables[IMPORTED]:
+        for variable in variables[VarSourceType.IMPORTED]:
             if variable in line:
                 if variable not in other_variables:
                     other_variables.append(variable)
 
-    return {FUNCTION_LOCAL: local_variables, OTHER: other_variables}
+    return {VarType.FUNCTION_LOCAL: local_variables, VarType.OTHER: other_variables}
 
-def check_functional_diff_in_variable_lines_order(before_code, after_code, variable_names):
+def check_functional_diff_in_variable_lines_order(before_code: list[str], after_code: list[str], variable_names: list[str]) -> bool:
     for variable_name in variable_names:    
         variable_before_lines = get_variable_snippets(before_code, variable_name)
         variable_after_lines = get_variable_snippets(after_code, variable_name)
@@ -488,7 +519,7 @@ def check_functional_diff_in_variable_lines_order(before_code, after_code, varia
 
     return False # I think?
 
-def is_diff_functional(function_before_code, function_after_code, before_variables, after_variables):#function_before_ast, function_after_ast):
+def is_diff_functional(function_before_code: list[str], function_after_code: list[str], before_variables: VarsDictType, after_variables: VarsDictType) -> bool:#function_before_ast, function_after_ast):
 
     # are they exactly the same? - essentially is it just whitespace or other formatting that's been changed?
     if function_before_code == function_after_code: # could also probs check the asts here instead??
@@ -497,28 +528,28 @@ def is_diff_functional(function_before_code, function_after_code, before_variabl
     variable_names_before = get_function_variables(function_before_code, before_variables)
     variable_names_after = get_function_variables(function_after_code, after_variables)
 
-    local_variables_same = variable_names_before[FUNCTION_LOCAL] == variable_names_after[FUNCTION_LOCAL]
-    other_variables_same = variable_names_before[OTHER] == variable_names_after[OTHER]
+    local_variables_same = variable_names_before[VarType.FUNCTION_LOCAL] == variable_names_after[VarType.FUNCTION_LOCAL]
+    other_variables_same = variable_names_before[VarType.OTHER] == variable_names_after[VarType.OTHER]
 
     if not other_variables_same:
         # potential difference as these are defined outside the function?
-        other_variables_before = set(variable_names_before[OTHER])
-        other_variables_after = set(variable_names_after[OTHER])
+        other_variables_before = set(variable_names_before[VarType.OTHER])
+        other_variables_after = set(variable_names_after[VarType.OTHER])
         if other_variables_before != other_variables_after:
             return True
     
         # check for other variable reordering
-        if check_functional_diff_in_variable_lines_order(function_before_code, function_after_code, variable_names_before[OTHER]):
+        if check_functional_diff_in_variable_lines_order(function_before_code, function_after_code, variable_names_before[VarType.OTHER]):
             return True
         # else -> the other variables are the same (or at least not a functional diff?) so check the local ones now?
 
     if local_variables_same:
         # check for non-functional reordering
-        return check_functional_diff_in_variable_lines_order(function_before_code, function_after_code, variable_names_before[FUNCTION_LOCAL])
+        return check_functional_diff_in_variable_lines_order(function_before_code, function_after_code, variable_names_before[VarType.FUNCTION_LOCAL])
     else:
         # check if a variable has been renamed (also checks for non-functional reordering of the code here too)
         # check list size of variables is the same as otherwise might not be renaming
-        if len(variable_names_before[FUNCTION_LOCAL]) != len(variable_names_after[FUNCTION_LOCAL]):
+        if len(variable_names_before[VarType.FUNCTION_LOCAL]) != len(variable_names_after[VarType.FUNCTION_LOCAL]):
             return True
 
         # find the different variable/s
