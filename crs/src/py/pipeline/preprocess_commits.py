@@ -58,7 +58,12 @@ class BaseDiff:
     after_lines: list[str] = field(default_factory=list)
     diff_lines: list[str] = field(default_factory=list)
 
-    def print(self, info: str, lines: list[str]) -> str:
+    def print(self, info: str, lines: Union[list[str], None]) -> str:
+        
+        if lines is None:
+            logger.debug(f'Cannot print the code from {info} this commit, as it does not exist.')
+            return f'No code from {info.lower()} this commit.'
+
         string_to_print = f'{type(self)} - {self.name} - {info}:\n'
         string_to_print += '\n'.join(lines)
 
