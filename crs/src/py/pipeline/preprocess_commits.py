@@ -2,7 +2,7 @@ import re
 import copy
 from dataclasses import dataclass, field, KW_ONLY
 from enum import IntEnum, auto, Enum
-from typing import Optional, TypeAlias
+from typing import Optional, TypeAlias, Union
 import clang.cindex
 from clang.cindex import Cursor, CursorKind
 import difflib
@@ -103,10 +103,17 @@ class FunctionDiff(BaseDiff):
         indent += '\t'
         string_to_print += f'{indent}Diff:\n'
         string_to_print += f'{indent}{self.join_lines(self.diff_lines, indent)}\n\n'
-        string_to_print += f'{indent}Before this commit:\n'
-        string_to_print += f'{indent}{self.join_lines(self.before_lines, indent)}\n\n'
-        string_to_print += f'{indent}After this commit:\n'
-        string_to_print += f'{indent}{self.join_lines(self.after_lines, indent)}\n\n'
+        if self.before_lines:
+            string_to_print += f'{indent}Before this commit:\n'
+            string_to_print += f'{indent}{self.join_lines(self.before_lines, indent)}\n\n'
+        else:
+            string_to_print += f'{indent}No code before this commit.\n'
+
+        if self.after_lines:
+            string_to_print += f'{indent}After this commit:\n'
+            string_to_print += f'{indent}{self.join_lines(self.after_lines, indent)}\n\n'
+        else:
+            string_to_print += f'{indent}No code after this commit.\n'
 
         return string_to_print
 
@@ -138,15 +145,23 @@ class FileDiff(BaseDiff):
         string_to_print += f'{indent}{self.join_lines(self.diff_lines, indent)}\n\n'
         string_to_print += f'{indent}Before this commit:\n'
         indent_plus = indent + "\t"
-        string_to_print += f'{indent_plus}Code:\n'
-        string_to_print += f'{indent_plus}{self.join_lines(self.before_lines, indent_plus)}\n\n'
-        string_to_print += f'{indent_plus}AST:\n'
-        string_to_print += f'{indent_plus}{self.ast_string(self.before_ast)}\n\n'        
+
+        if self.before_lines:
+            string_to_print += f'{indent_plus}Code:\n'
+            string_to_print += f'{indent_plus}{self.join_lines(self.before_lines, indent_plus)}\n\n'
+            string_to_print += f'{indent_plus}AST:\n'
+            string_to_print += f'{indent_plus}{self.ast_string(self.before_ast)}\n\n'
+        else:
+            string_to_print += f'{indent_plus}No code before this commit.\n'
+
         string_to_print += f'{indent}After this commit:\n'
-        string_to_print += f'{indent_plus}Code:\n'
-        string_to_print += f'{indent_plus}{self.join_lines(self.after_lines, indent_plus)}\n\n'
-        string_to_print += f'{indent_plus}AST:\n'
-        string_to_print += f'{indent_plus}{self.ast_string(self.after_ast)}\n\n'     
+        if self.after_lines:
+            string_to_print += f'{indent_plus}Code:\n'
+            string_to_print += f'{indent_plus}{self.join_lines(self.after_lines, indent_plus)}\n\n'
+            string_to_print += f'{indent_plus}AST:\n'
+            string_to_print += f'{indent_plus}{self.ast_string(self.after_ast)}\n\n'
+        else:
+            string_to_print += f'{indent_plus}No code after this commit.\n'
 
         return string_to_print
 
@@ -575,8 +590,8 @@ def is_diff_functional(function_before_code: list[str], function_after_code: lis
                 variable_after_lines = get_variable_snippets(function_after_code, after_variable)
 
                 # replace new variable_name with the old one and compare code
-                for line in variable_after_lines:
-                    line = re.sub(after_variable, before_variable, line)
+                for i, line in enumerate(variable_after_lines):
+                    variable_after_lines[i] = re.sub(after_variable, before_variable, line)
 
                 if not variable_before_lines == variable_after_lines:
                     return True
