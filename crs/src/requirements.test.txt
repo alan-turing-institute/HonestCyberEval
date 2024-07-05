@@ -1,4 +1,8 @@
+-r requirements.txt
 pytest
 pyright
+black==24.4.2
+isort==5.13.2
+pre-commit
 types-PyYAML
 types-requests

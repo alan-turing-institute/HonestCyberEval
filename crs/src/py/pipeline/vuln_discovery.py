@@ -4,8 +4,8 @@ from api.cp import ChallengeProject
 from api.data_types import Vulnerability, VulnerabilityWithSha
 from api.fs import write_harness_input_to_disk
 from api.llm import LLMmodel, format_chat_history
-
 from logger import logger
+
 from .langgraph_vuln import run_vuln_langraph
 from .preprocess_commits import find_diff_between_commits
 
@@ -58,10 +58,15 @@ class VulnDiscovery:
                 if not output["error"]:
                     logger.info(f"Found vulnerability using harness {harness_id}: {sanitizer}: {error_code}")
                     harness_input = output["solution"]
-                    harness_input_file = write_harness_input_to_disk(self.project, harness_input, "work", harness_id, sanitizer_id, model_name)
+                    harness_input_file = write_harness_input_to_disk(
+                        self.project, harness_input, "work", harness_id, sanitizer_id, model_name
+                    )
                     return Vulnerability(harness_id, sanitizer_id, harness_input, harness_input_file)
                 logger.info(f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id}")
-                logger.debug(f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id} with error: \n {output['error']}")
+                logger.debug(
+                    f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id} with error: \n"
+                    f" {output['error']}"
+                )
             except Exception as error:
                 logger.error(f"LangGraph vulnerability detection failed for {model_name} with\n{error}")
         logger.warning(f"Failed to trigger sanitizer {sanitizer_id} using {harness_id}!")
@@ -96,7 +101,7 @@ class VulnDiscovery:
             # step 2: revert the Git repo to the commit
             logger.debug(f"Reverting to commit: {inspected_commit.hexsha}")
 
-            git_repo.git.switch('--detach', inspected_commit.hexsha)
+            git_repo.git.switch("--detach", inspected_commit.hexsha)
             self.project.build_project()
 
             for vuln in vulnerabilities_left:
@@ -114,7 +119,10 @@ class VulnDiscovery:
                     vulnerabilities_next.append(vuln)
                 # step 4: When sanitizer is not triggered the previous commit introduced the vulnerability, assign previous commit as bug introducing
                 else:
-                    logger.info(f"Found bad commit: {previous_commit.hexsha} that introduced vulnerability {sanitizer}: {error_code}  ")
+                    logger.info(
+                        f"Found bad commit: {previous_commit.hexsha} that introduced vulnerability {sanitizer}:"
+                        f" {error_code}  "
+                    )
                     vulnerabilities_with_sha.append(VulnerabilityWithSha(*vuln, commit=previous_commit.hexsha))
             previous_commit = inspected_commit
 
@@ -177,7 +185,9 @@ class VulnDiscovery:
                 mock_input_file = write_harness_input_to_disk(self.project, mock_input_data, 0, "id_1", "id_1", "mock")
                 vulnerabilities.append(Vulnerability("id_1", "id_1", mock_input_data, mock_input_file))
             if both or vulnerabilities[0].sanitizer_id == "id_1":
-                mock_input_file = write_harness_input_to_disk(self.project, mock_input_data_segv, 0, "id_1", "id_2", "mock")
+                mock_input_file = write_harness_input_to_disk(
+                    self.project, mock_input_data_segv, 0, "id_1", "id_2", "mock"
+                )
                 vulnerabilities.append(Vulnerability("id_1", "id_2", mock_input_data_segv, mock_input_file))
 
         vulnerabilities_with_sha = self.identify_bad_commits(vulnerabilities)

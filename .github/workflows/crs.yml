@@ -30,6 +30,11 @@ jobs:
       - uses: jakebailey/pyright-action@v2
         with:
           working-directory: crs/src
-
+      - name: isort
+        run: |
+          isort crs/src --check --diff
+      - name: black
+        run: |
+          black crs/src --check --diff
 #      - name: Run test
 #        run: pytest -c crs/src/pyproject.toml crs/src/py

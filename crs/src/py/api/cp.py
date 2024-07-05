@@ -1,16 +1,19 @@
-from collections import namedtuple
 from copy import deepcopy
+from pathlib import Path
 from subprocess import CalledProcessError
-import yaml
-from git import Repo
+from typing import NamedTuple
 
-from api.data_types import Patch
-from api.fs import run_command, RunException, PatchException
+import yaml
+from git import Reference, Repo
+
 from config import OUTPUT_PATH
 
-Sanitizer = namedtuple('Sanitizer', ['name', 'error_code'])
-Harness = namedtuple('Harness', ['name', 'file_path'])
-Source = namedtuple('Source', ['repo', 'ref'])
+from .data_types import Patch
+from .fs import PatchException, RunException, run_command
+
+Sanitizer = NamedTuple("Sanitizer", [("name", str), ("error_code", str)])
+Harness = NamedTuple("Harness", [("name", str), ("file_path", Path)])
+Source = NamedTuple("Source", [("repo", Repo), ("ref", Reference)])
 
 
 class ProjectBuildException(RunException):
@@ -50,18 +53,18 @@ class ChallengeProject:
             source: Source(
                 repo,
                 repo.references[self.__config["cp_sources"][source]["ref"]],
-            ) for source in self.sources if (repo := Repo(self.path / "src" / source))
+            )
+            for source in self.sources
+            if (repo := Repo(self.path / "src" / source))
         }
 
         self.artifacts = {
-            source: [
-                self.path / artifact for artifact in self.__config["cp_sources"][source]["artifacts"]
-            ] for source in self.sources
+            source: [self.path / artifact for artifact in self.__config["cp_sources"][source]["artifacts"]]
+            for source in self.sources
         }
 
         self.sanitizers = {
-            key: Sanitizer(*(x.strip() for x in value.split(":")))
-            for key, value in self.__config["sanitizers"].items()
+            key: Sanitizer(*(x.strip() for x in value.split(":"))) for key, value in self.__config["sanitizers"].items()
         }
 
         self.harnesses = {
@@ -100,7 +103,7 @@ class ChallengeProject:
             # `CP_HARNESS_EXTRA_LDFLAGS` - Supplemental linker flags for CP harness(es) target (default: empty)
             # `CP_HARNESS_LIBS` - Libraries to be linked for CP harness(es) target (default: CP-specific)
             # `CP_HARNESS_EXTRA_LIBS` - Supplemental libraries to be linked for CP harness(es) target (default: empty)
-            case 'C':
+            case "C":
                 # TODO: linux kernel uses specific build flags e.g. CONFIG_KFENCE=y, CONFIG_KASAN=y
                 # TODO: more control over C config
                 cflags = set()
@@ -119,15 +122,13 @@ class ChallengeProject:
             # `CP_HARNESS_EXTRA_MAVEN_ARGS` - Supplemental arguments passed to Maven before the CLI for building the CP harness(es) (default: empty)
             # `CP_HARNESS_MAVEN_OPTS` - Parameters passed to JVM running Maven for building the CP harness(es) (default: CP-specific)
             # `CP_HARNESS_EXTRA_MAVEN_OPTS` - Supplemental parameters passed to JVM running Maven for building the CP harness(es) (default: empty)
-            case 'Java':
+            case "Java":
                 # TODO: configure Java compilation
                 pass
 
     def _read_project_yaml(self):
         project_yaml_path = self.path / "project.yaml"
-        return yaml.safe_load(
-            project_yaml_path.read_text()
-        )
+        return yaml.safe_load(project_yaml_path.read_text())
 
     def _run_cp_run_sh(self, *command, **kwargs):
         """
@@ -148,8 +149,8 @@ class ChallengeProject:
 
     def reset_source_repo(self, source):
         git_repo, ref = self.repos[source]
-        git_repo.git.restore('.')
-        git_repo.git.switch('--detach', ref)
+        git_repo.git.restore(".")
+        git_repo.git.switch("--detach", ref)
 
     def build_project(self):
         """Build a project.

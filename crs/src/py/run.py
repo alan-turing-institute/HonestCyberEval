@@ -1,15 +1,11 @@
 import time
 
-from api.submit import healthcheck, submit_vulnerability, submit_patch
-from api.fs import (
-    get_projects,
-    empty_scratch,
-    move_projects_to_scratch,
-)
+from api.fs import empty_scratch, get_projects, move_projects_to_scratch
+from api.submit import healthcheck, submit_patch, submit_vulnerability
 from logger import logger
 from pipeline.patch_gen import patch_generation
-from pipeline.vuln_discovery import vuln_discovery
 from pipeline.setup_project import setup_project
+from pipeline.vuln_discovery import vuln_discovery
 
 
 def run():
@@ -32,17 +28,12 @@ def run():
                     logger.info("healthcheck passed")
 
                 # todo: save input to persistent storage and check it to avoid double submissions
-                status, cpv_uuid = submit_vulnerability(
-                    cp_name=project.name,
-                    vulnerability=vulnerability
-                )
+                status, cpv_uuid = submit_vulnerability(cp_name=project.name, vulnerability=vulnerability)
                 # todo: update input in persistent storage and mark as accepted
                 logger.info(f"Vulnerability: {status} {cpv_uuid}")
 
-                if status != 'rejected':
-                    patch = patch_generation.run(
-                        project, cp_source, cpv_uuid, vulnerability
-                    )
+                if status != "rejected":
+                    patch = patch_generation.run(project, cp_source, cpv_uuid, vulnerability)
                     if patch:
                         # todo: save patch to persistent storage and check it to avoid double submissions
                         logger.info("Submitting patch")

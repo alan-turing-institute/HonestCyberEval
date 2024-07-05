@@ -1,12 +1,13 @@
 import base64
 import time
-from typing import TypedDict, Literal, TypeAlias
+from typing import Literal, TypeAlias, TypedDict
+
 from requests import Session
 from requests.auth import HTTPBasicAuth
 
-from api.data_types import Patch
 from config import AIXCC_API_HOSTNAME
-from pipeline.vuln_discovery import VulnerabilityWithSha
+
+from .data_types import Patch, VulnerabilityWithSha
 
 CPVuuid: TypeAlias = str
 GPuuid: TypeAlias = str
@@ -75,8 +76,8 @@ def submit_vulnerability(cp_name: str, vulnerability: VulnerabilityWithSha) -> t
         },
         "pov": {
             "harness": vulnerability.harness_id,
-            "data": base64.b64encode(vulnerability.input_data.encode()).decode('ascii'),
-        }
+            "data": base64.b64encode(vulnerability.input_data.encode()).decode("ascii"),
+        },
     }
 
     response = session.post(
@@ -103,7 +104,7 @@ def submit_vulnerability(cp_name: str, vulnerability: VulnerabilityWithSha) -> t
 
 
 def _encode_patch(cpv_uuid: CPVuuid, patch: Patch) -> GPSubmission:
-    encoded_patch = base64.b64encode(patch.diff.encode()).decode('ascii')
+    encoded_patch = base64.b64encode(patch.diff.encode()).decode("ascii")
     return {
         "cpv_uuid": cpv_uuid,
         "data": encoded_patch,

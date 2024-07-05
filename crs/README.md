@@ -35,12 +35,32 @@ For example, to add code to the vulnerability discovery pipeline:
 
 For debugging, logger output is provided.
 By default, only `INFO` and up are printed to the Docker attached tty.
-The full logs, including `DEBUG` and logs from underlying libraries such as git commands and network requests to 
+The full logs, including `DEBUG` and logs from underlying libraries such as git commands and network requests to
 litellm, are printed to `/crs_scratch/crs.log`.
+
+#### Tooling
 
 The project includes some non-exhaustive type hinting, which is checked through GitHub actions.
 It is there to help, not hinder so if it highlights something being wrong, it's likely a potential source of buggy behaviours.
-You can run it at any time using `pyright -p crs/src/`
+You can run it at any time using `pyright -p crs/src/`.
+It also includes `isort` and `black` to autoformat your code.
+You can run these at any time using `isort crs/src` and `black crs/src`.
+
+Black, isort, and pyright have been added to the [.pre-commit-config.yaml](.pre-commit-config.yaml).
+Run `pre-commit install` to run the pre-commit checks before you commit.
+
+Black, isort, and pyright are checked on the CI pipeline but will not block a merge.
+
+
+##### VSCode
+If you're using VSCode, you can use extensions to automate the process (which should show up as recommended):
+- https://marketplace.visualstudio.com/items?itemName=ms-python.isort
+- https://marketplace.visualstudio.com/items?itemName=ms-python.black-formatter
+- https://marketplace.visualstudio.com/items?itemName=ms-python.vscode-pylance (includes pyright)
+
+The `.vscode` folder contains a sample settings file.
+Run `cp .vscode/settings.json.sample .vscode/settings.json` to use the settings.
+Modify [.vscode/settings.json](./.vscode/settings.json) according to the comments to get autoformatting on save.
 
 ### Setting up the CRS on a new machine
 
@@ -56,7 +76,7 @@ You can run it at any time using `pyright -p crs/src/`
   - `echo 'eval "$(~/.local/bin/mise activate bash)"' >> ~/.bashrc`
   - `echo 'export PATH="$HOME/.local/share/mise/shims:$PATH"' >> ~/.bash_profile`
   - if you cannot run `mise --version` then uninstall using `~/.local/bin/mise implode` and start again :/
-- We will supply you with an SSH key which you will need to use to pull and push to the repo: 
+- We will supply you with an SSH key which you will need to use to pull and push to the repo:
   - move the key to the `~/.ssh/` directory
   - `chmod 600 ~/.ssh/id_rsa_aicc`
   - `eval "$(ssh-agent -s)"`
@@ -68,6 +88,7 @@ You can run it at any time using `pyright -p crs/src/`
 - run `cp sandbox/example.env sandbox/env` and modify `sandbox/env` as follows:
   - generate a new personal access token (PAT) (https://github.com/settings/tokens) with `read:packages` permissions.
   - authorise the token by clicking "Configure SSO" next to it and then "aixcc-sc".
+    - ![autorize_SSO](./.static/authorize_SSO.png)
   - include our GitHub username (`auth0-660bd3c14d2d6436de9169f3_aixcc`) and personal access token in the
     `GITHUB_USER` and `GITHUB_TOKEN` variables, respectively, in the `env` file
   - fill in API keys for the LLMs (`ANTHROPIC_API_KEY`, `AZURE_API_KEY`, `OPENAI_API_KEY`)
@@ -92,7 +113,7 @@ You can run it at any time using `pyright -p crs/src/`
       instance inside the containers, e.g. `DOCKER_HOST=tcp://localhost:2375 docker images` to check which CP images are
       available.
 - run `c=crs make up-attached` to bring up th CRS server with attached output stream
-  - if this fails and brings up a permission error for `/var/run/docker.sock` despite running the instructions for 
+  - if this fails and brings up a permission error for `/var/run/docker.sock` despite running the instructions for
     running Docker as a non-root user, restart your VM and try this command again.
   - this will bring up the other containers in the background and keep them running after the CRS exits, including:
     - LiteLLM proxy (port 8081 on host)

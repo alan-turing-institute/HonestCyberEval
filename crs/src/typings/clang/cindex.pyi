@@ -1,8 +1,32 @@
-from ctypes import *
-from _typeshed import Incomplete
 from collections.abc import Generator
+from ctypes import *
 
-__all__ = ['AvailabilityKind', 'Config', 'CodeCompletionResults', 'CompilationDatabase', 'CompileCommands', 'CompileCommand', 'CursorKind', 'Cursor', 'Diagnostic', 'File', 'FixIt', 'Index', 'LinkageKind', 'SourceLocation', 'SourceRange', 'TLSKind', 'TokenKind', 'Token', 'TranslationUnitLoadError', 'TranslationUnit', 'TypeKind', 'Type']
+from _typeshed import Incomplete
+
+__all__ = [
+    "AvailabilityKind",
+    "Config",
+    "CodeCompletionResults",
+    "CompilationDatabase",
+    "CompileCommands",
+    "CompileCommand",
+    "CursorKind",
+    "Cursor",
+    "Diagnostic",
+    "File",
+    "FixIt",
+    "Index",
+    "LinkageKind",
+    "SourceLocation",
+    "SourceRange",
+    "TLSKind",
+    "TokenKind",
+    "Token",
+    "TranslationUnitLoadError",
+    "TranslationUnit",
+    "TypeKind",
+    "Type",
+]
 
 class c_interop_string(c_char_p):
     def __init__(self, p: Incomplete | None = None) -> None: ...
@@ -316,6 +340,7 @@ class CompletionChunk:
     class Kind:
         name: Incomplete
         def __init__(self, name) -> None: ...
+
     cs: Incomplete
     key: Incomplete
     def __init__(self, completionString, key) -> None: ...
@@ -332,6 +357,7 @@ class CompletionString(ClangObject):
     class Availability:
         name: Incomplete
         def __init__(self, name) -> None: ...
+
     def __len__(self) -> int: ...
     def num_chunks(self): ...
     def __getitem__(self, key): ...
@@ -368,7 +394,9 @@ class Index(ClangObject):
     def create(excludeDecls: bool = False): ...
     def __del__(self) -> None: ...
     def read(self, path): ...
-    def parse(self, path, args: Incomplete | None = None, unsaved_files: Incomplete | None = None, options: int = 0): ...
+    def parse(
+        self, path, args: Incomplete | None = None, unsaved_files: Incomplete | None = None, options: int = 0
+    ): ...
 
 class TranslationUnit(ClangObject):
     PARSE_NONE: int
@@ -379,7 +407,14 @@ class TranslationUnit(ClangObject):
     PARSE_SKIP_FUNCTION_BODIES: int
     PARSE_INCLUDE_BRIEF_COMMENTS_IN_CODE_COMPLETION: int
     @classmethod
-    def from_source(cls, filename, args: Incomplete | None = None, unsaved_files: Incomplete | None = None, options: int = 0, index: Incomplete | None = None): ...
+    def from_source(
+        cls,
+        filename,
+        args: Incomplete | None = None,
+        unsaved_files: Incomplete | None = None,
+        options: int = 0,
+        index: Incomplete | None = None,
+    ): ...
     @classmethod
     def from_ast_file(cls, filename, index: Incomplete | None = None): ...
     index: Incomplete
@@ -398,7 +433,16 @@ class TranslationUnit(ClangObject):
     def diagnostics(self): ...
     def reparse(self, unsaved_files: Incomplete | None = None, options: int = 0) -> None: ...
     def save(self, filename) -> None: ...
-    def codeComplete(self, path, line, column, unsaved_files: Incomplete | None = None, include_macros: bool = False, include_code_patterns: bool = False, include_brief_comments: bool = False): ...
+    def codeComplete(
+        self,
+        path,
+        line,
+        column,
+        unsaved_files: Incomplete | None = None,
+        include_macros: bool = False,
+        include_code_patterns: bool = False,
+        include_brief_comments: bool = False,
+    ): ...
     def get_tokens(self, locations: Incomplete | None = None, extent: Incomplete | None = None): ...
 
 class File(ClangObject):

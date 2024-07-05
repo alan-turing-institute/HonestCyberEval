@@ -6,8 +6,7 @@ exclude: >
       crs_scratch|
       crs_scratch/*|
       cp_root|
-      cp_root/*|
-      crs/*
+      cp_root/*
   )
 
 repos:
@@ -33,15 +32,38 @@ repos:
     hooks:
       - id: yamllint
         args: [--strict, -c=.github/linters/.yamllint]
+        exclude: >
+          (?x)(
+            crs/*
+          )
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.39.0
     hooks:
       - id: markdownlint
         args: ['--config', '.github/linters/.markdown-lint']
-
+        exclude: >
+          (?x)(
+            crs/*
+          )
   - repo: https://github.com/rhysd/actionlint
     rev: v1.6.27
     hooks:
       - id: actionlint
         args: ['-config-file', '.github/linters/actionlint.yaml']
+  - repo: https://github.com/psf/black
+    rev: 24.4.2
+    hooks:
+      - id: black
+        args: ["crs/src"]
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["crs/src"]
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.370
+    hooks:
+      - id: pyright
+        args: ["-p", "crs/src"]
+        language: "system"

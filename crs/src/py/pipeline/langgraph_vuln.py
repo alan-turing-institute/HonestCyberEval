@@ -1,6 +1,15 @@
 from enum import auto
 from typing import Literal, Optional, TypedDict
 
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.pydantic_v1 import BaseModel, Field
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_openai import ChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.graph import CompiledGraph
+from strenum import StrEnum
+
 from api.cp import ChallengeProject
 from api.fs import write_harness_input_to_disk
 from api.llm import (
@@ -8,17 +17,11 @@ from api.llm import (
     add_structured_output,
     create_chat_client,
     fix_anthropic_weirdness,
-    placeholder_fix_anthropic_weirdness, is_gemini, format_chat_history,
+    format_chat_history,
+    is_gemini,
+    placeholder_fix_anthropic_weirdness,
 )
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.pydantic_v1 import BaseModel, Field
-from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_openai import ChatOpenAI
-from langgraph.graph import START, END, StateGraph
-from langgraph.graph.graph import CompiledGraph
 from logger import add_prefix_to_logger, logger
-from strenum import StrEnum
 
 logger = add_prefix_to_logger(logger, "Vulnerability Graph")
 
@@ -26,30 +29,27 @@ __all__ = [
     "run_vuln_langraph",
 ]
 
-harness_input_gen_prompt = ChatPromptTemplate.from_messages(
-    [
-        placeholder_fix_anthropic_weirdness,
-        (
-            "system",
-            """You are a coding assistant with expertise in finding bugs and vulnerabilities in {language} program code. 
-    Your task is to help the user find vulnerabilities in the code provided by the user.  
-    Here is the harness: \n ------- \n {harness_code} \n ------- \n 
+harness_input_gen_prompt = ChatPromptTemplate.from_messages([
+    placeholder_fix_anthropic_weirdness,
+    (
+        "system",
+        """You are a coding assistant with expertise in finding bugs and vulnerabilities in {language} program code.
+    Your task is to help the user find vulnerabilities in the code provided by the user.
+    Here is the harness: \n ------- \n {harness_code} \n ------- \n
     Provide the user with an input to the above harness that would trigger the sanitizer {sanitizer}.
-    Ensure any harness input you generate is not too long and that it will result in a valid run. \n 
+    Ensure any harness input you generate is not too long and that it will result in a valid run. \n
     Structure your answer so that it only includes the harness input. \n
     Here is the potentially vulnerable code:""",
-        ),
-        ("placeholder", "{messages}"),
-        ("user", "{question}"),
-    ]
-)
+    ),
+    ("placeholder", "{messages}"),
+    ("user", "{question}"),
+])
 
 
 class HarnessInput(BaseModel):
     """Input to test harness that triggers vulnerability"""
-    input: str = Field(
-        description="Lines of input terminating with newline, including empty lines"
-    )
+
+    input: str = Field(description="Lines of input terminating with newline, including empty lines")
 
     def __str__(self):
         return self.input
@@ -111,8 +111,8 @@ def generate(state: GraphState) -> GraphState:
                         Generate another harness input that triggers the sanitizer in the code."""
 
     harness_input_gen_chain = RunnableWithMessageHistory(
-        harness_input_gen_prompt |
-        add_structured_output(  # type: ignore  # types around with_structured_output are a mess
+        harness_input_gen_prompt
+        | add_structured_output(  # type: ignore  # types around with_structured_output are a mess
             model,
             HarnessInput,
             "oai-gpt-4o",
@@ -122,13 +122,16 @@ def generate(state: GraphState) -> GraphState:
         input_messages_key="question",
         history_messages_key="messages",
     )
-    output = harness_input_gen_chain.invoke({
-        "harness_code": state["harness_code"],
-        "language": state["project"].language,
-        "sanitizer": state["sanitizer_str"],
-        "question": question,
-        **fix_anthropic_weirdness(model),
-    }, {"configurable": {"session_id": "unused"}})
+    output = harness_input_gen_chain.invoke(
+        {
+            "harness_code": state["harness_code"],
+            "language": state["project"].language,
+            "sanitizer": state["sanitizer_str"],
+            "question": question,
+            **fix_anthropic_weirdness(model),
+        },
+        {"configurable": {"session_id": "unused"}},
+    )
 
     harness_input_solution = output["parsed"]
     try:
@@ -155,7 +158,9 @@ def run_harness(state: GraphState) -> GraphState:
     sanitizer_id = state["sanitizer_id"]
     model_name: LLMmodel = state["model"].model_name  # type: ignore  # we know it's one of the models...
 
-    harness_input_file = write_harness_input_to_disk(project, state["solution"], state["iterations"], harness_id, sanitizer_id, model_name)
+    harness_input_file = write_harness_input_to_disk(
+        project, state["solution"], state["iterations"], harness_id, sanitizer_id, model_name
+    )
 
     # Check harness input
     try:
@@ -165,7 +170,10 @@ def run_harness(state: GraphState) -> GraphState:
             sanitizer_id,
         )
         if not has_sanitizer_triggered:
-            raise Exception(f"The correct sanitizer {state['sanitizer_str']} was not triggered. Instead, this was the sanitizer output: {stderr}")
+            raise Exception(
+                f"The correct sanitizer {state['sanitizer_str']} was not triggered. Instead, this was the sanitizer"
+                f" output: {stderr}"
+            )
     except Exception as error:
         logger.info("Harness input check: Failed")
         state["chat_history"].add_user_message(f"Your solution failed. Here is the error: {error}")
@@ -192,13 +200,16 @@ def reflect(state: GraphState) -> GraphState:
     question = """Analyse your previous attempt, be critical.
      Provide insight that could help you produce output that does produce the error.
      Do not provide new input, only reflect on your previous input."""
-    reflection_chain.invoke({
-        "harness_code": state["harness_code"],
-        "language": state["project"].language,
-        "sanitizer": state["sanitizer_str"],
-        "question": question,
-        **fix_anthropic_weirdness(model),
-    }, {"configurable": {"session_id": "unused"}})
+    reflection_chain.invoke(
+        {
+            "harness_code": state["harness_code"],
+            "language": state["project"].language,
+            "sanitizer": state["sanitizer_str"],
+            "question": question,
+            **fix_anthropic_weirdness(model),
+        },
+        {"configurable": {"session_id": "unused"}},
+    )
     return state
 
 
@@ -238,17 +249,17 @@ def make_workflow(key: str = "default") -> CompiledGraph:
 
 
 def run_vuln_langraph(
-        *,
-        project: ChallengeProject,
-        max_iterations: int,
-        model_name: LLMmodel,
-        should_reflect: bool = True,
-        harness_id: str,
-        sanitizer_id: str,
-        code_snippet: str,
+    *,
+    project: ChallengeProject,
+    max_iterations: int,
+    model_name: LLMmodel,
+    should_reflect: bool = True,
+    harness_id: str,
+    sanitizer_id: str,
+    code_snippet: str,
 ):
     harness_path = project.harnesses[harness_id].file_path
-    harness_code = harness_path.read_text().replace('\n', '')
+    harness_code = harness_path.read_text().replace("\n", "")
 
     sanitizer, error_code = project.sanitizers[sanitizer_id]
     sanitizer_str = f"{sanitizer}: {error_code}"
@@ -257,18 +268,20 @@ def run_vuln_langraph(
     chat_history = ChatMessageHistory()
     workflow = make_workflow()
 
-    return workflow.invoke(GraphState(**{
-        "model": model,
-        "project": project,
-        "chat_history": chat_history,
-        "solution": "",
-        "iterations": 0,
-        "error": None,
-        "max_iterations": max_iterations,
-        "should_reflect": should_reflect,
-        "harness_id": harness_id,
-        "harness_code": harness_code,
-        "sanitizer_id": sanitizer_id,
-        "sanitizer_str": sanitizer_str,
-        "code_snippet": code_snippet,
-    }))
+    return workflow.invoke(
+        GraphState(**{
+            "model": model,
+            "project": project,
+            "chat_history": chat_history,
+            "solution": "",
+            "iterations": 0,
+            "error": None,
+            "max_iterations": max_iterations,
+            "should_reflect": should_reflect,
+            "harness_id": harness_id,
+            "harness_code": harness_code,
+            "sanitizer_id": sanitizer_id,
+            "sanitizer_str": sanitizer_str,
+            "code_snippet": code_snippet,
+        })
+    )

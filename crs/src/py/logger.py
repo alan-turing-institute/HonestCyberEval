@@ -3,6 +3,7 @@ import logging.config
 from pathlib import Path
 
 import yaml
+
 from config import AIXCC_CRS_SCRATCH_SPACE
 
 
@@ -13,19 +14,25 @@ class MultiLineFormatter(logging.Formatter):
 
     def get_header_length(self, record):
         """Get the header length of a given record."""
-        return len(super().format(logging.LogRecord(
-            name=record.name,
-            level=record.levelno,
-            pathname=record.pathname,
-            lineno=record.lineno,
-            msg='', args=(), exc_info=None
-        )))
+        return len(
+            super().format(
+                logging.LogRecord(
+                    name=record.name,
+                    level=record.levelno,
+                    pathname=record.pathname,
+                    lineno=record.lineno,
+                    msg="",
+                    args=(),
+                    exc_info=None,
+                )
+            )
+        )
 
     def format(self, record):
         """Format a record with added indentation."""
-        indent = ' ' * self.get_header_length(record)
+        indent = " " * self.get_header_length(record)
         head, *trailing = super().format(record).splitlines(True)
-        return head + ''.join(indent + line for line in trailing)
+        return head + "".join(indent + line for line in trailing)
 
 
 def filter_maker(level):
@@ -38,15 +45,11 @@ def filter_maker(level):
 
 
 def make_logger():
-    log_conf = yaml.safe_load(
-        Path(Path.cwd() / "py" / 'logging.yaml').read_text()
-    )
+    log_conf = yaml.safe_load(Path(Path.cwd() / "py" / "logging.yaml").read_text())
     log_conf["handlers"]["file"]["filename"] = (AIXCC_CRS_SCRATCH_SPACE / "crs.log").resolve()
 
-    logging.config.dictConfig(
-        log_conf
-    )
-    return logging.getLogger('CRS')
+    logging.config.dictConfig(log_conf)
+    return logging.getLogger("CRS")
 
 
 logger = make_logger()

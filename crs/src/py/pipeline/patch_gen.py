@@ -1,11 +1,16 @@
 from typing import Optional
 
 from api.cp import ChallengeProject
-from api.fs import write_patch_to_disk
 from api.data_types import Patch, VulnerabilityWithSha
+from api.fs import write_patch_to_disk
 from api.llm import LLMmodel, format_chat_history
 from logger import logger
-from pipeline.langgraph_patch import run_patch_langraph, patched_file_to_diff, apply_patch_and_check, HarnessTriggeredAfterPatchException
+from pipeline.langgraph_patch import (
+    HarnessTriggeredAfterPatchException,
+    apply_patch_and_check,
+    patched_file_to_diff,
+    run_patch_langraph,
+)
 
 mock_patches = {
     "id_1": r"""diff --git a/mock_vp.c b/mock_vp.c
@@ -40,7 +45,7 @@ index 9dc6bf0..ca80ed1 100644
  }
 
  #ifndef ___TEST___
-"""
+""",
 }
 
 
@@ -67,14 +72,16 @@ class PatchGen:
                     vulnerability=vulnerability,
                     bad_file=bad_file,
                     vuln_code=vuln_code,
-                    max_iterations=max_trials
+                    max_iterations=max_trials,
                 )
                 logger.debug(f"LangGraph Message History\n\n{format_chat_history(output['chat_history'])}\n\n")
                 if not output["error"]:
                     logger.info(f"Patching succeeded using {model_name}")
                     patched_file = output["patched_file"]
                     patch_text = patched_file_to_diff(vuln_code, patched_file, bad_file)
-                    patch_path = write_patch_to_disk(self.project, cpv_uuid, patch_text, "work", vulnerability, model_name)
+                    patch_path = write_patch_to_disk(
+                        self.project, cpv_uuid, patch_text, "work", vulnerability, model_name
+                    )
                     patch = Patch(diff=patch_text, diff_file=patch_path)
                     return patch
                 logger.info(f"{model_name} failed to find good patch")
@@ -84,7 +91,9 @@ class PatchGen:
         logger.warning("Failed to find good patch!")
         return None
 
-    def run(self, project: ChallengeProject, cp_source: str, cpv_uuid, vulnerability: VulnerabilityWithSha) -> Optional[Patch]:
+    def run(
+        self, project: ChallengeProject, cp_source: str, cpv_uuid, vulnerability: VulnerabilityWithSha
+    ) -> Optional[Patch]:
         self.project = project
         self.cp_source = cp_source
 

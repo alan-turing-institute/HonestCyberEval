@@ -1,12 +1,11 @@
 import subprocess
-from shutil import rmtree, copy, copytree
-from typing import Literal, TYPE_CHECKING
+from shutil import copy, copytree, rmtree
+from typing import TYPE_CHECKING, Literal
 
+from api.data_types import Patch, VulnerabilityWithSha
 from api.llm import LLMmodel
-
 from config import AIXCC_CP_ROOT, AIXCC_CRS_SCRATCH_SPACE, OUTPUT_PATH, PROJECT_PATH
 from logger import logger
-from api.data_types import Patch, VulnerabilityWithSha
 
 if TYPE_CHECKING:
     from api.cp import ChallengeProject
@@ -40,11 +39,13 @@ class PatchException(RunException):
 def run_command(*args, **kwargs):
     logger.debug(f"Running {' '.join((str(arg) for arg in args))}")
     result = subprocess.run(args, capture_output=True, text=True, **kwargs)
-    logger.debug("\n".join([
-        f"Output of running {' '.join((str(arg) for arg in args))}:",
-        result.stdout,
-        result.stderr,
-    ]))
+    logger.debug(
+        "\n".join([
+            f"Output of running {' '.join((str(arg) for arg in args))}:",
+            result.stdout,
+            result.stderr,
+        ])
+    )
     result.check_returncode()
     return result
 
@@ -73,12 +74,12 @@ def write_file_to_scratch(filename, content):
 
 
 def write_harness_input_to_disk(
-        project: 'ChallengeProject',
-        harness_input: str,
-        i: int | str,
-        harness_id: str,
-        sanitizer_id: str,
-        model_name: LLMmodel | Literal['mock']
+    project: "ChallengeProject",
+    harness_input: str,
+    i: int | str,
+    harness_id: str,
+    sanitizer_id: str,
+    model_name: LLMmodel | Literal["mock"],
 ):
     return write_file_to_scratch(
         project.input_path / f"harness_{harness_id}_sanitizer_{sanitizer_id}_{model_name}_{i}.blob",
@@ -87,14 +88,15 @@ def write_harness_input_to_disk(
 
 
 def write_patch_to_disk(
-        project: 'ChallengeProject',
-        cpv_uuid: str,
-        patch_text: str,
-        i: int | str,
-        vulnerability: VulnerabilityWithSha,
-        model_name: LLMmodel | Literal['mock']
+    project: "ChallengeProject",
+    cpv_uuid: str,
+    patch_text: str,
+    i: int | str,
+    vulnerability: VulnerabilityWithSha,
+    model_name: LLMmodel | Literal["mock"],
 ):
     return write_file_to_scratch(
-        project.patch_path / f"{cpv_uuid}_{i}_harness_{vulnerability.harness_id}_sanitizer_{vulnerability.sanitizer_id}_{model_name}.diff",
+        project.patch_path
+        / f"{cpv_uuid}_{i}_harness_{vulnerability.harness_id}_sanitizer_{vulnerability.sanitizer_id}_{model_name}.diff",
         patch_text,
     )

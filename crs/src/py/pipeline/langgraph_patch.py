@@ -2,21 +2,27 @@ import difflib
 from enum import auto
 from typing import Literal, Optional, TypedDict
 
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_openai import ChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.graph import CompiledGraph
+from strenum import StrEnum
 
 from api.cp import ChallengeProject
 from api.data_types import Patch, VulnerabilityWithSha
 from api.fs import PatchException, write_patch_to_disk
-from api.llm import LLMmodel, create_chat_client, placeholder_fix_anthropic_weirdness, fix_anthropic_weirdness, add_structured_output
+from api.llm import (
+    LLMmodel,
+    add_structured_output,
+    create_chat_client,
+    fix_anthropic_weirdness,
+    placeholder_fix_anthropic_weirdness,
+)
 from api.submit import CPVuuid
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.pydantic_v1 import BaseModel, Field
-from langgraph.graph import START, END, StateGraph
-from langgraph.graph.graph import CompiledGraph
 from logger import add_prefix_to_logger, logger
-from strenum import StrEnum
 
 logger = add_prefix_to_logger(logger, "Patching Graph")
 
@@ -29,44 +35,39 @@ class HarnessTriggeredAfterPatchException(PatchException):
         self.vuln = vuln
 
     def __str__(self):
-        return "\n".join(
-            [
-                super().__str__(),
-                f"Harness {self.vuln.harness_id} with input:",
-                str(self.vuln.input_file.absolute()),
-                self.vuln.input_data,
-                f"still triggers sanitizer {self.vuln.sanitizer_id}",
-            ]
-        )
+        return "\n".join([
+            super().__str__(),
+            f"Harness {self.vuln.harness_id} with input:",
+            str(self.vuln.input_file.absolute()),
+            self.vuln.input_data,
+            f"still triggers sanitizer {self.vuln.sanitizer_id}",
+        ])
 
 
 class TestFailedException(PatchException):
     message = "Test failed; the patch removed functionality"
 
 
-patch_gen_prompt = ChatPromptTemplate.from_messages(
-    [
-        placeholder_fix_anthropic_weirdness,
-        (
-            "system",
-            """You are a coding assistant with expertise in fixing bugs and vulnerabilities in {language} program code. 
+patch_gen_prompt = ChatPromptTemplate.from_messages([
+    placeholder_fix_anthropic_weirdness,
+    (
+        "system",
+        """You are a coding assistant with expertise in fixing bugs and vulnerabilities in {language} program code.
     The code provided by the user has a {sanitizer} vulnerability.
-    Your task is to write a patched version of the code provided by the user. 
+    Your task is to write a patched version of the code provided by the user.
     The patched file should fix the vulnerability and maintain the code functionality.
-    The first line of the code should not be 'c'. 
+    The first line of the code should not be 'c'.
     Here is the vulnerable code:""",
-        ),
-        ("placeholder", "{messages}"),
-        ("user", "{question}"),
-    ]
-)
+    ),
+    ("placeholder", "{messages}"),
+    ("user", "{question}"),
+])
 
 
 class PatchedFile(BaseModel):
     """Input to test harness that triggers vulnerability"""
-    file: str = Field(
-        description="A program file that does not include a vulnerability"
-    )
+
+    file: str = Field(description="A program file that does not include a vulnerability")
 
     def __str__(self):
         return self.file
@@ -82,6 +83,7 @@ class GraphState(TypedDict):
         patched_file : Harness input solution
         iterations : Number of tries
     """
+
     model: ChatOpenAI
     project: ChallengeProject
     chat_history: ChatMessageHistory
@@ -112,7 +114,7 @@ def patched_file_to_diff(vuln_code, patched_file, bad_file_name):
         patched_file.splitlines(True),
         fromfile=bad_file_name,
         tofile=bad_file_name,
-        lineterm='\n',
+        lineterm="\n",
         n=3,
     )
     patch_text = "".join(diff_obj) + "\n"
@@ -167,8 +169,8 @@ def generate(state: GraphState) -> GraphState:
                         Generate another patch that fixes the code."""
 
     patch_gen_chain = RunnableWithMessageHistory(
-        patch_gen_prompt |
-        add_structured_output(  # type: ignore  # types around with_structured_output are a mess
+        patch_gen_prompt
+        | add_structured_output(  # type: ignore  # types around with_structured_output are a mess
             model,
             PatchedFile,
             "oai-gpt-4o",
@@ -179,12 +181,15 @@ def generate(state: GraphState) -> GraphState:
         history_messages_key="messages",
     )
 
-    output = patch_gen_chain.invoke({
-        "language": state["project"].language,
-        "sanitizer": state["sanitizer_str"],
-        "question": question,
-        **fix_anthropic_weirdness(model),
-    }, {"configurable": {"session_id": "unused"}})
+    output = patch_gen_chain.invoke(
+        {
+            "language": state["project"].language,
+            "sanitizer": state["sanitizer_str"],
+            "question": question,
+            **fix_anthropic_weirdness(model),
+        },
+        {"configurable": {"session_id": "unused"}},
+    )
 
     patch_solution = output["parsed"]
     try:
@@ -210,7 +215,9 @@ def check_patch(state: GraphState) -> GraphState:
     model_name: LLMmodel = state["model"].model_name  # type: ignore  # we know it's one of the models...
 
     patch_text = patched_file_to_diff(state["vuln_code"], state["patched_file"], state["bad_file"])
-    patch_path = write_patch_to_disk(state["project"], state["cpv_uuid"], patch_text, state["iterations"], vulnerability, model_name)
+    patch_path = write_patch_to_disk(
+        state["project"], state["cpv_uuid"], patch_text, state["iterations"], vulnerability, model_name
+    )
     patch = Patch(diff=patch_text, diff_file=patch_path)
 
     try:
@@ -244,12 +251,15 @@ def reflect(state: GraphState) -> GraphState:
          Provide insight that could help you produce a fix for the vulnerability.
          Do not provide new input, only reflect on your previous input."""
 
-    reflection_chain.invoke({
-        "language": state["project"].language,
-        "sanitizer": state["sanitizer_str"],
-        "question": question,
-        **fix_anthropic_weirdness(model),
-    }, {"configurable": {"session_id": "unused"}})
+    reflection_chain.invoke(
+        {
+            "language": state["project"].language,
+            "sanitizer": state["sanitizer_str"],
+            "question": question,
+            **fix_anthropic_weirdness(model),
+        },
+        {"configurable": {"session_id": "unused"}},
+    )
 
     return state
 
@@ -289,16 +299,16 @@ def make_workflow(key: str = "default") -> CompiledGraph:
 
 
 def run_patch_langraph(
-        *,
-        model_name: LLMmodel,
-        project: ChallengeProject,
-        cp_source: str,
-        cpv_uuid: CPVuuid,
-        vulnerability: VulnerabilityWithSha,
-        vuln_code: str,
-        bad_file: str,
-        max_iterations: int,
-        should_reflect: bool = True
+    *,
+    model_name: LLMmodel,
+    project: ChallengeProject,
+    cp_source: str,
+    cpv_uuid: CPVuuid,
+    vulnerability: VulnerabilityWithSha,
+    vuln_code: str,
+    bad_file: str,
+    max_iterations: int,
+    should_reflect: bool = True,
 ):
     sanitizer, error_code = project.sanitizers[vulnerability.sanitizer_id]
     sanitizer_str = f"{sanitizer}: {error_code}"
@@ -307,18 +317,20 @@ def run_patch_langraph(
     chat_history = ChatMessageHistory()
     workflow = make_workflow()
 
-    return workflow.invoke(GraphState(**{
-        "model": model,
-        "project": project,
-        "cp_source": cp_source,
-        "chat_history": chat_history,
-        "cpv_uuid": cpv_uuid,
-        "vulnerability": vulnerability,
-        "vuln_code": vuln_code,
-        "bad_file": bad_file,
-        "sanitizer_str": sanitizer_str,
-        "messages": [("user", vuln_code)],
-        "iterations": 0,
-        "max_iterations": max_iterations,
-        "should_reflect": should_reflect,
-    }))
+    return workflow.invoke(
+        GraphState(**{
+            "model": model,
+            "project": project,
+            "cp_source": cp_source,
+            "chat_history": chat_history,
+            "cpv_uuid": cpv_uuid,
+            "vulnerability": vulnerability,
+            "vuln_code": vuln_code,
+            "bad_file": bad_file,
+            "sanitizer_str": sanitizer_str,
+            "messages": [("user", vuln_code)],
+            "iterations": 0,
+            "max_iterations": max_iterations,
+            "should_reflect": should_reflect,
+        })
+    )

@@ -1,17 +1,17 @@
 import functools
 from operator import itemgetter
-from typing import TypeAlias, Literal, TypeVar, Type, Optional
+from typing import Literal, Optional, Type, TypeAlias, TypeVar
 
 from langchain.output_parsers import OutputFixingParser
+from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.messages import AIMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.output_parsers.openai_tools import PydanticToolsParser
-from langchain_core.pydantic_v1 import SecretStr, BaseModel
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.runnables import RunnablePassthrough, RunnableMap
+from langchain_core.pydantic_v1 import BaseModel, SecretStr
+from langchain_core.runnables import RunnableMap, RunnablePassthrough
 from langchain_openai import ChatOpenAI
 
-from config import LITELLM_KEY, AIXCC_LITELLM_HOSTNAME
+from config import AIXCC_LITELLM_HOSTNAME, LITELLM_KEY
 
 LLMmodel: TypeAlias = Literal[
     # OpenAI
@@ -56,7 +56,9 @@ def create_chat_client(model_name: LLMmodel) -> ChatOpenAI:
 OutputType = TypeVar("OutputType", bound=BaseModel)
 
 
-def add_structured_output(model: ChatOpenAI, schema: Type[OutputType], backup_model_gemini: Optional[ChatOpenAI | LLMmodel] = None):
+def add_structured_output(
+    model: ChatOpenAI, schema: Type[OutputType], backup_model_gemini: Optional[ChatOpenAI | LLMmodel] = None
+):
     if is_gemini(model):
         model_with_tools = model.bind(response_format={"type": "json_object"})
         output_parser = PydanticOutputParser(pydantic_object=schema)
@@ -67,9 +69,7 @@ def add_structured_output(model: ChatOpenAI, schema: Type[OutputType], backup_mo
             output_parser = OutputFixingParser.from_llm(parser=output_parser, llm=backup_model_gemini)
     else:
         model_with_tools = model.bind_tools([schema], tool_choice=True)
-        output_parser = PydanticToolsParser(
-            tools=[schema], first_tool_only=True
-        )
+        output_parser = PydanticToolsParser(tools=[schema], first_tool_only=True)
     parser_assign = RunnablePassthrough.assign(
         parsed=itemgetter("raw") | output_parser,
         parsing_error=lambda _: None,
@@ -78,9 +78,7 @@ def add_structured_output(model: ChatOpenAI, schema: Type[OutputType], backup_mo
         ai_message=itemgetter("raw") if is_gemini(model) else lambda x: AIMessage(content=str(x["parsed"])),
     )
     parser_none = RunnablePassthrough.assign(parsed=lambda _: None)
-    parser_with_fallback = parser_assign.with_fallbacks(
-        [parser_none], exception_key="parsing_error"
-    )
+    parser_with_fallback = parser_assign.with_fallbacks([parser_none], exception_key="parsing_error")
     return RunnableMap(raw=model_with_tools) | parser_with_fallback
 
 
@@ -95,17 +93,23 @@ def is_kind(models: list[LLMmodel], model: ChatOpenAI | LLMmodel) -> bool:
     return model in models
 
 
-is_gemini = functools.partial(is_kind, [
-    "gemini-1.0-pro",
-    "gemini-1.5-pro",
-])
+is_gemini = functools.partial(
+    is_kind,
+    [
+        "gemini-1.0-pro",
+        "gemini-1.5-pro",
+    ],
+)
 
-is_anthropic = functools.partial(is_kind, [
-    "claude-3-opus",
-    "claude-3-sonnet",
-    "claude-3-haiku",
-    "claude-3.5-sonnet",
-])
+is_anthropic = functools.partial(
+    is_kind,
+    [
+        "claude-3-opus",
+        "claude-3-sonnet",
+        "claude-3-haiku",
+        "claude-3.5-sonnet",
+    ],
+)
 
 
 def fix_anthropic_weirdness(model: ChatOpenAI | LLMmodel) -> dict[str, list[tuple[str, str]]]:

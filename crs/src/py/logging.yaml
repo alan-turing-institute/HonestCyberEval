@@ -1,3 +1,4 @@
+---
 version: 1
 formatters:
   multiline:
@@ -28,8 +29,8 @@ loggers:
   CRS:
     level: DEBUG
     handlers: [stderr, stdout]
-    propagate: yes
+    propagate: true
 filters:
   warnings_and_below:
-    "()" : "logger.filter_maker"
+    "()": "logger.filter_maker"
     level: WARNING
