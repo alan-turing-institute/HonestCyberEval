@@ -13,10 +13,6 @@ def run():
     move_projects_to_scratch()
     projects = get_projects()
     for project_path in projects:
-        if not project_path.name == "mock-cp":
-            # Assuming this is "Mock CP" for now as it's using hardcoded inputs and patches
-            logger.warning(f"Skipping {project_path.name}")
-            continue
         project = setup_project(project_path)
 
         for cp_source in project.sources:

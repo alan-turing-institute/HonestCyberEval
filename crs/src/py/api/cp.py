@@ -28,13 +28,6 @@ class ProjectPatchException(PatchException):
     message = "Patching failed using:"
 
 
-# TODO: complete list of flags and better handling
-SANITIZER_COMPILER_FLAGS = {
-    "AddressSanitizer": {"-fsanitize=address", "-fno-omit-frame-pointer"},
-    "MemorySanitizer": {"-fsanitize=memory", "-fno-omit-frame-pointer"},
-}
-
-
 class ChallengeProject:
     def __init__(self, path):
         self.path = path
@@ -83,6 +76,8 @@ class ChallengeProject:
             p.mkdir(parents=True, exist_ok=True)
 
     def _set_docker_env(self):
+        docker_env_path = self.path / ".env.docker"
+        output = {}
         match self.language:
             # `CC` - C compiler binary
             # `CXX` - C++ compiler binary
@@ -104,13 +99,7 @@ class ChallengeProject:
             # `CP_HARNESS_LIBS` - Libraries to be linked for CP harness(es) target (default: CP-specific)
             # `CP_HARNESS_EXTRA_LIBS` - Supplemental libraries to be linked for CP harness(es) target (default: empty)
             case "C":
-                # TODO: linux kernel uses specific build flags e.g. CONFIG_KFENCE=y, CONFIG_KASAN=y
-                # TODO: more control over C config
-                cflags = set()
-                for sanitizer_name, _ in self.sanitizers.values():
-                    cflags |= SANITIZER_COMPILER_FLAGS.get(sanitizer_name, set())
-                docker_env_path = self.path / ".env.docker"
-                docker_env_path.write_text(f"CP_BASE_EXTRA_CFLAGS={' '.join(cflags)}")
+                ...
             # `JAVA_HOME` - The root directory of installed Java Development Kit (default: `/opt/java/openjdk`)
             # `MAVEN_HOME` - The root directory of the installed Maven package (default: `/usr/share/maven`)
             # `MVN` - Maven's `mvn` binary (default: `/usr/bin/mvn`)
@@ -123,8 +112,9 @@ class ChallengeProject:
             # `CP_HARNESS_MAVEN_OPTS` - Parameters passed to JVM running Maven for building the CP harness(es) (default: CP-specific)
             # `CP_HARNESS_EXTRA_MAVEN_OPTS` - Supplemental parameters passed to JVM running Maven for building the CP harness(es) (default: empty)
             case "Java":
-                # TODO: configure Java compilation
-                pass
+                ...
+        if output:
+            docker_env_path.write_text("\n".join([f"{k}={v}" for k, v in output.items()]))
 
     def _read_project_yaml(self):
         project_yaml_path = self.path / "project.yaml"
