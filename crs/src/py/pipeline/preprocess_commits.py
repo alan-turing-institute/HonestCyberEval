@@ -76,7 +76,12 @@ class BaseDiff:
     def join_lines(self, lines, indent=''):
         return ("\n" + indent).join(lines)
     
-    def ast_string(self, ast: Cursor, string_to_print: str='', depth: int=0) -> str:
+    def ast_string(self, ast: Union[Cursor, None], string_to_print: str='', depth: int=0) -> str:
+        if ast is None:
+            if string_to_print:
+                return string_to_print
+            else:
+                return 'No AST to print.'
         indent = '  ' * depth
         if ast.spelling:
             string_to_print += f'{indent}Kind: {ast.kind}, Spelling: {ast.spelling}, Location: {ast.location}\n'
@@ -132,16 +137,16 @@ class FileDiff(BaseDiff):
         string_to_print += f'{indent}Diff:\n'
         string_to_print += f'{indent}{self.join_lines(self.diff_lines, indent)}\n\n'
         string_to_print += f'{indent}Before this commit:\n'
-        string_to_print += f'{indent}\tCode:\n'
         indent_plus = indent + "\t"
-        string_to_print += f'{indent}\t{self.join_lines(self.before_lines, indent_plus)}\n\n'
-        string_to_print += f'{indent}\tAST:\n'
-        string_to_print += f'{indent}\t{self.ast_string(self.before_ast)}\n\n'        
+        string_to_print += f'{indent_plus}Code:\n'
+        string_to_print += f'{indent_plus}{self.join_lines(self.before_lines, indent_plus)}\n\n'
+        string_to_print += f'{indent_plus}AST:\n'
+        string_to_print += f'{indent_plus}{self.ast_string(self.before_ast)}\n\n'        
         string_to_print += f'{indent}After this commit:\n'
-        string_to_print += f'{indent}\tCode:\n'
-        string_to_print += f'{indent}\t{self.join_lines(self.after_lines, indent_plus)}\n\n'
-        string_to_print += f'{indent}\tAST:\n'
-        string_to_print += f'{indent}\t{self.ast_string(self.after_ast)}\n\n'     
+        string_to_print += f'{indent_plus}Code:\n'
+        string_to_print += f'{indent_plus}{self.join_lines(self.after_lines, indent_plus)}\n\n'
+        string_to_print += f'{indent_plus}AST:\n'
+        string_to_print += f'{indent_plus}{self.ast_string(self.after_ast)}\n\n'     
 
         return string_to_print
 
