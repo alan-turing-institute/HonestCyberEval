@@ -1,20 +1,22 @@
 import difflib
 from enum import auto
+from typing import Literal, Optional, TypedDict
 
-from langchain_core.runnables import Runnable
-from strenum import StrEnum
-from typing import TypedDict, Literal, Optional
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_openai import ChatOpenAI
 
 from api.cp import ChallengeProject
 from api.data_types import Patch, VulnerabilityWithSha
-from api.fs import PatchException, write_file_to_scratch
-from api.llm import create_chat_client, LLMmodel
+from api.fs import PatchException, write_patch_to_disk
+from api.llm import LLMmodel, create_chat_client, placeholder_fix_anthropic_weirdness, fix_anthropic_weirdness, add_structured_output
+from api.submit import CPVuuid
+from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.pydantic_v1 import BaseModel, Field
-from langgraph.graph import END, StateGraph
-
-from api.submit import CPVuuid
+from langgraph.graph import START, END, StateGraph
+from langgraph.graph.graph import CompiledGraph
 from logger import add_prefix_to_logger, logger
+from strenum import StrEnum
 
 logger = add_prefix_to_logger(logger, "Patching Graph")
 
@@ -42,21 +44,9 @@ class TestFailedException(PatchException):
     message = "Test failed; the patch removed functionality"
 
 
-def patched_to_diff(vuln_code, patched_file, bad_file_name):
-    diff_obj = difflib.unified_diff(
-        vuln_code.splitlines(True),
-        patched_file.splitlines(True),
-        fromfile=bad_file_name,
-        tofile=bad_file_name,
-        lineterm='\n',
-        n=3,
-    )
-    patch_text = "".join(diff_obj) + "\n"
-    return patch_text
-
-
 patch_gen_prompt = ChatPromptTemplate.from_messages(
     [
+        placeholder_fix_anthropic_weirdness,
         (
             "system",
             """You are a coding assistant with expertise in fixing bugs and vulnerabilities in {language} program code. 
@@ -67,6 +57,7 @@ patch_gen_prompt = ChatPromptTemplate.from_messages(
     Here is the vulnerable code:""",
         ),
         ("placeholder", "{messages}"),
+        ("user", "{question}"),
     ]
 )
 
@@ -76,6 +67,9 @@ class PatchedFile(BaseModel):
     file: str = Field(
         description="A program file that does not include a vulnerability"
     )
+
+    def __str__(self):
+        return self.file
 
 
 class GraphState(TypedDict):
@@ -88,15 +82,15 @@ class GraphState(TypedDict):
         patched_file : Harness input solution
         iterations : Number of tries
     """
-    model_name: LLMmodel
+    model: ChatOpenAI
     project: ChallengeProject
+    chat_history: ChatMessageHistory
     cp_source: str
     cpv_uuid: CPVuuid
     vulnerability: VulnerabilityWithSha
     vuln_code: str
     bad_file: str
     sanitizer_str: str
-    patch_gen_chain: Runnable
     should_reflect: bool
     error: Optional[Exception]
     messages: list
@@ -108,162 +102,24 @@ class GraphState(TypedDict):
 class Nodes(StrEnum):
     GENERATE = auto()
     CHECK_CODE = auto()
-    END = auto()
     REFLECT = auto()
+    END = END
 
 
-def run_patch_langraph(
-        *,
-        model_name: LLMmodel,
-        project: ChallengeProject,
-        cp_source: str,
-        cpv_uuid: CPVuuid,
-        vulnerability: VulnerabilityWithSha,
-        vuln_code: str,
-        bad_file: str,
-        max_iterations: int,
-        should_reflect: bool = True
-):
-
-    sanitizer, error_code = project.sanitizers[vulnerability.sanitizer_id]
-    sanitizer_str = f"{sanitizer}: {error_code}"
-
-    patch_gen_chain = (
-            patch_gen_prompt | create_chat_client(model_name).with_structured_output(PatchedFile)
+def patched_file_to_diff(vuln_code, patched_file, bad_file_name):
+    diff_obj = difflib.unified_diff(
+        vuln_code.splitlines(True),
+        patched_file.splitlines(True),
+        fromfile=bad_file_name,
+        tofile=bad_file_name,
+        lineterm='\n',
+        n=3,
     )
-
-    workflow = StateGraph(GraphState)
-
-    # Define the nodes
-    workflow.add_node(Nodes.GENERATE, generate)
-    workflow.add_node(Nodes.CHECK_CODE, patch_check)
-    workflow.add_node(Nodes.REFLECT, reflect)
-
-    # Build graph
-    workflow.set_entry_point(Nodes.GENERATE)
-    workflow.add_edge(Nodes.GENERATE, Nodes.CHECK_CODE)
-    workflow.add_conditional_edges(
-        Nodes.CHECK_CODE,
-        decide_to_finish,
-        {
-            Nodes.END: END,
-            Nodes.REFLECT: Nodes.REFLECT,
-            Nodes.GENERATE: Nodes.GENERATE,
-        },
-    )
-    workflow.add_edge(Nodes.REFLECT, Nodes.GENERATE)
-    vuln_app = workflow.compile()
-
-    return vuln_app.invoke({
-        "model_name": model_name,
-        "project": project,
-        "cp_source": cp_source,
-        "cpv_uuid": cpv_uuid,
-        "vulnerability": vulnerability,
-        "vuln_code": vuln_code,
-        "bad_file": bad_file,
-        "sanitizer_str": sanitizer_str,
-        "patch_gen_chain": patch_gen_chain,
-        "messages": [("user", vuln_code)],
-        "iterations": 0,
-        "max_iterations": max_iterations,
-        "should_reflect": should_reflect,
-    })
-
-def generate(state: GraphState) -> GraphState:
-    logger.debug("Generating patch")
-
-    messages = state["messages"]
-
-    # We have been routed back to generation with an error
-    if state["error"]:
-        messages += [
-            (
-                "user",
-                "Now, try again based on your reflections. Generate another patch that fixes the code:",
-            )
-        ]
-
-    patch_solution = state["patch_gen_chain"].invoke({
-        "language": state["project"].language,
-        "sanitizer": state["sanitizer_str"],
-        "messages": [("user", state["vuln_code"])]
-    })
-
-    assert type(patch_solution) is PatchedFile
-    patched_file = patch_solution.file
-
-    messages += [
-        (
-            "assistant",
-            f"{patched_file}",
-        )
-    ]
-
-    return GraphState({
-        **state,
-        "patched_file": patched_file,
-        "messages": messages,
-        "iterations": state["iterations"] + 1,
-    })
-
-def patch_check(state: GraphState) -> GraphState:
-    logger.debug("Checking patch")
-
-    vulnerability = state["vulnerability"]
-
-    # convert to diff
-    patch_text = patched_to_diff(state["vuln_code"], state["patched_file"], state["bad_file"])
-
-    # Check patch
-    try:
-        patch_path = write_patch_to_disk(state["project"], state["cpv_uuid"], patch_text, state["iterations"], vulnerability, state["model_name"])
-        patch = Patch(diff=patch_text, diff_file=patch_path)
-        validate_patch(state["project"], state["cp_source"], vulnerability, patch)
-    except Exception as error:
-        logger.debug("Patch check: Failed")
-        return GraphState({
-            **state,
-            "messages": state["messages"] + [("user", f"Your solution failed: {error}")],
-            "error": error,
-        })
-
-    logger.debug("Patch check: Passed")
-    return GraphState({
-        **state,
-        "error": None,
-    })
-
-def reflect(state: GraphState) -> GraphState:
-    logger.debug("Generating patch reflections")
-
-    messages = state["messages"]
-
-    reflections = state["patch_gen_chain"].invoke({
-        "language": state["project"].language,
-        "sanitizer": state["sanitizer_str"],
-        "messages": messages
-    })
-
-    return GraphState({
-        **state,
-        "messages": messages + [("assistant", f"Here are reflections on the error: {reflections}")],
-        "error": None,
-    })
+    patch_text = "".join(diff_obj) + "\n"
+    return patch_text
 
 
-def decide_to_finish(state: GraphState) -> Literal[Nodes.END, Nodes.REFLECT, Nodes.GENERATE]:
-    if (not state["error"]) or state["iterations"] == state["max_iterations"]:
-        logger.debug("Decision: Finish")
-        return Nodes.END
-    else:
-        logger.debug("Decision: Re-try solution")
-        if state["should_reflect"]:
-            return Nodes.REFLECT
-        return Nodes.GENERATE
-
-
-def validate_patch(project: ChallengeProject, cp_source: str, vuln: VulnerabilityWithSha, patch: Patch):
+def apply_patch_and_check(project: ChallengeProject, cp_source: str, vuln: VulnerabilityWithSha, patch: Patch):
     logger.info("Re-building CP with patch")
     try:
         project.patch_and_build_project(patch, cp_source)
@@ -290,15 +146,179 @@ def validate_patch(project: ChallengeProject, cp_source: str, vuln: Vulnerabilit
         )
 
 
-def write_patch_to_disk(
-        project: ChallengeProject,
-        cpv_uuid: str,
-        patch_text: str,
-        i: int | str,
-        vulnerability: VulnerabilityWithSha,
-        model_name: LLMmodel | Literal['mock']
-):
-    return write_file_to_scratch(
-        project.patch_path / f"{cpv_uuid}_{i}_harness_{vulnerability.harness_id}_sanitizer_{vulnerability.sanitizer_id}_{model_name}.diff",
-        patch_text,
+# Nodes
+def generate(state: GraphState) -> GraphState:
+    logger.info("Generating patch")
+
+    chat_history = state["chat_history"]
+    error = state["error"]
+
+    question = state["vuln_code"]
+    model = state["model"]
+
+    # We have been routed back to generation with an error
+    if error:
+        if state["should_reflect"]:
+            question = f"""Try again using the information from your messages and your previous patches.
+             Generate another patch that fixes the code.
+             """
+        else:
+            question = f"""The previous solution produced: \n {error}
+                        Generate another patch that fixes the code."""
+
+    patch_gen_chain = RunnableWithMessageHistory(
+        patch_gen_prompt |
+        add_structured_output(  # type: ignore  # types around with_structured_output are a mess
+            model,
+            PatchedFile,
+            "oai-gpt-4o",
+        ),
+        lambda _: chat_history,
+        output_messages_key="ai_message",
+        input_messages_key="question",
+        history_messages_key="messages",
     )
+
+    output = patch_gen_chain.invoke({
+        "language": state["project"].language,
+        "sanitizer": state["sanitizer_str"],
+        "question": question,
+        **fix_anthropic_weirdness(model),
+    }, {"configurable": {"session_id": "unused"}})
+
+    patch_solution = output["parsed"]
+    try:
+        assert type(patch_solution) is PatchedFile
+        patched_file = patch_solution.file
+
+        return GraphState(**{
+            **state,
+            "patched_file": patched_file,
+            "iterations": state["iterations"] + 1,
+            "error": None,
+        })
+    except AssertionError:
+        error = output["error"]
+        ai_message = output["ai_message"]
+        raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
+
+
+def check_patch(state: GraphState) -> GraphState:
+    logger.info("Checking patch")
+
+    vulnerability = state["vulnerability"]
+    model_name: LLMmodel = state["model"].model_name  # type: ignore  # we know it's one of the models...
+
+    patch_text = patched_file_to_diff(state["vuln_code"], state["patched_file"], state["bad_file"])
+    patch_path = write_patch_to_disk(state["project"], state["cpv_uuid"], patch_text, state["iterations"], vulnerability, model_name)
+    patch = Patch(diff=patch_text, diff_file=patch_path)
+
+    try:
+        apply_patch_and_check(state["project"], state["cp_source"], vulnerability, patch)
+    except Exception as error:
+        logger.info("Patch check: Failed")
+        return GraphState(**{
+            **state,
+            "error": error,
+        })
+
+    logger.info("Patch check: Passed")
+    return GraphState(**{
+        **state,
+        "error": None,
+    })
+
+
+def reflect(state: GraphState) -> GraphState:
+    logger.info("Generating patch reflections")
+
+    model = state["model"]
+    reflection_chain = RunnableWithMessageHistory(
+        harness_input_gen_prompt | model,  # type: ignore  # types around with_structured_output are a mess
+        lambda _: state["chat_history"],
+        input_messages_key="question",
+        history_messages_key="messages",
+    )
+
+    question = """Analyse your previous attempt, be critical.
+         Provide insight that could help you produce a fix for the vulnerability.
+         Do not provide new input, only reflect on your previous input."""
+
+    reflection_chain.invoke({
+        "language": state["project"].language,
+        "sanitizer": state["sanitizer_str"],
+        "question": question,
+        **fix_anthropic_weirdness(model),
+    }, {"configurable": {"session_id": "unused"}})
+
+    return state
+
+
+# Branches
+def check_if_finished(state: GraphState) -> Literal[Nodes.END, Nodes.REFLECT, Nodes.GENERATE]:
+    if (not state["error"]) or state["iterations"] == state["max_iterations"]:
+        logger.info("Decision: Finish")
+        return Nodes.END
+    else:
+        logger.info("Decision: Re-try solution")
+        if state["should_reflect"]:
+            return Nodes.REFLECT
+        return Nodes.GENERATE
+
+
+# Setup
+__workflows: dict[str, CompiledGraph] = dict()
+
+
+def make_workflow(key: str = "default") -> CompiledGraph:
+    try:
+        return __workflows[key]
+    except KeyError:
+        match key:
+            case "default":
+                workflow = StateGraph(GraphState)
+                workflow.add_node(Nodes.GENERATE, generate)
+                workflow.add_node(Nodes.CHECK_CODE, check_patch)
+                workflow.add_node(Nodes.REFLECT, reflect)
+                workflow.add_edge(START, Nodes.GENERATE)
+                workflow.add_edge(Nodes.GENERATE, Nodes.CHECK_CODE)
+                workflow.add_conditional_edges(Nodes.CHECK_CODE, check_if_finished)
+                workflow.add_edge(Nodes.REFLECT, Nodes.GENERATE)
+                __workflows[key] = workflow.compile()
+        return __workflows[key]
+
+
+def run_patch_langraph(
+        *,
+        model_name: LLMmodel,
+        project: ChallengeProject,
+        cp_source: str,
+        cpv_uuid: CPVuuid,
+        vulnerability: VulnerabilityWithSha,
+        vuln_code: str,
+        bad_file: str,
+        max_iterations: int,
+        should_reflect: bool = True
+):
+    sanitizer, error_code = project.sanitizers[vulnerability.sanitizer_id]
+    sanitizer_str = f"{sanitizer}: {error_code}"
+
+    model = create_chat_client(model_name)
+    chat_history = ChatMessageHistory()
+    workflow = make_workflow()
+
+    return workflow.invoke(GraphState(**{
+        "model": model,
+        "project": project,
+        "cp_source": cp_source,
+        "chat_history": chat_history,
+        "cpv_uuid": cpv_uuid,
+        "vulnerability": vulnerability,
+        "vuln_code": vuln_code,
+        "bad_file": bad_file,
+        "sanitizer_str": sanitizer_str,
+        "messages": [("user", vuln_code)],
+        "iterations": 0,
+        "max_iterations": max_iterations,
+        "should_reflect": should_reflect,
+    }))

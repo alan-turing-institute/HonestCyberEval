@@ -1,9 +1,15 @@
 import subprocess
 from shutil import rmtree, copy, copytree
+from typing import Literal, TYPE_CHECKING
+
+from api.llm import LLMmodel
 
 from config import AIXCC_CP_ROOT, AIXCC_CRS_SCRATCH_SPACE, OUTPUT_PATH, PROJECT_PATH
 from logger import logger
-from api.data_types import VulnerabilityWithSha, Patch
+from api.data_types import Patch, VulnerabilityWithSha
+
+if TYPE_CHECKING:
+    from api.cp import ChallengeProject
 
 
 class RunException(Exception):
@@ -64,3 +70,31 @@ def write_file_to_scratch(filename, content):
     file_path = OUTPUT_PATH / filename
     file_path.write_text(content)
     return file_path
+
+
+def write_harness_input_to_disk(
+        project: 'ChallengeProject',
+        harness_input: str,
+        i: int | str,
+        harness_id: str,
+        sanitizer_id: str,
+        model_name: LLMmodel | Literal['mock']
+):
+    return write_file_to_scratch(
+        project.input_path / f"harness_{harness_id}_sanitizer_{sanitizer_id}_{model_name}_{i}.blob",
+        harness_input,
+    )
+
+
+def write_patch_to_disk(
+        project: 'ChallengeProject',
+        cpv_uuid: str,
+        patch_text: str,
+        i: int | str,
+        vulnerability: VulnerabilityWithSha,
+        model_name: LLMmodel | Literal['mock']
+):
+    return write_file_to_scratch(
+        project.patch_path / f"{cpv_uuid}_{i}_harness_{vulnerability.harness_id}_sanitizer_{vulnerability.sanitizer_id}_{model_name}.diff",
+        patch_text,
+    )

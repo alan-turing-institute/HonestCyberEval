@@ -71,6 +71,11 @@ You can run it at any time using `pyright -p crs/src/`
   - include our GitHub username (`auth0-660bd3c14d2d6436de9169f3_aixcc`) and personal access token in the
     `GITHUB_USER` and `GITHUB_TOKEN` variables, respectively, in the `env` file
   - fill in API keys for the LLMs (`ANTHROPIC_API_KEY`, `AZURE_API_KEY`, `OPENAI_API_KEY`)
+  - set `VERTEX_PROJECT=sunlit-pixel-426710-s7` and `VERTEX_REGION=us-central1`
+  - populate [sandbox/litellm/vertex_key.json](../sandbox/litellm/vertex_key.json) with the Google/VertexAI credentials 
+    in JSON format
+    - you cannot push changes to files inside `sandbox`; to make git ignore this change and avoid any accidental commits
+      `git update-index --skip-worktree sandbox/litellm/vertex_key.json`
   - if you are usure what info you should put there, please let us know
 - (OPTIONAL) To enable [LangSmith](https://docs.smith.langchain.com/) integration to help with debugging LangChain:
   - run `cp crs/src/env.example crs/src/env`

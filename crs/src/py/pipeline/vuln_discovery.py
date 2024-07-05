@@ -2,11 +2,12 @@ from typing import Optional
 
 from api.cp import ChallengeProject
 from api.data_types import Vulnerability, VulnerabilityWithSha
-from api.llm import LLMmodel
+from api.fs import write_harness_input_to_disk
+from api.llm import LLMmodel, format_chat_history
 
 from logger import logger
-from pipeline.langgraph_vuln import run_vuln_langraph, write_harness_input_to_disk
-from pipeline.preprocess_commits import find_diff_between_commits
+from .langgraph_vuln import run_vuln_langraph
+from .preprocess_commits import find_diff_between_commits
 
 mock_input_data = r"""abcdefabcdefabcdefabcdefabcdefabcdef
 b
@@ -25,7 +26,7 @@ class VulnDiscovery:
     cp_source: str
 
     def detect_vulns_in_file(self, bad_file: str) -> list[Vulnerability]:
-        code_snippet = self.project.open_project_source_file(self.cp_source, bad_file).replace('\n', '')
+        code_snippet = self.project.open_project_source_file(self.cp_source, bad_file)
         vulnerabilities = []
         for harness_id in self.project.harnesses.keys():
             for sanitizer_id in self.project.sanitizers.keys():
@@ -33,7 +34,7 @@ class VulnDiscovery:
                     harness_id,
                     sanitizer_id,
                     code_snippet,
-                    max_trials=2,
+                    max_trials=6,
                 )
                 if vuln:
                     vulnerabilities.append(vuln)
@@ -41,25 +42,28 @@ class VulnDiscovery:
 
     def harness_input_langgraph(self, harness_id, sanitizer_id, code_snippet, max_trials=2) -> Optional[Vulnerability]:
         sanitizer, error_code = self.project.sanitizers[sanitizer_id]
-        models: list[LLMmodel] = ["oai-gpt-4o", "claude-3.5-sonnet"]
+        models: list[LLMmodel] = ["gemini-1.5-pro", "oai-gpt-4o", "claude-3.5-sonnet"]
         for model_name in models:
-            output = run_vuln_langraph(
-                model_name=model_name,
-                project=self.project,
-                harness_id=harness_id,
-                sanitizer_id=sanitizer_id,
-                code_snippet=code_snippet,
-                max_iterations=max_trials,
-            )
-            logger.debug(f"LangGraph Message History \n\n {output['messages']}\n\n")
-            if not output["error"]:
-                logger.info(f"Found vulnerability using harness {harness_id}: {sanitizer}: {error_code}")
-                harness_input = output["solution"]
-                harness_input_file = write_harness_input_to_disk(self.project, harness_input, "work", harness_id, sanitizer_id, model_name)
-                return Vulnerability(harness_id, sanitizer_id, harness_input, harness_input_file)
+            try:
+                output = run_vuln_langraph(
+                    model_name=model_name,
+                    project=self.project,
+                    harness_id=harness_id,
+                    sanitizer_id=sanitizer_id,
+                    code_snippet=code_snippet,
+                    max_iterations=max_trials,
+                )
 
-            logger.info(f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id}")
-            logger.debug(f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id} with error: \n {output['error']}")
+                logger.debug(f"LangGraph Message History\n\n{format_chat_history(output['chat_history'])}\n\n")
+                if not output["error"]:
+                    logger.info(f"Found vulnerability using harness {harness_id}: {sanitizer}: {error_code}")
+                    harness_input = output["solution"]
+                    harness_input_file = write_harness_input_to_disk(self.project, harness_input, "work", harness_id, sanitizer_id, model_name)
+                    return Vulnerability(harness_id, sanitizer_id, harness_input, harness_input_file)
+                logger.info(f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id}")
+                logger.debug(f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id} with error: \n {output['error']}")
+            except Exception as error:
+                logger.error(f"LangGraph vulnerability detection failed for {model_name} with\n{error}")
         logger.warning(f"Failed to trigger sanitizer {sanitizer_id} using {harness_id}!")
         return None
 
