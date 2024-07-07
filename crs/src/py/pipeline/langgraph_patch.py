@@ -65,7 +65,7 @@ patch_gen_prompt = ChatPromptTemplate.from_messages([
 
 
 class PatchedFile(BaseModel):
-    """Input to test harness that triggers vulnerability"""
+    """File patched by LLM"""
 
     file: str = Field(description="A program file that does not include a vulnerability")
 
@@ -80,7 +80,7 @@ class GraphState(TypedDict):
     Attributes:
         error : Last exception to occur
         messages : With user question, error messages, reasoning
-        patched_file : Harness input solution
+        patched_file : File after LLM patch
         iterations : Number of tries
     """
 
@@ -161,7 +161,7 @@ def generate(state: GraphState) -> GraphState:
     # We have been routed back to generation with an error
     if error:
         if state["should_reflect"]:
-            question = f"""Try again using the information from your messages and your previous patches.
+            question = """Try again using the information from your messages and your previous patches.
              Generate another patch that fixes the code.
              """
         else:
@@ -241,7 +241,7 @@ def reflect(state: GraphState) -> GraphState:
 
     model = state["model"]
     reflection_chain = RunnableWithMessageHistory(
-        harness_input_gen_prompt | model,  # type: ignore  # types around with_structured_output are a mess
+        patch_gen_prompt | model,  # type: ignore  # types around with_structured_output are a mess
         lambda _: state["chat_history"],
         input_messages_key="question",
         history_messages_key="messages",

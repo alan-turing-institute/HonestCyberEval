@@ -87,7 +87,6 @@ def format_chat_history(chat_history: ChatMessageHistory) -> str:
 
 
 def is_kind(models: list[LLMmodel], model: ChatOpenAI | LLMmodel) -> bool:
-    model_name: LLMmodel
     if type(model) is ChatOpenAI:
         return model.model_name in models
     return model in models

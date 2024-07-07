@@ -15,4 +15,5 @@ known_first_party = ["api", "pipeline", "config", "logger"]
 [tool.black]
 target-version = ["py310"]
 line_length = 120
-unstable = true
+preview = true
+enable-unstable-feature= ["hug_parens_with_braces_and_square_brackets"]

@@ -56,7 +56,7 @@ class PatchGen:
     @staticmethod
     def gen_mock_patch(i=None):
         if i is None:
-            return "\n".join([mock_patches[f"id_1"], mock_patches[f"id_2"]])
+            return "\n".join([mock_patches["id_1"], mock_patches["id_2"]])
         return mock_patches[f"id_{i}"]
 
     def gen_patch_langgraph(self, cpv_uuid, vulnerability: VulnerabilityWithSha, bad_file, max_trials=3):

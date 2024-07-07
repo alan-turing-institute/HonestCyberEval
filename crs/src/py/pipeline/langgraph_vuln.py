@@ -17,8 +17,6 @@ from api.llm import (
     add_structured_output,
     create_chat_client,
     fix_anthropic_weirdness,
-    format_chat_history,
-    is_gemini,
     placeholder_fix_anthropic_weirdness,
 )
 from logger import add_prefix_to_logger, logger
@@ -103,7 +101,7 @@ def generate(state: GraphState) -> GraphState:
     # We have been routed back to generation with an error
     if error:
         if state["should_reflect"]:
-            question = f"""Try again using the information from your messages and your previous inputs.
+            question = """Try again using the information from your messages and your previous inputs.
              Generate another harness input that triggers the sanitizer in the code.
              """
         else:

@@ -2,7 +2,7 @@ import copy
 import difflib
 import re
 from dataclasses import KW_ONLY, dataclass, field
-from enum import Enum, IntEnum, auto
+from enum import IntEnum, auto
 from typing import Optional, TypeAlias, Union
 
 import clang.cindex
