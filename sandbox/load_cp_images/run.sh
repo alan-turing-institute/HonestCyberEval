@@ -10,12 +10,16 @@ LOAD_CP_IMAGES=${LOAD_CP_IMAGES:-true}
 CP_CONFIG_FILE=${CP_CONFIG_FILE:-/cp_config.yaml}
 
 if [ "$LOAD_CPS" = "true" ]; then
+	# Only CP Root to empty if we're responsible for filling it
+	echo "Resetting ${AIXCC_CP_ROOT}"
+	rm -rf "${AIXCC_CP_ROOT:?}"/*
+
 	echo "Starting CP loader"
 	while read -r clone_cp; do
 		bash -c "$clone_cp"
-	done < <(yq -r '.cp_targets | to_entries | .[] | "rm -rf /cp_root/\(.key) && git clone \(.value.url) /cp_root/\(.key) && cd /cp_root/\(.key) && git checkout \(.value.ref)"' "${CP_CONFIG_FILE}")
+	done < <(yq -r ".cp_targets | to_entries | .[] | \"git clone \(.value.url) ${AIXCC_CP_ROOT}/\(.key) && cd ${AIXCC_CP_ROOT}/\(.key) && git checkout \(.value.ref)"\" "${CP_CONFIG_FILE}")
 	# shellcheck disable=SC2156
-	find /cp_root -maxdepth 1 -type d ! -name "lost+found" -exec bash -c "echo 'prepping {}' && cd '{}' && make cpsrc-prepare" \;
+	find "${AIXCC_CP_ROOT}" -maxdepth 1 -type d ! -name "lost+found" -exec bash -c "echo 'prepping {}' && cd '{}' && make cpsrc-prepare" \;
 	echo "CP loading complete"
 fi
 

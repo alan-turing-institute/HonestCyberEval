@@ -28,7 +28,7 @@ include:
 services:
   crs:
     labels:
-      kompose.service.accountname: "crs"  # make sure to use this label if you want your CRS to have K8S API access
+      kompose.serviceaccount-name: "crs"  # make sure to use this label if you want your CRS to have K8S API access
     networks:
       - crs-internal  # Competitors: You MUST use this network only for any containers you add to your CRS.
     profiles:

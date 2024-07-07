@@ -114,7 +114,7 @@ jobs:
   run-validate-crs-submissions:
     env:
       AUDIT_LOG: "${{ github.workspace }}/capi_logs/audit.log"
-      MAX_SECONDS: 1200
+      MAX_SECONDS: 1800
       POLL_SECONDS: 5
     if: ${{ github.actor != 'robothing[bot]' }}
     runs-on:

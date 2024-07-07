@@ -39,7 +39,6 @@ Failure to do so will prevent a team's CRS from moving forward to Phase 2.
 During Phase 1, teams must use their own secret keys and tokens to access collaborator resources
 (LLM APIs) and authenticate against GitHub.
 
-
 #### Interpreting Results in GitHub Actions
 
 The job that evaluates the CRS's performance is part of the [CRS Evaluator](https://github.com/aixcc-sc/crs-sandbox/actions/workflows/evaluator.yml) and is called `run-validate-crs-submissions`.
@@ -49,9 +48,7 @@ Check the output of the validation steps, CRS submission log step, and CRS logs 
 
 ![GitHub Actions output showing a CRS submitting a working VD and a failing GP](./.static/crs-logs-example.png)
 
-
 <https://github.com/aixcc-sc/crs-sandbox/assets/165228747/f758d4cf-c597-41f3-b2c8-986250e954e3>
-
 
 ### Phase 2 - Automated Execution of your CRS
 
@@ -102,9 +99,7 @@ order to facilitate rapid CRS testing.  We may turn rejection back on towards th
 By modifying [cp_config/cp_config.yaml](./cp_config/cp_config.yaml), competitors can change the CPs
 presented to their CRS during phase 2.
 
-
 <https://github.com/aixcc-sc/crs-sandbox/assets/165228747/771850a7-7019-4199-aa3f-c705bcffe37d>
-
 
 ## Code Owners
 
@@ -173,7 +168,7 @@ Competitors are permitted to add `privileged: true` to any container under [./co
 
 The Game Architecture team has confirmed the CRS execution environment supports nested virtualization for KVM.
 
-There is no need or support for competitors to map devices directly, they must add the `privleged: true` to containers which need it.
+There is no need or support for competitors to map devices directly, they must add the `privileged: true` to containers which need it.
 
 ## Environment Variables & GitHub Secrets
 
@@ -482,7 +477,7 @@ See [Makefile](./Makefile) for more commands
 The Makefile includes endpoints for `make k8s`, `make k8s/development` and `make k8s/competition`
 
 This will generate a resources chart in a `.k8s/` folder.
-The `make k8s` command uses Kind to run Kubernetes locally and will also apply the generated Kubernetes resources onto your cluster.
+The `make k8s` command uses K3S to run Kubernetes locally and will also apply the generated Kubernetes resources onto your cluster.
 This process uses a component called [Kompose](https://kompose.io/conversion/) for translating the Docker Compose file into resources.
 The CRS Sandbox will include a CI/CD action which the private repos must also use.
 This will generate and push the container images to the respective per-competitor private GitHub.
@@ -516,6 +511,15 @@ Docker Compose and Kubernetes both support the concepts of requests and limits.
 We recommend that teams review [Docker Compose Deploy Specification](https://docs.docker.com/compose/compose-file/deploy/#resources).
 
 Kompose V3 will automatically convert these requests and limits into requests and limits within Kubernetes.
+
+Nodes will be labeled with node=node1, node=node2, node=node3 at competition time. Therefore in your kompose_competition_overrides.yaml, you will be able to do the following for a service to constrain its placement:
+
+```yaml
+deploy:
+  placement:
+    constraints:
+      - node.labels.node == node1
+```
 
 Teams may use the following files to add requests and limits onto any containers within a CRS.
 

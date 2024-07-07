@@ -1,5 +1,5 @@
 ---
-# Applied in vcluster template, not included in kustomization. Here for reference
+# Applied in vcluster template, not included in competition kustomization. Here for reference
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:

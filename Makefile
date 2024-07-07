@@ -68,7 +68,10 @@ github-creds-required: env-file-required
 	@if [ -n "$(INVALID_GITHUB_ENV_VARS)" ]; then exit 1; fi
 	@if [ "$(GITHUB_ENV_VAR_COUNT)" -lt 2 ]; then exit 1; fi
 
-build: ## Build the project
+build-no-cache: ## Build the project without pulling images
+	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) build $(c)
+
+build: ## Build the project, pull images if available
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) build --pull $(c)
 
 computed-env: env-file-required
@@ -179,7 +182,7 @@ k8s: k8s/clean k8s/development k8s/kustomize/development build ## Generates helm
 	@docker pull postgres:16.2-alpine3.19
 	@docker pull ghcr.io/aixcc-sc/crs-sandbox/mock-crs:v2.0.0
 	@docker pull curlimages/curl:8.8.0
-	@docker pull ghcr.io/aixcc-sc/load-cp-images:v0.0.9
+	@docker pull ghcr.io/aixcc-sc/load-cp-images:v0.0.11
 	@helm repo add longhorn https://charts.longhorn.io
 	@helm repo update
 	@helm install --kube-context crs longhorn longhorn/longhorn --namespace longhorn-system --create-namespace --set defaultSetting.defaultStorageClass=true

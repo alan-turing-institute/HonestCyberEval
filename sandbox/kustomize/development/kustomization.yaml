@@ -5,6 +5,11 @@ metadata:
   name: crs
 resources:
   - ../base
+  - service-account.yaml
+  - service-cluster-role-binding.yaml
+  - service-cluster-role.yaml
+  - service-role-binding.yaml
+  - service-role.yaml
 
 patches:
   - path: crs-scratch-pvc.yaml
