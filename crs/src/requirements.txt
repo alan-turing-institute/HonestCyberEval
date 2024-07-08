@@ -1,4 +1,4 @@
-aiohttp[speedups]==3.9.5
+aiohttp==3.9.5
 PyYAML==6.0.1
 GitPython==3.1.43
 langchain==0.2.6

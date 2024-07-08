@@ -49,7 +49,6 @@ __lock = asyncio.Lock()
 
 async def healthcheck():
     global __capi_up
-    global __lock
 
     # only one healthcheck needs to poll the healthcheck, the rest should just wait until that's done
     async with __lock:
