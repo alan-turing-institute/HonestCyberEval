@@ -43,6 +43,23 @@ harness_input_gen_prompt = ChatPromptTemplate.from_messages([
     ("user", "{question}"),
 ])
 
+harness_input_gen_prompt_diff = ChatPromptTemplate.from_messages([
+    placeholder_fix_anthropic_weirdness,
+    (
+        "system",
+        """You are a coding assistant with expertise in finding bugs and vulnerabilities in {language} program code. 
+    Your task is to help the user find vulnerabilities in the code provided by the user. 
+    The vulnerability would have been introduced through changes in the code which is provided as a diff by the user.
+    Here is the harness: \n ------- \n {harness_code} \n ------- \n 
+    Provide the user with an input to the above harness that would trigger the sanitizer {sanitizer}.
+    Ensure any harness input you generate is not too long and that it will result in a valid run. \n 
+    Structure your answer so that it only includes the harness input. \n
+    Here is the potentially vulnerable code followed by the diff which may have introduced the vulnerability:""",
+    ),
+    ("placeholder", "{messages}"),
+    ("user", "{question}"),
+])
+
 
 class HarnessInput(BaseModel):
     """Input to test harness that triggers vulnerability"""
@@ -77,6 +94,7 @@ class GraphState(TypedDict):
     sanitizer_id: str
     sanitizer_str: str
     code_snippet: str
+    diff: str
     should_reflect: bool
     model: ChatOpenAI
 
@@ -94,8 +112,7 @@ def generate(state: GraphState) -> GraphState:
 
     chat_history = state["chat_history"]
     error = state["error"]
-
-    question = state["code_snippet"]
+    question = state["code_snippet"] + "\n" + state["diff"] if state["diff"] else state["code_snippet"]
     model = state["model"]
 
     # We have been routed back to generation with an error
@@ -109,17 +126,20 @@ def generate(state: GraphState) -> GraphState:
                         Generate another harness input that triggers the sanitizer in the code."""
 
     harness_input_gen_chain = RunnableWithMessageHistory(
-        harness_input_gen_prompt
-        | add_structured_output(  # type: ignore  # types around with_structured_output are a mess
-            model,
-            HarnessInput,
-            "oai-gpt-4o",
+        (
+            (harness_input_gen_prompt_diff if state["diff"] else harness_input_gen_prompt)
+            | add_structured_output(  # type: ignore  # types around with_structured_output are a mess
+                model,
+                HarnessInput,
+                "oai-gpt-4o",
+            )
         ),
         lambda _: chat_history,
         output_messages_key="ai_message",
         input_messages_key="question",
         history_messages_key="messages",
     )
+
     output = harness_input_gen_chain.invoke(
         {
             "harness_code": state["harness_code"],
@@ -255,6 +275,7 @@ def run_vuln_langraph(
     harness_id: str,
     sanitizer_id: str,
     code_snippet: str,
+    diff: str,
 ):
     harness_path = project.harnesses[harness_id].file_path
     harness_code = harness_path.read_text().replace("\n", "")
@@ -281,5 +302,6 @@ def run_vuln_langraph(
             "sanitizer_id": sanitizer_id,
             "sanitizer_str": sanitizer_str,
             "code_snippet": code_snippet,
+            "diff": diff,
         })
     )

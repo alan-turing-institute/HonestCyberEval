@@ -7,7 +7,7 @@ from api.llm import LLMmodel, format_chat_history
 from logger import logger
 
 from .langgraph_vuln import run_vuln_langraph
-from .preprocess_commits import find_diff_between_commits
+from .preprocess_commits import FunctionDiff, find_diff_between_commits
 
 mock_input_data = r"""abcdefabcdefabcdefabcdefabcdefabcdef
 b
@@ -25,24 +25,42 @@ class VulnDiscovery:
     project: ChallengeProject
     cp_source: str
 
-    def detect_vulns_in_file(self, bad_file: str) -> list[Vulnerability]:
-        code_snippet = self.project.open_project_source_file(self.cp_source, bad_file)
+    def detect_vulns_in_file(
+        self, bad_file: str, function_diff: FunctionDiff = FunctionDiff(name=""), max_trials=2
+    ) -> list[Vulnerability]:
+
+        if function_diff.after_lines and function_diff.diff_lines:
+            code_snippet = function_diff.after_str()
+            diff = function_diff.diff_str()
+
+        else:
+            code_snippet = self.project.open_project_source_file(self.cp_source, bad_file)
+            diff = ""
+
         vulnerabilities = []
+
         for harness_id in self.project.harnesses.keys():
             for sanitizer_id in self.project.sanitizers.keys():
                 vuln = self.harness_input_langgraph(
-                    harness_id,
-                    sanitizer_id,
-                    code_snippet,
-                    max_trials=6,
+                    harness_id=harness_id,
+                    sanitizer_id=sanitizer_id,
+                    code_snippet=code_snippet,
+                    diff=diff,
+                    max_trials=max_trials,
                 )
+
                 if vuln:
                     vulnerabilities.append(vuln)
+
         return vulnerabilities
 
-    def harness_input_langgraph(self, harness_id, sanitizer_id, code_snippet, max_trials=2) -> Optional[Vulnerability]:
+    def harness_input_langgraph(
+        self, harness_id, sanitizer_id, code_snippet, diff="", max_trials=2
+    ) -> Optional[Vulnerability]:
+
         sanitizer, error_code = self.project.sanitizers[sanitizer_id]
         models: list[LLMmodel] = ["gemini-1.5-pro", "oai-gpt-4o", "claude-3.5-sonnet"]
+
         for model_name in models:
             try:
                 output = run_vuln_langraph(
@@ -51,25 +69,32 @@ class VulnDiscovery:
                     harness_id=harness_id,
                     sanitizer_id=sanitizer_id,
                     code_snippet=code_snippet,
+                    diff=diff,
                     max_iterations=max_trials,
                 )
 
                 logger.debug(f"LangGraph Message History\n\n{format_chat_history(output['chat_history'])}\n\n")
+
                 if not output["error"]:
                     logger.info(f"Found vulnerability using harness {harness_id}: {sanitizer}: {error_code}")
                     harness_input = output["solution"]
                     harness_input_file = write_harness_input_to_disk(
                         self.project, harness_input, "work", harness_id, sanitizer_id, model_name
                     )
+
                     return Vulnerability(harness_id, sanitizer_id, harness_input, harness_input_file)
+
                 logger.info(f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id}")
                 logger.debug(
                     f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id} with error: \n"
                     f" {output['error']}"
                 )
+
             except Exception as error:
                 logger.error(f"LangGraph vulnerability detection failed for {model_name} with\n{error}")
+
         logger.warning(f"Failed to trigger sanitizer {sanitizer_id} using {harness_id}!")
+
         return None
 
     def identify_bad_commits(self, vulnerabilities: list[Vulnerability]) -> list[VulnerabilityWithSha]:
@@ -91,10 +116,13 @@ class VulnDiscovery:
 
         # check vulnerabilities for oldest commit they're found in
         vulnerabilities_next = vulnerabilities
+
         for inspected_commit in git_log[1:]:
+
             if not vulnerabilities_next:
                 # no vulnerabilities left without commit that introduced them, stop searching
                 break
+
             vulnerabilities_left = vulnerabilities_next
             vulnerabilities_next = []
 
@@ -115,15 +143,19 @@ class VulnDiscovery:
                 )
 
                 if harness_triggered:
-                    logger.debug(f"VULNERABILITY STILL EXISTS: {sanitizer}: {error_code}")
+                    logger.info(f"VULNERABILITY STILL EXISTS: {sanitizer}: {error_code}")
                     vulnerabilities_next.append(vuln)
-                # step 4: When sanitizer is not triggered the previous commit introduced the vulnerability, assign previous commit as bug introducing
+
+                # step 4: When sanitizer is not triggered the previous commit introduced the vulnerability,
+                # assign previous commit as bug introducing
                 else:
                     logger.info(
                         f"Found bad commit: {previous_commit.hexsha} that introduced vulnerability {sanitizer}:"
                         f" {error_code}  "
                     )
+
                     vulnerabilities_with_sha.append(VulnerabilityWithSha(*vuln, commit=previous_commit.hexsha))
+
             previous_commit = inspected_commit
 
         # cleaning up:
@@ -150,7 +182,8 @@ class VulnDiscovery:
         # Sort commits by date
         all_commits = sorted(all_commits_set, key=lambda c: c.committed_datetime)
 
-        # then for each commit and compare with it's parent to find the relevant files changed and the functional changes within each file
+        # then for each commit and compare with it's parent to find the relevant files changed and the functional
+        # changes within each file
         preprocessed_commits = {}
 
         for commit in all_commits:
@@ -175,21 +208,37 @@ class VulnDiscovery:
         logger.debug(f"Preprocessed Commits:\n {preprocessed_commits}\n")
 
         # Detect vulnerabilities using LLMs
-        vulnerabilities = self.detect_vulns_in_file("mock_vp.c")
+        vulnerabilities = []
+        for commit_sha in preprocessed_commits:
+            commit = preprocessed_commits[commit_sha]
+
+            for filename in commit:
+                file_diff = commit[filename]
+
+                for function_diff_name in file_diff.diff_functions:
+                    function_diff = file_diff.diff_functions[function_diff_name]
+                    vulnerabilities = self.detect_vulns_in_file(filename, function_diff)
+                    # vulnerabilities = self.detect_vulns_in_file(filename)
+
+        logger.info(f"Found {len(vulnerabilities)} vulnerabilities")
 
         # Hardcoding values to test patch generation
         if self.project.name == "Mock CP" and len(vulnerabilities) < 2:
             logger.warning("Not all Mock CP vulnerabilities discovered")
             both = len(vulnerabilities) == 0
+
             if both or vulnerabilities[0].sanitizer_id == "id_2":
                 mock_input_file = write_harness_input_to_disk(self.project, mock_input_data, 0, "id_1", "id_1", "mock")
                 vulnerabilities.append(Vulnerability("id_1", "id_1", mock_input_data, mock_input_file))
+
             if both or vulnerabilities[0].sanitizer_id == "id_1":
                 mock_input_file = write_harness_input_to_disk(
                     self.project, mock_input_data_segv, 0, "id_1", "id_2", "mock"
                 )
+
                 vulnerabilities.append(Vulnerability("id_1", "id_2", mock_input_data_segv, mock_input_file))
 
+        # Left this check in even though we have the SHA for the commit as a final confirmation check
         vulnerabilities_with_sha = self.identify_bad_commits(vulnerabilities)
 
         return vulnerabilities_with_sha

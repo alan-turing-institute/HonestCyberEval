@@ -75,23 +75,33 @@ class BaseDiff:
     def print_after(self):
         return self.print("After", self.after_lines)
 
+    def after_str(self):
+        return "\n".join(self.after_lines)
+
     def print_diff(self):
         return self.print("Diff", self.diff_lines)
+
+    def diff_str(self):
+        return "\n".join(self.diff_lines)
 
     def join_lines(self, lines, indent=""):
         return ("\n" + indent).join(lines)
 
     def ast_string(self, ast: Union[Cursor, None], string_to_print: str = "", depth: int = 0) -> str:
+
         if ast is None:
             if string_to_print:
                 return string_to_print
             else:
                 return "No AST to print."
+
         indent = "  " * depth
+
         if ast.spelling:
             string_to_print += f"{indent}Kind: {ast.kind}, Spelling: {ast.spelling}, Location: {ast.location}\n"
         else:
             string_to_print += f"{indent}Kind: {ast.kind}, Location: {ast.location}\n"
+
         for child in ast.get_children():
             string_to_print = self.ast_string(child, string_to_print, depth + 1)
 
@@ -240,14 +250,16 @@ def parse_snippet(snippet: str, filepath: str) -> Cursor:
 
 
 def search_ast_for_node_types(node: Cursor, types: TypesDictType, filename: str) -> NodesDictType:
-    # returns a dict with the type as the key and a nested dict containing the separated local and imported sets of the relevant nodes
+    # returns a dict with the type as the key and a nested dict containing the separated local and imported sets of
+    # the relevant nodes
     nodes: NodesDictType = {}
 
     # initialise the empty sets
     for node_type in types:
         nodes[node_type] = {VarSourceType.FILE_LOCAL: {}, VarSourceType.IMPORTED: {}}
 
-    # recursively search AST (might need to change this to for loop though as python isn't that good with high recursion depths?)
+    # recursively search AST (might need to change this to for loop though as python isn't that good with high
+    # recursion depths?)
     nodes = _search_ast_for_node_type(node, types, nodes, filename)
 
     return nodes
@@ -313,7 +325,6 @@ def clean_up_snippet(snippet: str) -> list[str]:
 
 
 def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> dict[str, FileDiff]:
-
     # find the diffs:
     diffs = before_commit.diff(after_commit, create_patch=True)
     filename_diffs: dict[str, FileDiff] = {}
@@ -426,8 +437,8 @@ def make_diff(before: list[str], after: list[str]) -> list[str]:
 def get_function_diffs(before: FunctionDictType, after: FunctionDictType) -> dict[str, FunctionDiff]:
 
     diff_functions: dict[str, FunctionDiff] = {}
-
     after_functions: list[str] = []
+
     if after:
         after_functions = list(after.keys())
 
@@ -498,8 +509,8 @@ def get_full_function_snippets(full_file: list[str], functions: dict[str, Cursor
                 break
 
         if function_name_mentioned is not None and function_name_mentioned not in functions_code:
-            # assuming that the first instance of a file local function name appearing will be in the function definition
-            # so if it hasn't been added to the keys yet, then it should be the first declaration?
+            # assuming that the first instance of a file local function name appearing will be in the function
+            # definition so if it hasn't been added to the keys yet, then it should be the first declaration?
             function_lines = []
             open_brackets = 0
 
@@ -560,6 +571,7 @@ def get_function_variables(code_lines: list[str], variables: VarsDictType) -> di
 def check_functional_diff_in_variable_lines_order(
     before_code: list[str], after_code: list[str], variable_names: list[str]
 ) -> bool:
+
     for variable_name in variable_names:
         variable_before_lines = get_variable_snippets(before_code, variable_name)
         variable_after_lines = get_variable_snippets(after_code, variable_name)
@@ -612,6 +624,7 @@ def is_diff_functional(
         return check_functional_diff_in_variable_lines_order(
             function_before_code, function_after_code, variable_names_before[VarType.FUNCTION_LOCAL]
         )
+
     else:
         # check if a variable has been renamed (also checks for non-functional reordering of the code here too)
         # check list size of variables is the same as otherwise might not be renaming
