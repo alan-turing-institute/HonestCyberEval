@@ -149,7 +149,7 @@ def apply_patch_and_check(project: ChallengeProject, cp_source: str, vuln: Vulne
 
 
 # Nodes
-def generate(state: GraphState) -> GraphState:
+async def generate(state: GraphState) -> GraphState:
     logger.info("Generating patch")
 
     chat_history = state["chat_history"]
@@ -181,7 +181,7 @@ def generate(state: GraphState) -> GraphState:
         history_messages_key="messages",
     )
 
-    output = patch_gen_chain.invoke(
+    output = await patch_gen_chain.ainvoke(
         {
             "language": state["project"].language,
             "sanitizer": state["sanitizer_str"],
@@ -236,7 +236,7 @@ def check_patch(state: GraphState) -> GraphState:
     })
 
 
-def reflect(state: GraphState) -> GraphState:
+async def reflect(state: GraphState) -> GraphState:
     logger.info("Generating patch reflections")
 
     model = state["model"]
@@ -251,7 +251,7 @@ def reflect(state: GraphState) -> GraphState:
          Provide insight that could help you produce a fix for the vulnerability.
          Do not provide new input, only reflect on your previous input."""
 
-    reflection_chain.invoke(
+    await reflection_chain.ainvoke(
         {
             "language": state["project"].language,
             "sanitizer": state["sanitizer_str"],
@@ -298,7 +298,7 @@ def make_workflow(key: str = "default") -> CompiledGraph:
         return __workflows[key]
 
 
-def run_patch_langraph(
+async def run_patch_langraph(
     *,
     model_name: LLMmodel,
     project: ChallengeProject,
@@ -317,7 +317,7 @@ def run_patch_langraph(
     chat_history = ChatMessageHistory()
     workflow = make_workflow()
 
-    return workflow.invoke(
+    return await workflow.ainvoke(
         GraphState(**{
             "model": model,
             "project": project,

@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 from api.fs import empty_scratch, get_projects, move_projects_to_scratch
@@ -8,7 +9,7 @@ from pipeline.setup_project import setup_project
 from pipeline.vuln_discovery import vuln_discovery
 
 
-def run():
+async def run():
     empty_scratch()
     move_projects_to_scratch()
     projects = get_projects()
@@ -16,7 +17,7 @@ def run():
         project = setup_project(project_path)
 
         for cp_source in project.sources:
-            vulnerabilities = vuln_discovery.run(project, cp_source)
+            vulnerabilities = await vuln_discovery.run(project, cp_source)
             for vulnerability in vulnerabilities:
                 while not healthcheck():
                     time.sleep(5)
@@ -29,7 +30,7 @@ def run():
                 logger.info(f"Vulnerability: {status} {cpv_uuid}")
 
                 if status != "rejected":
-                    patch = patch_generation.run(project, cp_source, cpv_uuid, vulnerability)
+                    patch = await patch_generation.run(project, cp_source, cpv_uuid, vulnerability)
                     if patch:
                         # todo: save patch to persistent storage and check it to avoid double submissions
                         logger.info("Submitting patch")
@@ -40,7 +41,7 @@ def run():
 
 if __name__ == "__main__":
     try:
-        run()
+        asyncio.run(run())
     except Exception as err:
         logger.exception(err)
         raise

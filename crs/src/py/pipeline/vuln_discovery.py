@@ -25,7 +25,7 @@ class VulnDiscovery:
     project: ChallengeProject
     cp_source: str
 
-    def detect_vulns_in_file(
+    async def detect_vulns_in_file(
         self, bad_file: str, function_diff: FunctionDiff = FunctionDiff(name=""), max_trials=2
     ) -> list[Vulnerability]:
 
@@ -41,7 +41,7 @@ class VulnDiscovery:
 
         for harness_id in self.project.harnesses.keys():
             for sanitizer_id in self.project.sanitizers.keys():
-                vuln = self.harness_input_langgraph(
+                vuln = await self.harness_input_langgraph(
                     harness_id=harness_id,
                     sanitizer_id=sanitizer_id,
                     code_snippet=code_snippet,
@@ -54,7 +54,7 @@ class VulnDiscovery:
 
         return vulnerabilities
 
-    def harness_input_langgraph(
+    async def harness_input_langgraph(
         self, harness_id, sanitizer_id, code_snippet, diff="", max_trials=2
     ) -> Optional[Vulnerability]:
 
@@ -63,7 +63,7 @@ class VulnDiscovery:
 
         for model_name in models:
             try:
-                output = run_vuln_langraph(
+                output = await run_vuln_langraph(
                     model_name=model_name,
                     project=self.project,
                     harness_id=harness_id,
@@ -199,7 +199,7 @@ class VulnDiscovery:
 
         return preprocessed_commits
 
-    def run(self, project: ChallengeProject, cp_source: str) -> list[VulnerabilityWithSha]:
+    async def run(self, project: ChallengeProject, cp_source: str) -> list[VulnerabilityWithSha]:
         self.project = project
         self.cp_source = cp_source
 
@@ -217,7 +217,7 @@ class VulnDiscovery:
 
                 for function_diff_name in file_diff.diff_functions:
                     function_diff = file_diff.diff_functions[function_diff_name]
-                    vulnerabilities = self.detect_vulns_in_file(filename, function_diff)
+                    vulnerabilities = await self.detect_vulns_in_file(filename, function_diff)
                     # vulnerabilities = self.detect_vulns_in_file(filename)
 
         logger.info(f"Found {len(vulnerabilities)} vulnerabilities")

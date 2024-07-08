@@ -47,12 +47,12 @@ harness_input_gen_prompt_diff = ChatPromptTemplate.from_messages([
     placeholder_fix_anthropic_weirdness,
     (
         "system",
-        """You are a coding assistant with expertise in finding bugs and vulnerabilities in {language} program code. 
-    Your task is to help the user find vulnerabilities in the code provided by the user. 
+        """You are a coding assistant with expertise in finding bugs and vulnerabilities in {language} program code.
+    Your task is to help the user find vulnerabilities in the code provided by the user.
     The vulnerability would have been introduced through changes in the code which is provided as a diff by the user.
-    Here is the harness: \n ------- \n {harness_code} \n ------- \n 
+    Here is the harness: \n ------- \n {harness_code} \n ------- \n
     Provide the user with an input to the above harness that would trigger the sanitizer {sanitizer}.
-    Ensure any harness input you generate is not too long and that it will result in a valid run. \n 
+    Ensure any harness input you generate is not too long and that it will result in a valid run. \n
     Structure your answer so that it only includes the harness input. \n
     Here is the potentially vulnerable code followed by the diff which may have introduced the vulnerability:""",
     ),
@@ -107,7 +107,7 @@ class Nodes(StrEnum):
 
 
 # Nodes
-def generate(state: GraphState) -> GraphState:
+async def generate(state: GraphState) -> GraphState:
     logger.info("Generating harness solution")
 
     chat_history = state["chat_history"]
@@ -140,7 +140,7 @@ def generate(state: GraphState) -> GraphState:
         history_messages_key="messages",
     )
 
-    output = harness_input_gen_chain.invoke(
+    output = await harness_input_gen_chain.ainvoke(
         {
             "harness_code": state["harness_code"],
             "language": state["project"].language,
@@ -204,7 +204,7 @@ def run_harness(state: GraphState) -> GraphState:
     return state
 
 
-def reflect(state: GraphState) -> GraphState:
+async def reflect(state: GraphState) -> GraphState:
     logger.info("Generating harness input reflection")
 
     model = state["model"]
@@ -218,7 +218,7 @@ def reflect(state: GraphState) -> GraphState:
     question = """Analyse your previous attempt, be critical.
      Provide insight that could help you produce output that does produce the error.
      Do not provide new input, only reflect on your previous input."""
-    reflection_chain.invoke(
+    await reflection_chain.ainvoke(
         {
             "harness_code": state["harness_code"],
             "language": state["project"].language,
@@ -266,7 +266,7 @@ def make_workflow(key: str = "default") -> CompiledGraph:
         return __workflows[key]
 
 
-def run_vuln_langraph(
+async def run_vuln_langraph(
     *,
     project: ChallengeProject,
     max_iterations: int,
@@ -287,7 +287,7 @@ def run_vuln_langraph(
     chat_history = ChatMessageHistory()
     workflow = make_workflow()
 
-    return workflow.invoke(
+    return await workflow.ainvoke(
         GraphState(**{
             "model": model,
             "project": project,

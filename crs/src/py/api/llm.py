@@ -123,7 +123,7 @@ def fix_anthropic_weirdness(model: ChatOpenAI | LLMmodel) -> dict[str, list[tupl
 
     Then, when invoking the chain, pass **fix_anthropic_weirdness(model) in the invoke call:
 
-        chain.invoke({
+        await chain.ainvoke({
             ...,
             **fix_anthropic_weirdness(model),
         })

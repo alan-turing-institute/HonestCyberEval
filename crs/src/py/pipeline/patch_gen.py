@@ -59,12 +59,12 @@ class PatchGen:
             return "\n".join([mock_patches["id_1"], mock_patches["id_2"]])
         return mock_patches[f"id_{i}"]
 
-    def gen_patch_langgraph(self, cpv_uuid, vulnerability: VulnerabilityWithSha, bad_file, max_trials=3):
+    async def gen_patch_langgraph(self, cpv_uuid, vulnerability: VulnerabilityWithSha, bad_file, max_trials=3):
         vuln_code = self.project.open_project_source_file(self.cp_source, bad_file)
         models: list[LLMmodel] = ["oai-gpt-4o", "claude-3.5-sonnet", "gemini-1.5-pro"]
         for model_name in models:
             try:
-                output = run_patch_langraph(
+                output = await run_patch_langraph(
                     model_name=model_name,
                     project=self.project,
                     cp_source=self.cp_source,
@@ -91,13 +91,13 @@ class PatchGen:
         logger.warning("Failed to find good patch!")
         return None
 
-    def run(
+    async def run(
         self, project: ChallengeProject, cp_source: str, cpv_uuid, vulnerability: VulnerabilityWithSha
     ) -> Optional[Patch]:
         self.project = project
         self.cp_source = cp_source
 
-        patch = self.gen_patch_langgraph(cpv_uuid, vulnerability, "mock_vp.c")
+        patch = await self.gen_patch_langgraph(cpv_uuid, vulnerability, "mock_vp.c")
 
         # For now, we hard code the patch here to avoid exceptions
         if not patch and self.project.name == "Mock CP":
