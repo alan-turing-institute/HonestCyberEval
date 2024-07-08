@@ -36,8 +36,8 @@ LLMmodel: TypeAlias = Literal[
 
 EmbeddingModel: TypeAlias = Literal[
     # OpenAI
-    "text-embedding-3-large",
-    "text-embedding-3-small",
+    "oai-text-embedding-3-large",
+    "oai-text-embedding-3-small",
     # Google
     "textembedding-gecko",
 ]
