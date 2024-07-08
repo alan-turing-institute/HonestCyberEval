@@ -1,8 +1,7 @@
 import asyncio
-import time
 
 from api.fs import empty_scratch, get_projects, move_projects_to_scratch
-from api.submit import healthcheck, submit_patch, submit_vulnerability
+from api.submit import submit_patch, submit_vulnerability
 from logger import logger
 from pipeline.patch_gen import patch_generation
 from pipeline.setup_project import setup_project
@@ -19,13 +18,9 @@ async def run():
         for cp_source in project.sources:
             vulnerabilities = await vuln_discovery.run(project, cp_source)
             for vulnerability in vulnerabilities:
-                while not healthcheck():
-                    time.sleep(5)
-                else:
-                    logger.info("healthcheck passed")
-
+                # todo: we can now submit vulnerabilities async, make use of that? But only after patch checking uses locks to avoid conflicts
                 # todo: save input to persistent storage and check it to avoid double submissions
-                status, cpv_uuid = submit_vulnerability(cp_name=project.name, vulnerability=vulnerability)
+                status, cpv_uuid = await submit_vulnerability(cp_name=project.name, vulnerability=vulnerability)
                 # todo: update input in persistent storage and mark as accepted
                 logger.info(f"Vulnerability: {status} {cpv_uuid}")
 
@@ -34,7 +29,7 @@ async def run():
                     if patch:
                         # todo: save patch to persistent storage and check it to avoid double submissions
                         logger.info("Submitting patch")
-                        status, gp_uuid = submit_patch(cpv_uuid, patch)
+                        status, gp_uuid = await submit_patch(cpv_uuid, patch)
                         logger.info(f"Patch: {status} {gp_uuid}")
                         # todo: update patch in persistent storage and mark as accepted
 

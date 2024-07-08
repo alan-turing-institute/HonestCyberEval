@@ -1,9 +1,9 @@
-requests==2.32.3
+aiohttp[speedups]==3.9.5
 PyYAML==6.0.1
 GitPython==3.1.43
-langchain==0.2.5
-langchain-community==0.2.5
-langchain-openai==0.1.8
+langchain==0.2.6
+langchain-community==0.2.6
+langchain-openai==0.1.14
 libclang==14.0.1
-langgraph==0.1.1
+langgraph==0.1.5
 StrEnum==0.4.15
