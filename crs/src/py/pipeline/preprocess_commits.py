@@ -19,6 +19,22 @@ clang.cindex.Config.set_library_file("/usr/lib/x86_64-linux-gnu/libclang-14.so")
 FILE_CODE = "file_code"
 
 
+class AbstractReplacementTerms(StrEnum):
+    STRING_LITERAL = auto()
+    LOCAL_VARIABLE = auto()
+    IMPORTED_VARIABLE = auto()
+    LOCAL_FUNCTION = auto()
+    IMPORTED_FUNCTION = auto()
+    LOCAL_STRUCT = auto()
+    IMPORTED_STRUCT = auto()
+    LOCAL_STRUCT_FIELD = auto()
+    IMPORTED_STRUCT_FIELD = auto()
+    PARAM = auto()
+    NUMBER = auto()
+    LOCAL_ENUM_CONST = auto()
+    IMPORTED_ENUM_CONST = auto()
+
+
 class ChangeType(IntEnum):
     FUNCTIONAL_CHANGE = auto()
     FILE_REMOVED = 1
@@ -38,6 +54,12 @@ class VarSourceType(StrEnum):
 class DeclType(StrEnum):
     FUNCTION_TYPE = auto()
     VAR_TYPE = auto()
+    STRUCT_TYPE = auto()
+    STRING_TYPE = auto()
+    PARAM_TYPE = auto()
+    ENUM_TYPE = auto()
+    ENUM_CONST_TYPE = auto()
+    FIELD_TYPE = auto()
 
 
 TypesDictType: TypeAlias = dict[DeclType, CursorKind]
@@ -48,6 +70,17 @@ FunctionDictType: TypeAlias = dict[str, list[str]]
 TYPES: TypesDictType = {
     DeclType.VAR_TYPE: CursorKind.VAR_DECL,  # type: ignore
     DeclType.FUNCTION_TYPE: CursorKind.FUNCTION_DECL,  # type: ignore
+}
+
+TYPES_FOR_ABSTRACT: TypesDictType = {
+    DeclType.VAR_TYPE: CursorKind.VAR_DECL,  # type: ignore
+    DeclType.FUNCTION_TYPE: CursorKind.FUNCTION_DECL,  # type: ignore
+    DeclType.STRUCT_TYPE: CursorKind.STRUCT_DECL,  # type: ignore
+    DeclType.STRING_TYPE: CursorKind.STRING_LITERAL,  # type: ignore
+    DeclType.PARAM_TYPE: CursorKind.PARM_DECL,  # type: ignore
+    # DeclType.ENUM_TYPE: CursorKind.ENUM_DECL, # type: ignore
+    DeclType.ENUM_CONST_TYPE: CursorKind.ENUM_CONSTANT_DECL,  # type: ignore
+    DeclType.FIELD_TYPE: CursorKind.FIELD_DECL,  # type: ignore
 }
 
 
@@ -186,44 +219,105 @@ class FileDiff(BaseDiff):
 # TODO: set up using Java
 
 
-def build_regex_pattern_from_list(pattern_list):
-    regex_pattern = r"("
+def build_regex_pattern_from_list(pattern_list, word_boundary=True):
 
-    for i, pattern_item in enumerate(pattern_list):
-        regex_pattern += pattern_item
-        if i < (len(pattern_list) - 1):
-            regex_pattern += "|"
-        else:
-            regex_pattern += ")"
+    if word_boundary:
+        regex_pattern = r"(\s|\W|^)("
+    else:
+        regex_pattern = r"("
+
+    if pattern_list:
+        for i, pattern_item in enumerate(pattern_list):
+            if pattern_item != "":
+                pattern_name = re.escape(pattern_item)
+                regex_pattern += pattern_name
+                if i < (len(pattern_list) - 1):
+                    regex_pattern += "|"
+                else:
+                    if word_boundary:
+                        regex_pattern += r")(?=\s|\W|$)"
+                    else:
+                        regex_pattern += r")"
+    else:
+        regex_pattern = None
 
     return regex_pattern
 
 
-# def abstract_code(code_snippet, ast, filename):
-#     types = {VAR_TYPE: getattr(clang.cindex.CursorKind, 'VAR_DECL', None),
-#              FUNCTION_TYPE: getattr(clang.cindex.CursorKind, 'FUNCTION_DECL', None),
-#              'CUSTOM_TYPES': getattr(clang.cindex.CursorKind, '')}
-# STRING_LITERAL, INTEGER_LITERAL
-#     nodes = search_ast_for_node_types(ast, TYPES, filename)
-#     custom_variables_pattern = build_regex_pattern_from_list(nodes[VAR_TYPE][FILE_LOCAL])
-#     imported_variables_pattern = build_regex_pattern_from_list(nodes[VAR_TYPE][IMPORTED])
-#     custom_functions_pattern = build_regex_pattern_from_list(nodes[FUNCTION_TYPE][FILE_LOCAL])
-#     imported_functions_pattern = build_regex_pattern_from_list(nodes[FUNCTION_TYPE][IMPORTED])
-#     custom_type_pattern = build_regex_pattern_from_list(nodes[FUNCTION_TYPE][IMPORTED])
-#     numbers_pattern = r'\b[0-9]\b'
+def search_line_and_replace(line, pattern, replace_term):
 
-#     for i, line in enumerate(code_snippet):
+    for match in re.findall(pattern, line):
 
-#         # replace custom variables
-#         code_snippet[i] = re.sub(custom_variables_pattern, 'LOCAL_VARIABLE', line)
-#         # replace imported variables
-#         code_snippet[i] = re.sub(imported_variables_pattern, 'IMPORTED_VARIABLE', line)
-#         # replace custom functions
-#         code_snippet[i] = re.sub(custom_functions_pattern, 'CUS_FUNC', line)
-#         # replace imported functions
-#         code_snippet[i] = re.sub(imported_functions_pattern, 'IMPORTED_FUNC', line)
-#         # replace numbers??
-#         code_snippet[i] = re.sub(numbers_pattern, 'NUM', line)
+        if not isinstance(match, str):
+            match = r"\b" + re.escape(match[1]) + r"\b"  # match will be the three capture groups?
+        else:
+            match = re.escape(match)
+
+        line = re.sub(match, replace_term, line)
+
+    return line
+
+
+def abstract_code(code_snippet, ast, filename):
+
+    nodes = search_ast_for_node_types(ast, TYPES_FOR_ABSTRACT, filename)
+
+    patterns = {}
+    # FIELD_DECL, ENUM_DECL, ENUM_CONSTANT_DECL
+    patterns[AbstractReplacementTerms.STRING_LITERAL] = build_regex_pattern_from_list(
+        (
+            list(nodes[DeclType.STRING_TYPE][VarSourceType.FILE_LOCAL].keys())
+            + list(nodes[DeclType.STRING_TYPE][VarSourceType.IMPORTED].keys())
+        ),
+        word_boundary=False,
+    )
+    patterns[AbstractReplacementTerms.LOCAL_VARIABLE] = build_regex_pattern_from_list(
+        nodes[DeclType.VAR_TYPE][VarSourceType.FILE_LOCAL]
+    )
+    patterns[AbstractReplacementTerms.IMPORTED_VARIABLE] = build_regex_pattern_from_list(
+        nodes[DeclType.VAR_TYPE][VarSourceType.IMPORTED]
+    )
+    patterns[AbstractReplacementTerms.LOCAL_FUNCTION] = build_regex_pattern_from_list(
+        nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL]
+    )
+    patterns[AbstractReplacementTerms.IMPORTED_FUNCTION] = build_regex_pattern_from_list(
+        nodes[DeclType.FUNCTION_TYPE][VarSourceType.IMPORTED]
+    )
+    patterns[AbstractReplacementTerms.LOCAL_STRUCT] = build_regex_pattern_from_list(
+        nodes[DeclType.STRUCT_TYPE][VarSourceType.FILE_LOCAL]
+    )
+    patterns[AbstractReplacementTerms.IMPORTED_STRUCT] = build_regex_pattern_from_list(
+        nodes[DeclType.STRUCT_TYPE][VarSourceType.IMPORTED]
+    )
+    patterns[AbstractReplacementTerms.LOCAL_STRUCT_FIELD] = build_regex_pattern_from_list(
+        nodes[DeclType.FIELD_TYPE][VarSourceType.FILE_LOCAL]
+    )
+    patterns[AbstractReplacementTerms.IMPORTED_STRUCT_FIELD] = build_regex_pattern_from_list(
+        nodes[DeclType.FIELD_TYPE][VarSourceType.IMPORTED]
+    )
+    patterns[AbstractReplacementTerms.PARAM] = build_regex_pattern_from_list((
+        list(nodes[DeclType.PARAM_TYPE][VarSourceType.FILE_LOCAL].keys())
+        + list(nodes[DeclType.PARAM_TYPE][VarSourceType.IMPORTED].keys())
+    ))
+    patterns[AbstractReplacementTerms.LOCAL_ENUM_CONST] = build_regex_pattern_from_list(
+        nodes[DeclType.ENUM_CONST_TYPE][VarSourceType.FILE_LOCAL]
+    )
+    patterns[AbstractReplacementTerms.IMPORTED_ENUM_CONST] = build_regex_pattern_from_list(
+        nodes[DeclType.ENUM_CONST_TYPE][VarSourceType.IMPORTED]
+    )
+
+    for i, line in enumerate(code_snippet):
+
+        if line[0] != "#":
+
+            for abstract_term in patterns:
+                pattern = patterns[abstract_term]
+                if pattern is not None:
+                    code_snippet[i] = search_line_and_replace(code_snippet[i], pattern, abstract_term)
+
+            code_snippet[i] = re.sub(r"\b[0-9]+\b", AbstractReplacementTerms.NUMBER, code_snippet[i])
+
+    return code_snippet
 
 
 def is_node_local(cursor: Cursor, filename: str) -> bool:
@@ -338,7 +432,17 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
 
         if filename is not None:
             files_checked.append(filename)
-            if not (".c" in filename or ".h" in filename):
+            file_extensions = [".c", ".h"]
+
+            regex_pattern = r"("
+            for i, extension in enumerate(file_extensions):
+                regex_pattern += re.escape(extension) + "$"
+                if i < len(file_extensions) - 1:
+                    regex_pattern += "|"
+                else:
+                    regex_pattern += ")"
+
+            if not re.search(regex_pattern, filename):
                 continue
         else:
             if diff.a_path is None:
@@ -408,7 +512,7 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
             diff_functions = new_diff_functions
 
         if diff_functions:
-            full_file_diff_lines = make_diff(before_file_lines, after_file_lines)
+            full_file_diff_lines = make_diff(before_file_lines, after_file_lines, filename)
             og_diff = diff.diff.decode("utf-8")
             filename_diffs[filename] = FileDiff(
                 filename,
@@ -427,11 +531,14 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
             logger.debug(f"FileDiffs print for {filename}:")
             logger.debug(str(filename_diffs[filename]))
 
+            # logger.info(filename)
+            # logger.info(abstract_code(before_file_lines, before_file_ast, filename))
+
     return filename_diffs
 
 
-def make_diff(before: list[str], after: list[str]) -> list[str]:
-    return list(difflib.unified_diff(before, after, lineterm=""))
+def make_diff(before: list[str], after: list[str], filename: str = "") -> list[str]:
+    return list(difflib.unified_diff(before, after, lineterm="", fromfile=filename, tofile=filename))
 
 
 def get_function_diffs(before: FunctionDictType, after: FunctionDictType) -> dict[str, FunctionDiff]:
@@ -665,184 +772,66 @@ def is_diff_functional(
 # test code below -> leaving for now so that I can use again when setting up the Java stuff
 # C code string
 code = """
-// SPDX-License-Identifier: GPL-2.0-only
-/* Disk protection for HP/DELL machines.
- *
- * Copyright 2008 Eric Piel
- * Copyright 2009 Pavel Machek <pavel@ucw.cz>
- * Copyright 2012 Sonal Santan
- * Copyright 2014 Pali Rohár <pali@kernel.org>
- */
-
 #include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <string.h>
-#include <stdint.h>
-#include <errno.h>
-#include <signal.h>
-#include <sys/mman.h>
-#include <sched.h>
-#include <syslog.h>
+#include <unistd.h>
 
-static int noled;
-static char unload_heads_path[64];
-static char device_path[32];
-static const char app_name[] = "FREE FALL";
+char items[3][10];
 
-static int set_unload_heads_path(char *device)
-{
-	if (strlen(device) <= 5 || strncmp(device, "/dev/", 5) != 0)
-		return -EINVAL;
-	strncpy(device_path, device, sizeof(device_path) - 1);
-
-	snprintf(unload_heads_path, sizeof(unload_heads_path) - 1,
-				"/sys/block/%s/device/unload_heads", device+5);
-	return 0;
+void func_a(){
+    char* buff;
+    int i = 0;
+    do{
+        printf("input item:");
+        buff = &items[i][0];
+        i++;
+        fgets(buff, 40, stdin);
+        buff[strcspn(buff, "\\n")] = 0;
+    }while(strlen(buff)!=0);
+    i--;
 }
 
-static int valid_disk(void)
-{
-	int fd = open(unload_heads_path, O_RDONLY);
-
-	if (fd < 0) {
-		perror(unload_heads_path);
-		return 0;
-	}
-
-	close(fd);
-	return 1;
+void func_b(){
+    char *buff;
+    printf("done adding items\\n");
+    int j;
+    printf("display item #:");
+    scanf("%d", &j);
+    buff = &items[j][0];
+    printf("item %d: %s\\n", j, buff);
 }
 
-static void write_int(char *path, int i)
+#ifndef ___TEST___
+int main()
 {
-	char buf[1024];
-	int fd = open(path, O_RDWR);
 
-	if (fd < 0) {
-		perror("open");
-		exit(1);
-	}
+    func_a();
 
-	sprintf(buf, "%d", i);
+    func_b();
 
-	if (write(fd, buf, strlen(buf)) != strlen(buf)) {
-		perror("write");
-		exit(1);
-	}
 
-	close(fd);
+    return 0;
 }
+#endif
 
-static void set_led(int on)
-{
-	if (noled)
-		return;
-	write_int("/sys/class/leds/hp::hddprotect/brightness", on);
-}
-
-static void protect(int seconds)
-{
-	const char *str = (seconds == 0) ? "Unparked" : "Parked";
-
-	write_int(unload_heads_path, seconds*1000);
-	syslog(LOG_INFO, "%s %s disk head\n", str, device_path);
-}
-
-static int on_ac(void)
-{
-	/* /sys/class/power_supply/AC0/online */
-	return 1;
-}
-
-static int lid_open(void)
-{
-	/* /proc/acpi/button/lid/LID/state */
-	return 1;
-}
-
-static void ignore_me(int signum)
-{
-	protect(0);
-	set_led(0);
-}
-
-int main(int argc, char **argv)
-{
-	int fd, ret;
-	struct stat st;
-	struct sched_param param;
-
-	if (argc == 1)
-		ret = set_unload_heads_path("/dev/sda");
-	else if (argc == 2)
-		ret = set_unload_heads_path(argv[1]);
-	else
-		ret = -EINVAL;
-
-	if (ret || !valid_disk()) {
-		fprintf(stderr, "usage: %s <device> (default: /dev/sda)\n",
-				argv[0]);
-		exit(1);
-	}
-
-	fd = open("/dev/freefall", O_RDONLY);
-	if (fd < 0) {
-		perror("/dev/freefall");
-		return EXIT_FAILURE;
-	}
-
-	if (stat("/sys/class/leds/hp::hddprotect/brightness", &st))
-		noled = 1;
-
-	if (daemon(0, 0) != 0) {
-		perror("daemon");
-		return EXIT_FAILURE;
-	}
-
-	openlog(app_name, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
-
-	param.sched_priority = sched_get_priority_max(SCHED_FIFO);
-	sched_setscheduler(0, SCHED_FIFO, &param);
-	mlockall(MCL_CURRENT|MCL_FUTURE);
-
-	signal(SIGALRM, ignore_me);
-
-	for (;;) {
-		unsigned char count;
-
-		ret = read(fd, &count, sizeof(count));
-		alarm(0);
-		if ((ret == -1) && (errno == EINTR)) {
-			/* Alarm expired, time to unpark the heads */
-			continue;
-		}
-
-		if (ret != sizeof(count)) {
-			perror("read");
-			break;
-		}
-
-		protect(21);
-		set_led(1);
-		if (1 || on_ac() || lid_open())
-			alarm(2);
-		else
-			alarm(20);
-	}
-
-	closelog();
-	close(fd);
-	return EXIT_SUCCESS;
-}
 """
 
 # code_lines = clean_up_snippet(code)
 # ast = parse_snippet(code, "test.c")
 
+# test = FileDiff(name='test.c', before_ast=ast, change_type=0, before_commit=None, after_commit=None, after_ast=None, diff_functions=[], og_diff="")
+
+# print(test.ast_string(ast))
+
+# print("\n".join(code_lines))
+# print()
+# print("\n".join(abstract_code(code_lines, ast, 'test.c')))
+
+# pattern_test = r'\b"?/sys/block/%s/device/unload_heads"?\b'
+# test_string = '"/sys/block/%s/device/unload_heads", device+5);'
+# print(re.search(pattern_test, test_string))
+# test = re.sub(pattern_test, "TEST", test_string)
+# print(test)
 
 # # types = {VAR_TYPE: clang.cindex.CursorKind.VAR_DECL, FUNCTION_TYPE: clang.cindex.CursorKind.FUNCTION_DECL}
 
