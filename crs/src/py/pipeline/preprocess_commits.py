@@ -60,6 +60,7 @@ class DeclType(StrEnum):
     ENUM_TYPE = auto()
     ENUM_CONST_TYPE = auto()
     FIELD_TYPE = auto()
+    DECL_REF_TYPE = auto()
 
 
 TypesDictType: TypeAlias = dict[DeclType, CursorKind]
@@ -69,7 +70,13 @@ FunctionDictType: TypeAlias = dict[str, list[str]]
 
 TYPES: TypesDictType = {
     DeclType.VAR_TYPE: CursorKind.VAR_DECL,  # type: ignore
+    DeclType.PARAM_TYPE: CursorKind.PARM_DECL,  # type: ignore
     DeclType.FUNCTION_TYPE: CursorKind.FUNCTION_DECL,  # type: ignore
+}
+
+TYPES_FOR_EXTERNAL_DEFINED_VARS: TypesDictType = {
+    DeclType.VAR_TYPE: CursorKind.VAR_DECL,  # type: ignore
+    DeclType.DECL_REF_TYPE: CursorKind.DECL_REF_EXPR,  # type: ignore
 }
 
 TYPES_FOR_ABSTRACT: TypesDictType = {
@@ -143,6 +150,11 @@ class BaseDiff:
 
 @dataclass
 class FunctionDiff(BaseDiff):
+    _: KW_ONLY
+    after_external_variable_decls: dict[str, str] = field(default_factory=dict)
+    before_external_variable_decls: dict[str, str] = field(default_factory=dict)
+    # _external_variable_decls: dict[str, str]
+
     def __str__(self):
         return self.build_full_string(indent="")
 
@@ -154,16 +166,67 @@ class FunctionDiff(BaseDiff):
         if self.before_lines:
             string_to_print += f"{indent}Before this commit:\n"
             string_to_print += f"{indent}{self.join_lines(self.before_lines, indent)}\n\n"
+            if self.before_external_variable_decls:
+                string_to_print += f"{indent}Externally declared variables:\n"
+                string_to_print += (
+                    f"{indent}{self.join_lines(list(self.before_external_variable_decls.values()), indent)}\n\n"
+                )
+
         else:
             string_to_print += f"{indent}No code before this commit.\n"
 
         if self.after_lines:
             string_to_print += f"{indent}After this commit:\n"
             string_to_print += f"{indent}{self.join_lines(self.after_lines, indent)}\n\n"
+            if self.after_external_variable_decls:
+                string_to_print += f"{indent}Externally declared variables:\n"
+                string_to_print += (
+                    f"{indent}{self.join_lines(list(self.after_external_variable_decls.values()), indent)}\n\n"
+                )
+
         else:
             string_to_print += f"{indent}No code after this commit.\n"
 
         return string_to_print
+
+    def append_external_variable_decls_to_code_lines(self):
+
+        key_order = []
+        change_occurred = False
+
+        if self.before_external_variable_decls:
+            change_occurred = True
+            # get the variable declarations from the dictionary
+            key_order = list(self.before_external_variable_decls.keys())
+            new_before_lines = list(self.before_external_variable_decls.values())
+
+            # stack the variable declarations above the code lines
+            new_before_lines = new_before_lines + self.before_lines
+            self.before_lines = new_before_lines
+
+        if self.after_external_variable_decls:
+            change_occurred = True
+            new_after_lines = []
+            # keep the order of declarations the same as the before_lines if applicable
+            if key_order:
+                for key in key_order:
+                    if key in self.after_external_variable_decls:
+                        new_after_lines.append(self.after_external_variable_decls[key])
+
+            # add on any potentially other variables not in the before
+            for key in self.after_external_variable_decls:
+                if key not in key_order:  # prevent duplicates
+                    new_after_lines.append(self.after_external_variable_decls[key])
+
+            # stack them with the code lines
+            new_after_lines = new_after_lines + self.after_lines
+            self.after_lines = new_after_lines
+
+        if change_occurred:
+            # update the diff
+            self.diff = make_diff(self.before_lines, self.after_lines)
+
+        return
 
 
 @dataclass()
@@ -197,8 +260,8 @@ class FileDiff(BaseDiff):
         if self.before_lines:
             string_to_print += f"{indent_plus}Code:\n"
             string_to_print += f"{indent_plus}{self.join_lines(self.before_lines, indent_plus)}\n\n"
-            string_to_print += f"{indent_plus}AST:\n"
-            string_to_print += f"{indent_plus}{self.ast_string(self.before_ast)}\n\n"
+            # string_to_print += f"{indent_plus}AST:\n"
+            # string_to_print += f"{indent_plus}{self.ast_string(self.before_ast)}\n\n"
         else:
             string_to_print += f"{indent_plus}No code before this commit.\n"
 
@@ -206,8 +269,8 @@ class FileDiff(BaseDiff):
         if self.after_lines:
             string_to_print += f"{indent_plus}Code:\n"
             string_to_print += f"{indent_plus}{self.join_lines(self.after_lines, indent_plus)}\n\n"
-            string_to_print += f"{indent_plus}AST:\n"
-            string_to_print += f"{indent_plus}{self.ast_string(self.after_ast)}\n\n"
+            # string_to_print += f"{indent_plus}AST:\n"
+            # string_to_print += f"{indent_plus}{self.ast_string(self.after_ast)}\n\n"
         else:
             string_to_print += f"{indent_plus}No code after this commit.\n"
 
@@ -509,6 +572,23 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
                 if is_functional:
                     new_diff_functions[function_name] = copy.deepcopy(diff_functions[function_name])
 
+                    if FILE_CODE in after_function_lines:
+                        new_diff_functions[function_name].after_external_variable_decls = (
+                            get_function_external_variables_decl(
+                                function_name, after_nodes, after_function_lines[FILE_CODE]
+                            )
+                        )
+
+                    if FILE_CODE in before_function_lines:
+                        new_diff_functions[function_name].before_external_variable_decls = (
+                            get_function_external_variables_decl(
+                                function_name, before_nodes, before_function_lines[FILE_CODE]
+                            )
+                        )
+
+                    new_diff_functions[function_name].append_external_variable_decls_to_code_lines()
+                    # logger.debug(str(new_diff_functions[function_name]))
+
             diff_functions = new_diff_functions
 
         if diff_functions:
@@ -564,14 +644,6 @@ def get_function_diffs(before: FunctionDictType, after: FunctionDictType) -> dic
                     # diff in these functions so make the diff
                     diff = make_diff(before[function_name], after[function_name])
 
-                    # for line in before[function_name]:
-                    #     if line not in after[function_name]:
-                    #         diff.append(f"-{line}")
-
-                    # for line in after[function_name]:
-                    #     if line not in before[function_name]:
-                    #         diff.append(f"+{line}")
-
                     diff_functions[function_name] = FunctionDiff(
                         function_name,
                         before_lines=before[function_name],
@@ -579,18 +651,14 @@ def get_function_diffs(before: FunctionDictType, after: FunctionDictType) -> dic
                         diff_lines=diff,
                     )
             else:
-                diff = make_diff(
-                    before[function_name], after[function_name]
-                )  # [f"-{line}" for line in before[function_name]]
+                diff = make_diff(before[function_name], after[function_name])
                 diff_functions[function_name] = FunctionDiff(
                     function_name, before_lines=before[function_name], diff_lines=diff
                 )
 
     if after_functions:
         for function_name in after_functions:
-            diff = make_diff(
-                before[function_name], after[function_name]
-            )  # [f"+{line}" for line in after[function_name]]
+            diff = make_diff(before[function_name], after[function_name])
             diff_functions[function_name] = FunctionDiff(
                 function_name, after_lines=after[function_name], diff_lines=diff
             )
@@ -642,6 +710,48 @@ def get_full_function_snippets(full_file: list[str], functions: dict[str, Cursor
     functions_code[FILE_CODE] = file_code
 
     return functions_code
+
+
+def get_function_external_variables_decl(function_name, full_file_nodes, non_function_code_snippets):
+
+    if FILE_CODE == function_name:
+        return {}
+
+    function_ast = full_file_nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL][function_name]
+
+    all_function_names = list(full_file_nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL].keys()) + list(
+        full_file_nodes[DeclType.FUNCTION_TYPE][VarSourceType.IMPORTED].keys()
+    )
+
+    imported_to_file_vars = list(full_file_nodes[DeclType.VAR_TYPE][VarSourceType.IMPORTED].keys())
+
+    # get the nodes for the variables declared and the variables/functions referenced
+    nodes = search_ast_for_node_types(function_ast, TYPES_FOR_EXTERNAL_DEFINED_VARS, function_ast.location.file.name)
+
+    vars_declared = nodes[DeclType.VAR_TYPE][VarSourceType.FILE_LOCAL]  # should only be local to the function
+
+    if DeclType.PARAM_TYPE in nodes:
+        # include function parameters
+        vars_declared = vars_declared | nodes[DeclType.PARAM_TYPE][VarSourceType.FILE_LOCAL]
+
+    undeclared_vars = []
+
+    for decl_ref in nodes[DeclType.DECL_REF_TYPE][VarSourceType.FILE_LOCAL]:
+        if decl_ref not in all_function_names and decl_ref not in imported_to_file_vars:
+            # then it should be declared within this function, as a parameter to the function or in the body of the function
+            if decl_ref not in vars_declared:
+                # if it isn't, then it must be declared in the file outside of the function
+                undeclared_vars.append(decl_ref)
+
+    external_var_declarations = {}
+    for line in non_function_code_snippets:
+        for undeclared_var in undeclared_vars:
+            if undeclared_var in line:
+                # assuming that the first line a variable is mentioned is it's declaration (think it has to be at least?)
+                external_var_declarations[undeclared_var] = line
+                undeclared_vars.remove(undeclared_var)
+
+    return external_var_declarations
 
 
 def get_variable_snippets(full_snippet: list[str], variable_name: str) -> list[str]:
@@ -809,7 +919,6 @@ int main()
 
     func_b();
 
-
     return 0;
 }
 #endif
@@ -818,6 +927,10 @@ int main()
 
 # code_lines = clean_up_snippet(code)
 # ast = parse_snippet(code, "test.c")
+
+# after_nodes = search_ast_for_node_types(ast, TYPES, 'test.c')
+# after_function_lines = get_full_function_snippets(code_lines, after_nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL])
+# get_functions_external_variables_decl(after_nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL], after_nodes, after_function_lines[FILE_CODE])
 
 # test = FileDiff(name='test.c', before_ast=ast, change_type=0, before_commit=None, after_commit=None, after_ast=None, diff_functions=[], og_diff="")
 
