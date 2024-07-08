@@ -182,7 +182,7 @@ class VulnDiscovery:
         # Sort commits by date
         all_commits = sorted(all_commits_set, key=lambda c: c.committed_datetime)
 
-        # then for each commit and compare with it's parent to find the relevant files changed and the functional
+        # then for each commit and compare with its parent to find the relevant files changed and the functional
         # changes within each file
         preprocessed_commits = {}
 

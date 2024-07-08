@@ -1,3 +1,4 @@
+import asyncio
 import subprocess
 from shutil import copy, copytree, rmtree
 from typing import TYPE_CHECKING, Literal
@@ -9,6 +10,8 @@ from logger import logger
 
 if TYPE_CHECKING:
     from api.cp import ChallengeProject
+
+build_lock = asyncio.Lock()
 
 
 class RunException(Exception):

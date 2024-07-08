@@ -13,7 +13,7 @@ from strenum import StrEnum
 
 from api.cp import ChallengeProject
 from api.data_types import Patch, VulnerabilityWithSha
-from api.fs import PatchException, write_patch_to_disk
+from api.fs import PatchException, build_lock, write_patch_to_disk
 from api.llm import (
     LLMmodel,
     add_structured_output,
@@ -121,31 +121,33 @@ def patched_file_to_diff(vuln_code, patched_file, bad_file_name):
     return patch_text
 
 
-def apply_patch_and_check(project: ChallengeProject, cp_source: str, vuln: VulnerabilityWithSha, patch: Patch):
-    logger.info("Re-building CP with patch")
-    try:
-        project.patch_and_build_project(patch, cp_source)
-    finally:
-        project.reset_source_repo(cp_source)
+async def apply_patch_and_check(project: ChallengeProject, cp_source: str, vuln: VulnerabilityWithSha, patch: Patch):
+    # only one patch should be applied and building at any one time
+    async with build_lock:
+        logger.info("Re-building CP with patch")
+        try:
+            project.patch_and_build_project(patch, cp_source)
+        finally:
+            project.reset_source_repo(cp_source)
 
-    has_sanitizer_triggered, stderr = project.run_harness_and_check_sanitizer(
-        vuln.input_file,
-        vuln.harness_id,
-        vuln.sanitizer_id,
-    )
-    if has_sanitizer_triggered:
-        raise HarnessTriggeredAfterPatchException(
-            stderr=stderr,
-            vuln=vuln,
-            patch=patch,
+        has_sanitizer_triggered, stderr = project.run_harness_and_check_sanitizer(
+            vuln.input_file,
+            vuln.harness_id,
+            vuln.sanitizer_id,
         )
+        if has_sanitizer_triggered:
+            raise HarnessTriggeredAfterPatchException(
+                stderr=stderr,
+                vuln=vuln,
+                patch=patch,
+            )
 
-    result = project.run_tests()
-    if result.stderr:
-        raise TestFailedException(
-            stderr=result.stderr,
-            patch=patch,
-        )
+        result = project.run_tests()
+        if result.stderr:
+            raise TestFailedException(
+                stderr=result.stderr,
+                patch=patch,
+            )
 
 
 # Nodes
@@ -208,7 +210,7 @@ async def generate(state: GraphState) -> GraphState:
         raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
 
 
-def check_patch(state: GraphState) -> GraphState:
+async def check_patch(state: GraphState) -> GraphState:
     logger.info("Checking patch")
 
     vulnerability = state["vulnerability"]
@@ -221,7 +223,7 @@ def check_patch(state: GraphState) -> GraphState:
     patch = Patch(diff=patch_text, diff_file=patch_path)
 
     try:
-        apply_patch_and_check(state["project"], state["cp_source"], vulnerability, patch)
+        await apply_patch_and_check(state["project"], state["cp_source"], vulnerability, patch)
     except Exception as error:
         logger.info("Patch check: Failed")
         return GraphState(**{

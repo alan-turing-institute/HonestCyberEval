@@ -105,7 +105,7 @@ class PatchGen:
             patch_path = write_patch_to_disk(project, cpv_uuid, potential_patch, 0, vulnerability, "mock")
             patch = Patch(diff=potential_patch, diff_file=patch_path)
             try:
-                apply_patch_and_check(project, cp_source, vulnerability, patch)
+                await apply_patch_and_check(project, cp_source, vulnerability, patch)
             except HarnessTriggeredAfterPatchException:
                 # some inputs require both hard coded patches applied together to fix
                 potential_patch = self.gen_mock_patch()
