@@ -71,6 +71,10 @@ class ChallengeProject:
     def config(self):
         return deepcopy(self.__config)
 
+    @property
+    def sanitizer_str(self):
+        return self.__config["sanitizers"]
+
     def _create_dirs(self):
         for p in [self.input_path, self.patch_path]:
             p.mkdir(parents=True, exist_ok=True)

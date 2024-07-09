@@ -3,6 +3,7 @@ from operator import itemgetter
 from typing import Literal, Optional, Type, TypeAlias, TypeVar
 
 from langchain.output_parsers import OutputFixingParser
+from langchain_chroma import Chroma
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.messages import AIMessage
 from langchain_core.output_parsers import PydanticOutputParser
@@ -11,7 +12,8 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.pydantic_v1 import BaseModel, SecretStr
 from langchain_core.runnables import RunnableMap, RunnablePassthrough
 from langchain_core.utils.function_calling import convert_to_openai_tool
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_text_splitters import Language, RecursiveCharacterTextSplitter
 
 from config import AIXCC_LITELLM_HOSTNAME, LITELLM_KEY
 
@@ -73,6 +75,17 @@ def create_chat_client(model_name: LLMmodel) -> ChatOpenAI:
         max_retries=1,
     )
     return model
+
+
+def create_embeddings(model_name: EmbeddingModel) -> OpenAIEmbeddings:
+    emb_model = OpenAIEmbeddings(
+        model=model_name,
+        # openai_api_key=SecretStr(LITELLM_KEY),
+        # openai_api_base=AIXCC_LITELLM_HOSTNAME,
+        api_key=SecretStr(LITELLM_KEY),
+        base_url=AIXCC_LITELLM_HOSTNAME,
+    )
+    return emb_model
 
 
 OutputType = TypeVar("OutputType", bound=BaseModel)
@@ -158,3 +171,17 @@ def fix_anthropic_weirdness(model: ChatOpenAI | LLMmodel) -> dict[str, list[tupl
 
 
 placeholder_fix_anthropic_weirdness = ("placeholder", "{anthropic_weirdness}")
+
+
+def create_rag_docs(cp_text_list: list[str], cp_language: str, chunk_size: int = 1000, chunk_overlap: int = 0):
+    language = Language.CPP if cp_language == "C" else Language.JAVA
+
+    code_splitter = RecursiveCharacterTextSplitter.from_language(
+        language=language, chunk_size=chunk_size, chunk_overlap=chunk_overlap
+    )
+    return code_splitter.create_documents(cp_text_list)
+
+
+def get_retriever(code_docs, topk: int = 1, embedding_model: EmbeddingModel = "oai-text-embedding-3-large"):
+    vectorstore = Chroma.from_documents(documents=code_docs, embedding=create_embeddings(model_name=embedding_model))
+    return vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": topk})

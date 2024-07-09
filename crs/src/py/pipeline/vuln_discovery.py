@@ -1,13 +1,16 @@
+from enum import IntEnum, auto
 from typing import Optional
+
+from strenum import StrEnum
 
 from api.cp import ChallengeProject
 from api.data_types import Vulnerability, VulnerabilityWithSha
 from api.fs import write_harness_input_to_disk
-from api.llm import LLMmodel, format_chat_history
+from api.llm import LLMmodel, create_rag_docs, format_chat_history, get_retriever
 from logger import logger
 
 from .langgraph_vuln import run_vuln_langraph
-from .preprocess_commits import FunctionDiff, find_diff_between_commits
+from .preprocess_commits import FileDiff, FunctionDiff, find_diff_between_commits
 
 mock_input_data = r"""abcdefabcdefabcdefabcdefabcdefabcdef
 b
@@ -21,38 +24,18 @@ b
 """
 
 
+class VDLLMInputType(StrEnum):
+    ONE_FILE = auto()
+    ONE_FUNC = auto()
+    MULTI_FILE = auto()
+    MULTI_FUNC = auto()
+    FILE_DIFFS = auto()
+    FUNC_DIFFS = auto()
+
+
 class VulnDiscovery:
     project: ChallengeProject
     cp_source: str
-
-    async def detect_vulns_in_file(
-        self, bad_file: str, function_diff: FunctionDiff = FunctionDiff(name=""), max_trials=2
-    ) -> list[Vulnerability]:
-
-        if function_diff.after_lines and function_diff.diff_lines:
-            code_snippet = function_diff.after_str()
-            diff = function_diff.diff_str()
-
-        else:
-            code_snippet = self.project.open_project_source_file(self.cp_source, bad_file)
-            diff = ""
-
-        vulnerabilities = []
-
-        for harness_id in self.project.harnesses.keys():
-            for sanitizer_id in self.project.sanitizers.keys():
-                vuln = await self.harness_input_langgraph(
-                    harness_id=harness_id,
-                    sanitizer_id=sanitizer_id,
-                    code_snippet=code_snippet,
-                    diff=diff,
-                    max_trials=max_trials,
-                )
-
-                if vuln:
-                    vulnerabilities.append(vuln)
-
-        return vulnerabilities
 
     async def harness_input_langgraph(
         self, harness_id, sanitizer_id, code_snippet, diff="", max_trials=2
@@ -190,6 +173,7 @@ class VulnDiscovery:
             if commit.parents:
                 parent_commit = commit.parents[0]
                 diffs = find_diff_between_commits(parent_commit, commit)
+                # logger.info(f"Commit: {commit.hexsha}:\n{diffs}")
 
                 if diffs:
                     preprocessed_commits[commit.hexsha] = diffs
@@ -197,26 +181,140 @@ class VulnDiscovery:
 
         return preprocessed_commits
 
+    def potential_llm_inputs(self, preprocessed_commits: dict) -> list[tuple[VDLLMInputType, str]]:
+        """ "
+        Returns:
+            List of potential strings representing the commit changes in the CP,
+            which we could send to the LLM. Each element includes the type of input [VDLLMInputType]
+            and the string itself.
+
+        Example usage:
+            potential_inputs = self.potential_llm_inputs(preprocessed_commits)
+            simp_simp_list = [ f"{k} {len(v)}" for (k,v) in potential_inputs]
+            logger.info("\n".join(simp_simp_list))
+        """
+        potential_texts = []
+
+        for commit_sha, file_diffs in preprocessed_commits.items():
+
+            logger.debug("=" * 20)
+            logger.debug(f"#files changed in commit {commit_sha}: {len(file_diffs)}")
+
+            cumulative_files_str = ""
+            cumulative_funcs_str = ""
+            cumulative_file_diffs_str = ""
+            cumulative_func_diffs_str = ""
+
+            for file_name, file_diff in file_diffs.items():
+                after_str = file_diff.print_after()
+                diff_str = file_diff.print_diff()
+                logger.debug("")
+                logger.debug(f"\tFilename: {file_name}")
+                logger.debug(
+                    f"\tFile Diff length [chars]: {len(diff_str)}. After commit file length [chars]: {len(after_str)}"
+                )
+
+                file_text = after_str
+                # file_text = self.project.open_project_source_file(self.cp_source, bad_file)
+
+                cumulative_files_str += f"File: {file_name}\n{file_text}\n\n"
+                cumulative_file_diffs_str += f"Diff of file: {file_name}\n{diff_str}\n\n"
+
+                potential_texts.append((VDLLMInputType.ONE_FILE, file_text))
+
+                for func_name, func_diff in file_diff.diff_functions.items():
+                    after_str = func_diff.print_after()
+                    diff_str = func_diff.print_diff()
+
+                    logger.debug("")
+                    logger.debug(f"\t\tFunction Name: {func_name}")
+                    logger.debug(
+                        f"\t\tFunction Diff length [chars]: {len(diff_str)}. After commit function length [chars]: {len(after_str)}"
+                    )
+
+                    cumulative_funcs_str += f"Function: {func_name}\n{after_str}\n\n"
+                    cumulative_func_diffs_str += f"Diff of function: {func_name}\n{diff_str}\n\n"
+
+                    potential_texts.append((VDLLMInputType.ONE_FUNC, after_str))
+
+            # append cummulative stuff
+            potential_texts.append((VDLLMInputType.MULTI_FILE, cumulative_files_str))
+            potential_texts.append((VDLLMInputType.FILE_DIFFS, cumulative_file_diffs_str))
+            potential_texts.append((VDLLMInputType.MULTI_FUNC, cumulative_funcs_str))
+            potential_texts.append((VDLLMInputType.FUNC_DIFFS, cumulative_func_diffs_str))
+        return potential_texts
+
+    async def detect_commit_vulns_rag(self, retriever, max_trials: int = 2) -> list[Vulnerability]:
+        vulnerabilities = []
+        for harness_id in self.project.harnesses.keys():
+            for sanitizer_id in self.project.sanitizers.keys():
+                sanitizer_str = self.project.sanitizer_str[sanitizer_id]
+
+                retrieved_docs = retriever.invoke(f"""{sanitizer_str} error bug vulnerability""")
+                logger.debug(f"Retrieved docs:\n{retrieved_docs}")
+
+                for doc in retrieved_docs:
+                    code_snippet = doc.page_content
+                    diff = ""
+
+                    vuln = await self.harness_input_langgraph(
+                        harness_id=harness_id,
+                        sanitizer_id=sanitizer_id,
+                        code_snippet=code_snippet,
+                        diff=diff,
+                        max_trials=max_trials,
+                    )
+
+                    if vuln:
+                        vulnerabilities.append(vuln)
+        return vulnerabilities
+
+    async def detect_vulns_in_commits(self, preprocessed_commits: dict, top_docs: int = 1, use_funcdiffs: bool = False):
+        vulnerabilities = []
+
+        for commit_sha in preprocessed_commits:
+            commit = preprocessed_commits[commit_sha]
+            logger.info(f"Commit: {commit_sha}")
+
+            files, funcs = [], []
+            for filename in commit:
+                file_diff = commit[filename]
+                files.append(file_diff.after_str())
+
+                for function_diff_name in file_diff.diff_functions:
+                    function_diff = file_diff.diff_functions[function_diff_name]
+                    funcs.extend([function_diff.after_str(), function_diff.diff_str()])
+
+            text_list = funcs if use_funcdiffs else files
+            rag_docs = create_rag_docs(text_list, self.project.language)
+            retriever = get_retriever(code_docs=rag_docs, topk=top_docs, embedding_model="oai-text-embedding-3-large")
+
+            vulns = await self.detect_commit_vulns_rag(retriever)
+            vulnerabilities.extend(vulns)
+        return vulnerabilities
+
     async def run(self, project: ChallengeProject, cp_source: str) -> list[VulnerabilityWithSha]:
         self.project = project
         self.cp_source = cp_source
 
         # Find functional changes in diffs
         preprocessed_commits = self.find_functional_changes()
-        logger.debug(f"Preprocessed Commits:\n {preprocessed_commits}\n")
+        # logger.debug(f"Preprocessed Commits:\n {preprocessed_commits}\n")
 
-        # Detect vulnerabilities using LLMs
-        vulnerabilities = []
-        for commit_sha in preprocessed_commits:
-            commit = preprocessed_commits[commit_sha]
+        vulnerabilities = await self.detect_vulns_in_commits(preprocessed_commits, top_docs=1)
 
-            for filename in commit:
-                file_diff = commit[filename]
+        # # Detect vulnerabilities using LLMs
+        # vulnerabilities = []
+        # for commit_sha in preprocessed_commits:
+        #     commit = preprocessed_commits[commit_sha]
 
-                for function_diff_name in file_diff.diff_functions:
-                    function_diff = file_diff.diff_functions[function_diff_name]
-                    vulnerabilities = await self.detect_vulns_in_file(filename, function_diff)
-                    # vulnerabilities = self.detect_vulns_in_file(filename)
+        #     for filename in commit:
+        #         file_diff = commit[filename]
+
+        # for function_diff_name in file_diff.diff_functions:
+        #     function_diff = file_diff.diff_functions[function_diff_name]
+        #     vulnerabilities = await self.detect_vulns_in_file(filename, function_diff)
+        #     # vulnerabilities = self.detect_vulns_in_file(filename)
 
         logger.info(f"Found {len(vulnerabilities)} vulnerabilities")
 
