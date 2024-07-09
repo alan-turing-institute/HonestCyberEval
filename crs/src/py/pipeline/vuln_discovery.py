@@ -1,5 +1,6 @@
-from enum import IntEnum, auto
-from typing import Optional
+import pprint
+from enum import auto
+from typing import Optional, TypeAlias
 
 from strenum import StrEnum
 
@@ -10,7 +11,7 @@ from api.llm import LLMmodel, create_rag_docs, format_chat_history, get_retrieve
 from logger import logger
 
 from .langgraph_vuln import run_vuln_langraph
-from .preprocess_commits import FileDiff, FunctionDiff, find_diff_between_commits
+from .preprocess_commits import FileDiff, find_diff_between_commits
 
 mock_input_data = r"""abcdefabcdefabcdefabcdefabcdefabcdef
 b
@@ -22,6 +23,8 @@ b
 
 501
 """
+
+ProcessedCommits: TypeAlias = dict[str, dict[str, FileDiff]]
 
 
 class VDLLMInputType(StrEnum):
@@ -38,7 +41,7 @@ class VulnDiscovery:
     cp_source: str
 
     async def harness_input_langgraph(
-        self, harness_id, sanitizer_id, code_snippet, diff="", max_trials=2
+        self, harness_id, sanitizer_id, code_snippet, max_trials, diff=""
     ) -> Optional[Vulnerability]:
 
         sanitizer, error_code = self.project.sanitizers[sanitizer_id]
@@ -147,16 +150,12 @@ class VulnDiscovery:
 
         return vulnerabilities_with_sha
 
-    def find_functional_changes(self):
+    def find_functional_changes(self) -> ProcessedCommits:
 
-        # get relevant repo
         repo, ref = self.project.repos[self.cp_source]
 
         # firstly get all the commits needed:
-        # Iterate over all branches to get all commits
         all_commits_set = set()
-
-        # Get commits from all branches
         for commit in repo.iter_commits(ref):
             all_commits_set.add(commit)
 
@@ -168,8 +167,6 @@ class VulnDiscovery:
         preprocessed_commits = {}
 
         for commit in all_commits:
-            # print(f"\nCommit Hash: {commit.hexsha}")
-
             if commit.parents:
                 parent_commit = commit.parents[0]
                 diffs = find_diff_between_commits(parent_commit, commit)
@@ -181,7 +178,7 @@ class VulnDiscovery:
 
         return preprocessed_commits
 
-    def potential_llm_inputs(self, preprocessed_commits: dict) -> list[tuple[VDLLMInputType, str]]:
+    def potential_llm_inputs(self, preprocessed_commits: ProcessedCommits) -> list[tuple[VDLLMInputType, str]]:
         """ "
         Returns:
             List of potential strings representing the commit changes in the CP,
@@ -237,7 +234,7 @@ class VulnDiscovery:
 
                     potential_texts.append((VDLLMInputType.ONE_FUNC, after_str))
 
-            # append cummulative stuff
+            # append cumulative stuff
             potential_texts.append((VDLLMInputType.MULTI_FILE, cumulative_files_str))
             potential_texts.append((VDLLMInputType.FILE_DIFFS, cumulative_file_diffs_str))
             potential_texts.append((VDLLMInputType.MULTI_FUNC, cumulative_funcs_str))
@@ -251,17 +248,13 @@ class VulnDiscovery:
                 sanitizer_str = self.project.sanitizer_str[sanitizer_id]
 
                 retrieved_docs = retriever.invoke(f"""{sanitizer_str} error bug vulnerability""")
-                logger.debug(f"Retrieved docs:\n{retrieved_docs}")
+                logger.debug(f"Retrieved docs:\n{pprint.pformat(retrieved_docs)}")
 
                 for doc in retrieved_docs:
-                    code_snippet = doc.page_content
-                    diff = ""
-
                     vuln = await self.harness_input_langgraph(
                         harness_id=harness_id,
                         sanitizer_id=sanitizer_id,
-                        code_snippet=code_snippet,
-                        diff=diff,
+                        code_snippet=doc.page_content,
                         max_trials=max_trials,
                     )
 
@@ -269,11 +262,12 @@ class VulnDiscovery:
                         vulnerabilities.append(vuln)
         return vulnerabilities
 
-    async def detect_vulns_in_commits(self, preprocessed_commits: dict, top_docs: int = 1, use_funcdiffs: bool = False):
+    async def detect_vulns_in_commits(
+        self, preprocessed_commits: ProcessedCommits, top_docs: int = 1, use_funcdiffs: bool = False
+    ) -> list[Vulnerability]:
         vulnerabilities = []
 
-        for commit_sha in preprocessed_commits:
-            commit = preprocessed_commits[commit_sha]
+        for commit_sha, commit in preprocessed_commits.items():
             logger.info(f"Commit: {commit_sha}")
 
             files, funcs = [], []
@@ -297,9 +291,8 @@ class VulnDiscovery:
         self.project = project
         self.cp_source = cp_source
 
-        # Find functional changes in diffs
         preprocessed_commits = self.find_functional_changes()
-        # logger.debug(f"Preprocessed Commits:\n {preprocessed_commits}\n")
+        # logger.debug(f"Preprocessed Commits:\n {pprint.pformat(preprocessed_commits)}\n")
 
         vulnerabilities = await self.detect_vulns_in_commits(preprocessed_commits, top_docs=1)
 
