@@ -7,11 +7,33 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.messages import AIMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.output_parsers.openai_tools import PydanticToolsParser
+from langchain_core.prompts import PromptTemplate
 from langchain_core.pydantic_v1 import BaseModel, SecretStr
 from langchain_core.runnables import RunnableMap, RunnablePassthrough
+from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_openai import ChatOpenAI
 
 from config import AIXCC_LITELLM_HOSTNAME, LITELLM_KEY
+
+input_fixing_prompt = PromptTemplate.from_template(
+    """Instructions:
+--------------
+{instructions}
+--------------
+Completion:
+--------------
+{input}
+--------------
+
+Above, the Completion did not satisfy the constraints given in the Instructions.
+Error:
+--------------
+{error}
+--------------
+
+Please try again. Please only respond with an answer that satisfies the constraints laid out in the Instructions:"""
+)
+
 
 LLMmodel: TypeAlias = Literal[
     # OpenAI
@@ -66,9 +88,12 @@ def add_structured_output(
         if backup_model_gemini:
             if not isinstance(backup_model_gemini, ChatOpenAI):
                 backup_model_gemini = create_chat_client(backup_model_gemini)
-            output_parser = OutputFixingParser.from_llm(parser=output_parser, llm=backup_model_gemini)
+            output_parser = OutputFixingParser.from_llm(
+                parser=output_parser, llm=backup_model_gemini, prompt=input_fixing_prompt
+            )
     else:
-        model_with_tools = model.bind_tools([schema], tool_choice=True)
+        tool_name = convert_to_openai_tool(schema)["function"]["name"]
+        model_with_tools = model.bind_tools([schema], tool_choice=tool_name, parallel_tool_calls=False)
         output_parser = PydanticToolsParser(tools=[schema], first_tool_only=True)
     parser_assign = RunnablePassthrough.assign(
         parsed=itemgetter("raw") | output_parser,

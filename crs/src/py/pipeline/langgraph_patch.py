@@ -196,6 +196,11 @@ async def generate(state: GraphState) -> GraphState:
     patch_solution = output["parsed"]
     try:
         assert type(patch_solution) is PatchedFile
+    except AssertionError:
+        error = output["error"]
+        ai_message = output["ai_message"]
+        raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
+    else:
         patched_file = patch_solution.file
 
         return GraphState(**{
@@ -204,10 +209,6 @@ async def generate(state: GraphState) -> GraphState:
             "iterations": state["iterations"] + 1,
             "error": None,
         })
-    except AssertionError:
-        error = output["error"]
-        ai_message = output["ai_message"]
-        raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
 
 
 async def check_patch(state: GraphState) -> GraphState:

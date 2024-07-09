@@ -26,6 +26,14 @@ root:
   level: DEBUG
   handlers: [file]
 loggers:
+  openai:
+    level: DEBUG
+    handlers: [file]
+    propagate: false
+  httpx:
+    level: DEBUG
+    handlers: [file]
+    propagate: false
   CRS:
     level: DEBUG
     handlers: [stderr, stdout]

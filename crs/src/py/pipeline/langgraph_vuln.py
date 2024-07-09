@@ -110,9 +110,8 @@ class Nodes(StrEnum):
 async def generate(state: GraphState) -> GraphState:
     logger.info("Generating harness solution")
 
-    chat_history = state["chat_history"]
     error = state["error"]
-    question = state["code_snippet"] + "\n" + state["diff"] if state["diff"] else state["code_snippet"]
+    question = state["code_snippet"] + ("\n" + state["diff"] if state["diff"] else "")
     model = state["model"]
 
     # We have been routed back to generation with an error
@@ -124,17 +123,15 @@ async def generate(state: GraphState) -> GraphState:
         else:
             question = f"""The previous solution produced: \n {error}
                         Generate another harness input that triggers the sanitizer in the code."""
-
+    prompt = harness_input_gen_prompt_diff if state["diff"] else harness_input_gen_prompt
     harness_input_gen_chain = RunnableWithMessageHistory(
-        (
-            (harness_input_gen_prompt_diff if state["diff"] else harness_input_gen_prompt)
-            | add_structured_output(  # type: ignore  # types around with_structured_output are a mess
-                model,
-                HarnessInput,
-                "oai-gpt-4o",
-            )
+        prompt
+        | add_structured_output(  # type: ignore  # types around with_structured_output are a mess
+            model,
+            HarnessInput,
+            "oai-gpt-4o",
         ),
-        lambda _: chat_history,
+        lambda _: state["chat_history"],
         output_messages_key="ai_message",
         input_messages_key="question",
         history_messages_key="messages",
@@ -154,6 +151,11 @@ async def generate(state: GraphState) -> GraphState:
     harness_input_solution = output["parsed"]
     try:
         assert type(harness_input_solution) is HarnessInput
+    except AssertionError:
+        error = output["error"]
+        ai_message = output["ai_message"]
+        raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
+    else:
         solution = harness_input_solution.input
 
         return GraphState(**{
@@ -162,10 +164,6 @@ async def generate(state: GraphState) -> GraphState:
             "iterations": state["iterations"] + 1,
             "error": None,
         })
-    except AssertionError:
-        error = output["error"]
-        ai_message = output["ai_message"]
-        raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
 
 
 def run_harness(state: GraphState) -> GraphState:

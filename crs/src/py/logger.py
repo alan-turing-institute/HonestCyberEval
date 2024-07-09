@@ -1,5 +1,6 @@
 import logging
 import logging.config
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -46,7 +47,9 @@ def filter_maker(level):
 
 def make_logger():
     log_conf = yaml.safe_load(Path(Path.cwd() / "py" / "logging.yaml").read_text())
-    log_conf["handlers"]["file"]["filename"] = (AIXCC_CRS_SCRATCH_SPACE / "crs.log").resolve()
+    log_conf["handlers"]["file"]["filename"] = (
+        AIXCC_CRS_SCRATCH_SPACE / f"crs.{datetime.today().isoformat()}.log"
+    ).resolve()
 
     logging.config.dictConfig(log_conf)
     return logging.getLogger("CRS")

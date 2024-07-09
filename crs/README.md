@@ -93,17 +93,19 @@ Modify [.vscode/settings.json](./.vscode/settings.json) according to the comment
     `GITHUB_USER` and `GITHUB_TOKEN` variables, respectively, in the `env` file
   - fill in API keys for the LLMs (`ANTHROPIC_API_KEY`, `AZURE_API_KEY`, `OPENAI_API_KEY`)
   - set `VERTEX_PROJECT=sunlit-pixel-426710-s7` and `VERTEX_REGION=us-central1`
-  - populate [sandbox/litellm/vertex_key.json](../sandbox/litellm/vertex_key.json) with the Google/VertexAI credentials 
+  - populate [sandbox/litellm/vertex_key.json](../sandbox/litellm/vertex_key.json) with the Google/VertexAI credentials
     in JSON format
     - you cannot push changes to files inside `sandbox`; to make git ignore this change and avoid any accidental commits
       `git update-index --skip-worktree sandbox/litellm/vertex_key.json`
   - if you are usure what info you should put there, please let us know
-- (OPTIONAL) To enable [LangSmith](https://docs.smith.langchain.com/) integration to help with debugging LangChain:
+- (OPTIONAL) To enable more debugging information:
   - run `cp crs/src/env.example crs/src/env`
   - modify `crs/src/env` as follows:
-    - log into https://smith.langchain.com, create a PAT, and add it to `LANGCHAIN_API_KEY`
-    - to enable logging, such as when changing or debugging LLM code, change `LANGCHAIN_TRACING_V2` to `true`
-    - change it back to `false` when no longer required to avoid using up the limited quota on our free account
+    - to enable more verbose logging from the OpenAI client, which is what LangChain uses to talk to LiteLLM, set `OPENAI_LOG=debug`
+    - to enable [LangSmith](https://docs.smith.langchain.com/) integration to help with debugging LangChain:
+      - log into https://smith.langchain.com, create a PAT, and add it to `LANGCHAIN_API_KEY`
+      - to enable logging, such as when changing or debugging LLM code, change `LANGCHAIN_TRACING_V2` to `true`
+      - change it back to `false` when no longer required to avoid using up the limited quota on our free account
 - run `docker login -u auth0-660bd3c14d2d6436de9169f3_aixcc -p <your pat> ghcr.io` to access the competition images
   - _Note_: challenge images are handled by the `load-cp-images` container and are placed into the `dind` cache
     (`dind_cache`).

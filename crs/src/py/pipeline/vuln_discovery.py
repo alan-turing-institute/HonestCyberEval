@@ -72,7 +72,9 @@ class VulnDiscovery:
                     diff=diff,
                     max_iterations=max_trials,
                 )
-
+            except Exception as error:
+                logger.error(f"LangGraph vulnerability detection failed for {model_name} with\n{error}")
+            else:
                 logger.debug(f"LangGraph Message History\n\n{format_chat_history(output['chat_history'])}\n\n")
 
                 if not output["error"]:
@@ -90,11 +92,7 @@ class VulnDiscovery:
                     f" {output['error']}"
                 )
 
-            except Exception as error:
-                logger.error(f"LangGraph vulnerability detection failed for {model_name} with\n{error}")
-
         logger.warning(f"Failed to trigger sanitizer {sanitizer_id} using {harness_id}!")
-
         return None
 
     def identify_bad_commits(self, vulnerabilities: list[Vulnerability]) -> list[VulnerabilityWithSha]:

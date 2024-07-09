@@ -74,6 +74,9 @@ class PatchGen:
                     vuln_code=vuln_code,
                     max_iterations=max_trials,
                 )
+            except Exception as error:
+                logger.error(f"LangGraph patch generation failed for {model_name} with \n {error}")
+            else:
                 logger.debug(f"LangGraph Message History\n\n{format_chat_history(output['chat_history'])}\n\n")
                 if not output["error"]:
                     logger.info(f"Patching succeeded using {model_name}")
@@ -86,8 +89,6 @@ class PatchGen:
                     return patch
                 logger.info(f"{model_name} failed to find good patch")
                 logger.debug(f"{model_name} failed to find good patch with error: \n {output['error']}")
-            except Exception as error:
-                logger.error(f"LangGraph patch generation failed for {model_name} with \n {error}")
         logger.warning("Failed to find good patch!")
         return None
 
