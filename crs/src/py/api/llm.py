@@ -105,8 +105,11 @@ def add_structured_output(
                 parser=output_parser, llm=backup_model_gemini, prompt=input_fixing_prompt
             )
     else:
-        tool_name = convert_to_openai_tool(schema)["function"]["name"]
-        model_with_tools = model.bind_tools([schema], tool_choice=tool_name, parallel_tool_calls=False)
+        if is_anthropic(model):
+            model_with_tools = model.bind_tools([schema], tool_choice=True)
+        else:
+            tool_name = convert_to_openai_tool(schema)["function"]["name"]
+            model_with_tools = model.bind_tools([schema], tool_choice=tool_name, parallel_tool_calls=False)
         output_parser = PydanticToolsParser(tools=[schema], first_tool_only=True)
     parser_assign = RunnablePassthrough.assign(
         parsed=itemgetter("raw") | output_parser,
