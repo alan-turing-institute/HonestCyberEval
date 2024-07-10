@@ -72,7 +72,7 @@ class ChallengeProject:
         return deepcopy(self.__config)
 
     @property
-    def sanitizer_str(self):
+    def sanitizer_str(self) -> str:
         return self.__config["sanitizers"]
 
     def _create_dirs(self):

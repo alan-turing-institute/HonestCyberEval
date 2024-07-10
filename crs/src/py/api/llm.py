@@ -66,6 +66,8 @@ EmbeddingModel: TypeAlias = Literal[
     "textembedding-gecko",
 ]
 
+MAX_ALLOWED_HISTORY_CHARS = 100_000  # divide by 4 to get approx. number of tokens tokens
+
 
 def create_chat_client(model_name: LLMmodel) -> ChatOpenAI:
     model = ChatOpenAI(

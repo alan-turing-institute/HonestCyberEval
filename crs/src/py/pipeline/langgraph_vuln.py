@@ -13,6 +13,7 @@ from strenum import StrEnum
 from api.cp import ChallengeProject
 from api.fs import write_harness_input_to_disk
 from api.llm import (
+    MAX_ALLOWED_HISTORY_CHARS,
     LLMmodel,
     add_structured_output,
     create_chat_client,
@@ -124,6 +125,15 @@ async def generate(state: GraphState) -> GraphState:
             question = f"""The previous solution produced: \n {error}
                         Generate another harness input that triggers the sanitizer in the code."""
     prompt = harness_input_gen_prompt_diff if state["diff"] else harness_input_gen_prompt
+
+    # prune chat history
+    logger.debug(f"Chat history length [chars]: {len(state['chat_history'].__str__())}")
+    if state["iterations"] > 1 and len(state["chat_history"].__str__()) > MAX_ALLOWED_HISTORY_CHARS:
+        logger.debug("Had to unfortunately prune chat history!")
+        old_messages = state["chat_history"].messages
+        state["chat_history"].clear()
+        state["chat_history"].add_messages([old_messages[0]] + old_messages[-4:])
+
     harness_input_gen_chain = RunnableWithMessageHistory(
         prompt
         | add_structured_output(  # type: ignore  # types around with_structured_output are a mess
