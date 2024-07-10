@@ -59,7 +59,7 @@ class VulnDiscovery:
                     max_iterations=max_trials,
                 )
             except Exception as error:
-                logger.error(f"LangGraph vulnerability detection failed for {model_name} with\n{error}")
+                logger.error(f"LangGraph vulnerability detection failed for {model_name} with\n{repr(error)}")
             else:
                 logger.debug(f"LangGraph Message History\n\n{format_chat_history(output['chat_history'])}\n\n")
 
