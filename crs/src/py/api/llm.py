@@ -5,10 +5,11 @@ from typing import Literal, Optional, Type, TypeAlias, TypeVar
 from langchain.output_parsers import OutputFixingParser
 from langchain_chroma import Chroma
 from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import AIMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.output_parsers.openai_tools import PydanticToolsParser
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import BasePromptTemplate, PromptTemplate
 from langchain_core.pydantic_v1 import BaseModel, SecretStr
 from langchain_core.runnables import RunnableMap, RunnablePassthrough
 from langchain_core.utils.function_calling import convert_to_openai_tool
@@ -24,7 +25,7 @@ input_fixing_prompt = PromptTemplate.from_template(
 --------------
 Completion:
 --------------
-{input}
+{completion}
 --------------
 
 Above, the Completion did not satisfy the constraints given in the Instructions.
@@ -35,7 +36,6 @@ Error:
 
 Please try again. Please only respond with an answer that satisfies the constraints laid out in the Instructions:"""
 )
-
 
 LLMmodel: TypeAlias = Literal[
     # OpenAI
@@ -80,8 +80,6 @@ def create_chat_client(model_name: LLMmodel) -> ChatOpenAI:
 def create_embeddings(model_name: EmbeddingModel) -> OpenAIEmbeddings:
     emb_model = OpenAIEmbeddings(
         model=model_name,
-        # openai_api_key=SecretStr(LITELLM_KEY),
-        # openai_api_base=AIXCC_LITELLM_HOSTNAME,
         api_key=SecretStr(LITELLM_KEY),
         base_url=AIXCC_LITELLM_HOSTNAME,
     )
@@ -89,6 +87,65 @@ def create_embeddings(model_name: EmbeddingModel) -> OpenAIEmbeddings:
 
 
 OutputType = TypeVar("OutputType", bound=BaseModel)
+
+T = TypeVar("T")
+
+
+# the langchain one is actually broken...
+class CustomOutputFixingParser(OutputFixingParser[T]):
+    @classmethod
+    def from_llm_with_structured_output(
+        cls,
+        llm: ChatOpenAI,
+        schema,
+        parser: PydanticOutputParser,
+        prompt: BasePromptTemplate = input_fixing_prompt,
+        max_retries: int = 1,
+    ) -> OutputFixingParser[T]:
+        chain = prompt | add_structured_output(llm, schema)
+        return cls(parser=parser, retry_chain=chain, max_retries=max_retries)
+
+    def parse(self, completion):  # type: ignore
+        retries = 0
+
+        try:
+            return self.parser.parse(completion)
+        except OutputParserException as e:
+            error = e
+            while retries <= self.max_retries:
+                retries += 1
+                result = self.retry_chain.invoke({
+                    "instructions": self.parser.get_format_instructions(),
+                    "completion": completion,
+                    "error": repr(error),
+                })
+
+                error = result["parsing_error"]
+                if not result["parsing_error"]:
+                    return result["parsed"]
+            else:
+                raise error
+
+    async def aparse(self, completion):  # type: ignore
+        retries = 0
+
+        try:
+            return await self.parser.aparse(completion)
+        except OutputParserException as e:
+            error = e
+            while retries <= self.max_retries:
+                retries += 1
+                result = await self.retry_chain.ainvoke({
+                    "instructions": self.parser.get_format_instructions(),
+                    "completion": completion,
+                    "error": repr(error),
+                })
+
+                error = result["parsing_error"]
+                if not result["parsing_error"]:
+                    return result["parsed"]
+            else:
+                raise error
 
 
 def add_structured_output(
@@ -101,8 +158,11 @@ def add_structured_output(
         if backup_model_gemini:
             if not isinstance(backup_model_gemini, ChatOpenAI):
                 backup_model_gemini = create_chat_client(backup_model_gemini)
-            output_parser = OutputFixingParser.from_llm(
-                parser=output_parser, llm=backup_model_gemini, prompt=input_fixing_prompt
+            output_parser = CustomOutputFixingParser.from_llm_with_structured_output(
+                parser=output_parser,
+                llm=backup_model_gemini,
+                schema=schema,
+                prompt=input_fixing_prompt,
             )
     else:
         if is_anthropic(model):

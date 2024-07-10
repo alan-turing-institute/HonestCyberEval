@@ -197,8 +197,8 @@ async def generate(state: GraphState) -> GraphState:
     try:
         assert type(patch_solution) is PatchedFile
     except AssertionError:
-        error = output["error"]
-        ai_message = output["ai_message"]
+        error = output["parsing_error"]
+        ai_message = output["raw"]
         raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
     else:
         patched_file = patch_solution.file

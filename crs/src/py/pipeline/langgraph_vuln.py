@@ -152,8 +152,8 @@ async def generate(state: GraphState) -> GraphState:
     try:
         assert type(harness_input_solution) is HarnessInput
     except AssertionError:
-        error = output["error"]
-        ai_message = output["ai_message"]
+        error = output["parsing_error"]
+        ai_message = output["raw"]
         raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
     else:
         solution = harness_input_solution.input
