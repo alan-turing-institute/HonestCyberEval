@@ -22,7 +22,7 @@ Note that this readme is not a substitute for the original README.md provided by
 The interfaces with the various components can be found in [api](./src/py/api).
 To interact with the challenge projects, the [api.cp.ChallengeProject](./src/py/api/cp.py) class exposes the relevant
 functionality as methods.
-The code that interacts with the LLM APIs can be found in [api/llm.py](./src/py/api/llm.py).
+The code that interacts with the LLM APIs can be found in [api/llm/](src/py/api/llm).
 To submit vulnerabilities and patches, the code that interfaces with the competition API (cAPI) lives
 in [api/submit.py](./src/py/api/submit.py).
 

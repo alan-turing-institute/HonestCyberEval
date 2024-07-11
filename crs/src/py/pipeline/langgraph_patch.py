@@ -15,6 +15,7 @@ from api.cp import ChallengeProject
 from api.data_types import Patch, VulnerabilityWithSha
 from api.fs import PatchException, build_lock, write_patch_to_disk
 from api.llm import (
+    ErrorHandler,
     LLMmodel,
     add_structured_output,
     create_chat_client,
@@ -183,32 +184,39 @@ async def generate(state: GraphState) -> GraphState:
         history_messages_key="messages",
     )
 
-    output = await patch_gen_chain.ainvoke(
-        {
-            "language": state["project"].language,
-            "sanitizer": state["sanitizer_str"],
-            "question": question,
-            **fix_anthropic_weirdness(model),
-        },
-        {"configurable": {"session_id": "unused"}},
-    )
+    e_handler = ErrorHandler()
+    while e_handler.ok_to_retry():
+        try:
+            output = await patch_gen_chain.ainvoke(
+                {
+                    "language": state["project"].language,
+                    "sanitizer": state["sanitizer_str"],
+                    "question": question,
+                    **fix_anthropic_weirdness(model),
+                },
+                {"configurable": {"session_id": "unused"}},
+            )
+        except Exception as e:
+            await e_handler.exception_caught(e)
+        else:
+            patch_solution = output["parsed"]
+            try:
+                assert type(patch_solution) is PatchedFile
+            except AssertionError:
+                error = output["parsing_error"]
+                ai_message = output["raw"]
+                raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
+            else:
+                patched_file = patch_solution.file
 
-    patch_solution = output["parsed"]
-    try:
-        assert type(patch_solution) is PatchedFile
-    except AssertionError:
-        error = output["parsing_error"]
-        ai_message = output["raw"]
-        raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
+                return GraphState(**{
+                    **state,
+                    "patched_file": patched_file,
+                    "iterations": state["iterations"] + 1,
+                    "error": None,
+                })
     else:
-        patched_file = patch_solution.file
-
-        return GraphState(**{
-            **state,
-            "patched_file": patched_file,
-            "iterations": state["iterations"] + 1,
-            "error": None,
-        })
+        e_handler.raise_exception()
 
 
 async def check_patch(state: GraphState) -> GraphState:

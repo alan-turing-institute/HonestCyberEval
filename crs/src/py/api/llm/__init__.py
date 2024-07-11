@@ -18,6 +18,8 @@ from langchain_text_splitters import Language, RecursiveCharacterTextSplitter
 
 from config import AIXCC_LITELLM_HOSTNAME, LITELLM_KEY
 
+from .error_handler import ErrorHandler as ErrorHandler
+
 input_fixing_prompt = PromptTemplate.from_template(
     """Instructions:
 --------------

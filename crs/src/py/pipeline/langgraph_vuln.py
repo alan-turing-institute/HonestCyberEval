@@ -14,6 +14,7 @@ from api.cp import ChallengeProject
 from api.fs import write_harness_input_to_disk
 from api.llm import (
     MAX_ALLOWED_HISTORY_CHARS,
+    ErrorHandler,
     LLMmodel,
     add_structured_output,
     create_chat_client,
@@ -147,33 +148,40 @@ async def generate(state: GraphState) -> GraphState:
         history_messages_key="messages",
     )
 
-    output = await harness_input_gen_chain.ainvoke(
-        {
-            "harness_code": state["harness_code"],
-            "language": state["project"].language,
-            "sanitizer": state["sanitizer_str"],
-            "question": question,
-            **fix_anthropic_weirdness(model),
-        },
-        {"configurable": {"session_id": "unused"}},
-    )
+    e_handler = ErrorHandler()
+    while e_handler.ok_to_retry():
+        try:
+            output = await harness_input_gen_chain.ainvoke(
+                {
+                    "harness_code": state["harness_code"],
+                    "language": state["project"].language,
+                    "sanitizer": state["sanitizer_str"],
+                    "question": question,
+                    **fix_anthropic_weirdness(model),
+                },
+                {"configurable": {"session_id": "unused"}},
+            )
+        except Exception as e:
+            await e_handler.exception_caught(e)
+        else:
+            harness_input_solution = output["parsed"]
+            try:
+                assert type(harness_input_solution) is HarnessInput
+            except AssertionError:
+                error = output["parsing_error"]
+                ai_message = output["raw"]
+                raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
+            else:
+                solution = harness_input_solution.input
 
-    harness_input_solution = output["parsed"]
-    try:
-        assert type(harness_input_solution) is HarnessInput
-    except AssertionError:
-        error = output["parsing_error"]
-        ai_message = output["raw"]
-        raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
+                return GraphState(**{
+                    **state,
+                    "solution": solution,
+                    "iterations": state["iterations"] + 1,
+                    "error": None,
+                })
     else:
-        solution = harness_input_solution.input
-
-        return GraphState(**{
-            **state,
-            "solution": solution,
-            "iterations": state["iterations"] + 1,
-            "error": None,
-        })
+        e_handler.raise_exception()
 
 
 def run_harness(state: GraphState) -> GraphState:
