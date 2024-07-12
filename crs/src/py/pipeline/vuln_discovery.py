@@ -4,7 +4,7 @@ from typing import Optional, TypeAlias
 
 from strenum import StrEnum
 
-from api.cp import ChallengeProject
+from api.cp import ChallengeProjectReadOnly
 from api.data_types import Vulnerability, VulnerabilityWithSha
 from api.fs import write_harness_input_to_disk
 from api.llm import LLMmodel, create_rag_docs, format_chat_history, get_retriever
@@ -37,21 +37,22 @@ class VDLLMInputType(StrEnum):
 
 
 class VulnDiscovery:
-    project: ChallengeProject
+    project_read_only: ChallengeProjectReadOnly
     cp_source: str
 
     async def harness_input_langgraph(
         self, harness_id, sanitizer_id, code_snippet, max_trials, diff=""
     ) -> Optional[Vulnerability]:
 
-        sanitizer, error_code = self.project.sanitizers[sanitizer_id]
+        sanitizer, error_code = self.project_read_only.sanitizers[sanitizer_id]
         models: list[LLMmodel] = ["gemini-1.5-pro", "oai-gpt-4o", "claude-3.5-sonnet"]
 
         for model_name in models:
             try:
+                project = await self.project_read_only.writeable_copy_async
                 output = await run_vuln_langraph(
                     model_name=model_name,
-                    project=self.project,
+                    project=project,
                     harness_id=harness_id,
                     sanitizer_id=sanitizer_id,
                     code_snippet=code_snippet,
@@ -67,7 +68,7 @@ class VulnDiscovery:
                     logger.info(f"Found vulnerability using harness {harness_id}: {sanitizer}: {error_code}")
                     harness_input = output["solution"]
                     harness_input_file = write_harness_input_to_disk(
-                        self.project, harness_input, "work", harness_id, sanitizer_id, model_name
+                        project, harness_input, "work", harness_id, sanitizer_id, model_name
                     )
 
                     return Vulnerability(harness_id, sanitizer_id, harness_input, harness_input_file)
@@ -81,7 +82,7 @@ class VulnDiscovery:
         logger.warning(f"Failed to trigger sanitizer {sanitizer_id} using {harness_id}!")
         return None
 
-    def identify_bad_commits(self, vulnerabilities: list[Vulnerability]) -> list[VulnerabilityWithSha]:
+    async def identify_bad_commits(self, vulnerabilities: list[Vulnerability]) -> list[VulnerabilityWithSha]:
         """
         Given a list of Vulnerabilities, this function:
         1. Gets list of commits and loops over them (latest to earliest)
@@ -91,7 +92,8 @@ class VulnDiscovery:
         """
 
         # step 1: Get list of commits and loop over them (latest to earliest)
-        git_repo, ref = self.project.repos[self.cp_source]
+        project = await self.project_read_only.writeable_copy_async
+        git_repo, ref = project.repos[self.cp_source]
         git_log = list(git_repo.iter_commits(ref))
         # Start at HEAD and go down the commit log
         previous_commit = git_log[0]
@@ -102,7 +104,6 @@ class VulnDiscovery:
         vulnerabilities_next = vulnerabilities
 
         for inspected_commit in git_log[1:]:
-
             if not vulnerabilities_next:
                 # no vulnerabilities left without commit that introduced them, stop searching
                 break
@@ -113,46 +114,47 @@ class VulnDiscovery:
             # step 2: revert the Git repo to the commit
             logger.debug(f"Reverting to commit: {inspected_commit.hexsha}")
 
-            git_repo.git.switch("--detach", inspected_commit.hexsha)
-            self.project.build_project()
+            async with project.writer_lock:
+                git_repo.git.switch("--detach", inspected_commit.hexsha)
+                await project.build_project()
 
-            for vuln in vulnerabilities_left:
-                sanitizer, error_code = self.project.sanitizers[vuln.sanitizer_id]
+                for vuln in vulnerabilities_left:
+                    sanitizer, error_code = project.sanitizers[vuln.sanitizer_id]
 
-                # step 3: Test the harness on commit i
-                harness_triggered, _ = self.project.run_harness_and_check_sanitizer(
-                    vuln.input_file,
-                    vuln.harness_id,
-                    vuln.sanitizer_id,
-                )
-
-                if harness_triggered:
-                    logger.info(f"VULNERABILITY STILL EXISTS: {sanitizer}: {error_code}")
-                    vulnerabilities_next.append(vuln)
-
-                # step 4: When sanitizer is not triggered the previous commit introduced the vulnerability,
-                # assign previous commit as bug introducing
-                else:
-                    logger.info(
-                        f"Found bad commit: {previous_commit.hexsha} that introduced vulnerability {sanitizer}:"
-                        f" {error_code}  "
+                    # step 3: Test the harness on commit i
+                    harness_triggered, _ = await project.run_harness_and_check_sanitizer(
+                        vuln.input_file,
+                        vuln.harness_id,
+                        vuln.sanitizer_id,
                     )
 
-                    vulnerabilities_with_sha.append(VulnerabilityWithSha(*vuln, commit=previous_commit.hexsha))
+                    if harness_triggered:
+                        logger.info(f"VULNERABILITY STILL EXISTS: {sanitizer}: {error_code}")
+                        vulnerabilities_next.append(vuln)
 
-            previous_commit = inspected_commit
+                    # step 4: When sanitizer is not triggered the previous commit introduced the vulnerability,
+                    # assign previous commit as bug introducing
+                    else:
+                        logger.info(
+                            f"Found bad commit: {previous_commit.hexsha} that introduced vulnerability {sanitizer}:"
+                            f" {error_code}  "
+                        )
+
+                        vulnerabilities_with_sha.append(VulnerabilityWithSha(*vuln, commit=previous_commit.hexsha))
+
+                previous_commit = inspected_commit
 
         # cleaning up:
         # reset repo back to head
-        self.project.reset_source_repo(self.cp_source)
+        project.reset_source_repo(self.cp_source)
         # rebuild project at head
-        self.project.build_project()
+        await project.build_project()
 
         return vulnerabilities_with_sha
 
     def find_functional_changes(self) -> ProcessedCommits:
 
-        repo, ref = self.project.repos[self.cp_source]
+        repo, ref = self.project_read_only.repos[self.cp_source]
 
         logger.info("Preprocessing commits")
 
@@ -241,9 +243,9 @@ class VulnDiscovery:
 
     async def detect_commit_vulns_rag(self, retriever, max_trials: int = 2) -> list[Vulnerability]:
         vulnerabilities = []
-        for harness_id in self.project.harnesses.keys():
-            for sanitizer_id in self.project.sanitizers.keys():
-                sanitizer_str = self.project.sanitizer_str[sanitizer_id]
+        for harness_id in self.project_read_only.harnesses.keys():
+            for sanitizer_id in self.project_read_only.sanitizers.keys():
+                sanitizer_str = self.project_read_only.sanitizer_str[sanitizer_id]
 
                 retrieved_docs = retriever.invoke(f"""{sanitizer_str} error bug vulnerability""")
                 logger.debug(f"Retrieved docs:\n{pprint.pformat(retrieved_docs)}")
@@ -278,15 +280,15 @@ class VulnDiscovery:
                     funcs.extend([function_diff.after_str(), function_diff.diff_str()])
 
             text_list = funcs if use_funcdiffs else files
-            rag_docs = create_rag_docs(text_list, self.project.language)
+            rag_docs = create_rag_docs(text_list, self.project_read_only.language)
             retriever = get_retriever(code_docs=rag_docs, topk=top_docs, embedding_model="oai-text-embedding-3-large")
 
             vulns = await self.detect_commit_vulns_rag(retriever)
             vulnerabilities.extend(vulns)
         return vulnerabilities
 
-    async def run(self, project: ChallengeProject, cp_source: str) -> list[VulnerabilityWithSha]:
-        self.project = project
+    async def run(self, project_read_only: ChallengeProjectReadOnly, cp_source: str) -> list[VulnerabilityWithSha]:
+        self.project_read_only = project_read_only
         self.cp_source = cp_source
 
         preprocessed_commits = self.find_functional_changes()
@@ -294,39 +296,26 @@ class VulnDiscovery:
 
         vulnerabilities = await self.detect_vulns_in_commits(preprocessed_commits, top_docs=1)
 
-        # # Detect vulnerabilities using LLMs
-        # vulnerabilities = []
-        # for commit_sha in preprocessed_commits:
-        #     commit = preprocessed_commits[commit_sha]
-
-        #     for filename in commit:
-        #         file_diff = commit[filename]
-
-        # for function_diff_name in file_diff.diff_functions:
-        #     function_diff = file_diff.diff_functions[function_diff_name]
-        #     vulnerabilities = await self.detect_vulns_in_file(filename, function_diff)
-        #     # vulnerabilities = self.detect_vulns_in_file(filename)
-
         logger.info(f"Found {len(vulnerabilities)} vulnerabilities")
 
         # Hardcoding values to test patch generation
-        if self.project.name == "Mock CP" and len(vulnerabilities) < 2:
+        if self.project_read_only.name == "Mock CP" and len(vulnerabilities) < 2:
             logger.warning("Not all Mock CP vulnerabilities discovered")
             both = len(vulnerabilities) == 0
 
+            project = await project_read_only.writeable_copy_async
+
             if both or vulnerabilities[0].sanitizer_id == "id_2":
-                mock_input_file = write_harness_input_to_disk(self.project, mock_input_data, 0, "id_1", "id_1", "mock")
+                mock_input_file = write_harness_input_to_disk(project, mock_input_data, 0, "id_1", "id_1", "mock")
                 vulnerabilities.append(Vulnerability("id_1", "id_1", mock_input_data, mock_input_file))
 
             if both or vulnerabilities[0].sanitizer_id == "id_1":
-                mock_input_file = write_harness_input_to_disk(
-                    self.project, mock_input_data_segv, 0, "id_1", "id_2", "mock"
-                )
+                mock_input_file = write_harness_input_to_disk(project, mock_input_data_segv, 0, "id_1", "id_2", "mock")
 
                 vulnerabilities.append(Vulnerability("id_1", "id_2", mock_input_data_segv, mock_input_file))
 
         # Left this check in even though we have the SHA for the commit as a final confirmation check
-        vulnerabilities_with_sha = self.identify_bad_commits(vulnerabilities)
+        vulnerabilities_with_sha = await self.identify_bad_commits(vulnerabilities)
 
         return vulnerabilities_with_sha
 

@@ -1,11 +1,11 @@
 import asyncio
-import subprocess
-from shutil import copy, copytree, rmtree
+from shutil import rmtree
+from subprocess import CalledProcessError
 from typing import TYPE_CHECKING, Literal
 
 from api.data_types import Patch, VulnerabilityWithSha
 from api.llm import LLMmodel
-from config import AIXCC_CP_ROOT, AIXCC_CRS_SCRATCH_SPACE, OUTPUT_PATH, PROJECT_PATH
+from config import AIXCC_CP_ROOT, OUTPUT_PATH, PROJECT_PATH
 from logger import logger
 
 if TYPE_CHECKING:
@@ -39,26 +39,35 @@ class PatchException(RunException):
         ])
 
 
-def run_command(*args, **kwargs):
+async def run_command(*args, timeout=None, **kwargs):
     logger.debug(f"Running {' '.join((str(arg) for arg in args))}")
-    result = subprocess.run(args, capture_output=True, text=True, **kwargs)
+    process = await asyncio.create_subprocess_exec(
+        *args,
+        **kwargs,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await asyncio.wait_for(process.wait(), timeout=timeout)
+    assert isinstance(process.stdout, asyncio.StreamReader)
+    stdout = (await process.stdout.read()).decode()
+    assert isinstance(process.stderr, asyncio.StreamReader)
+    stderr = (await process.stderr.read()).decode()
+
     logger.debug(
         "\n".join([
             f"Output of running {' '.join((str(arg) for arg in args))}:",
-            result.stdout,
-            result.stderr,
+            stdout,
+            stderr,
         ])
     )
-    result.check_returncode()
-    return result
-
-
-def move_projects_to_scratch():
-    copytree(AIXCC_CP_ROOT, AIXCC_CRS_SCRATCH_SPACE / AIXCC_CP_ROOT.name, copy_function=copy, dirs_exist_ok=True)
+    returncode = process.returncode
+    if returncode:
+        raise CalledProcessError(returncode, args, stdout, stderr)
+    return process, stdout, stderr
 
 
 def get_projects():
-    return [item for item in PROJECT_PATH.iterdir() if item.is_dir()]
+    return [item for item in AIXCC_CP_ROOT.iterdir() if item.is_dir()]
 
 
 def empty_scratch():

@@ -127,11 +127,11 @@ async def apply_patch_and_check(project: ChallengeProject, cp_source: str, vuln:
     async with build_lock:
         logger.info("Re-building CP with patch")
         try:
-            project.patch_and_build_project(patch, cp_source)
+            await project.patch_and_build_project(patch, cp_source)
         finally:
             project.reset_source_repo(cp_source)
 
-        has_sanitizer_triggered, stderr = project.run_harness_and_check_sanitizer(
+        has_sanitizer_triggered, stderr = await project.run_harness_and_check_sanitizer(
             vuln.input_file,
             vuln.harness_id,
             vuln.sanitizer_id,
@@ -143,10 +143,10 @@ async def apply_patch_and_check(project: ChallengeProject, cp_source: str, vuln:
                 patch=patch,
             )
 
-        result = project.run_tests()
-        if result.stderr:
+        stderr = await project.run_tests()
+        if stderr:
             raise TestFailedException(
-                stderr=result.stderr,
+                stderr=stderr,
                 patch=patch,
             )
 

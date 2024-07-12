@@ -1,12 +1,17 @@
+import asyncio
 from copy import deepcopy
 from pathlib import Path
+from shutil import copy
 from subprocess import CalledProcessError
 from typing import NamedTuple
 
+import aiorwlock
 import yaml
+from aioshutil import copytree
 from git import Reference, Repo
 
-from config import OUTPUT_PATH
+from config import AIXCC_CP_ROOT, AIXCC_CRS_SCRATCH_SPACE
+from logger import logger
 
 from .data_types import Patch
 from .fs import PatchException, RunException, run_command
@@ -28,17 +33,17 @@ class ProjectPatchException(PatchException):
     message = "Patching failed using:"
 
 
-class ChallengeProject:
-    def __init__(self, path):
+class ChallengeProjectReadOnly:
+    writeable_copy_async: asyncio.Task["ChallengeProject"]
+
+    def __init__(self, path: Path, input_path: Path, patch_path: Path):
         self.path = path
+        self.input_path = input_path
+        self.patch_path = patch_path
         self.__config = self._read_project_yaml()
         self.name = self.__config["cp_name"]
         self.language = self.__config["language"].title()
-
-        path_common = OUTPUT_PATH / self.path.name
-        self.input_path = path_common / "harness_input"
-        self.patch_path = path_common / "patches"
-        self._create_dirs()
+        self._make_main_writeable_copy()
 
         self.sources = list(self.__config["cp_sources"].keys())
         self.repo = Repo(self.path)
@@ -65,8 +70,6 @@ class ChallengeProject:
             for key, value in self.__config["harnesses"].items()
         }
 
-        self._set_docker_env()
-
     @property
     def config(self):
         return deepcopy(self.__config)
@@ -75,11 +78,53 @@ class ChallengeProject:
     def sanitizer_str(self) -> str:
         return self.__config["sanitizers"]
 
-    def _create_dirs(self):
-        for p in [self.input_path, self.patch_path]:
-            p.mkdir(parents=True, exist_ok=True)
+    def _make_main_writeable_copy(self):
+        logger.info(f"Copying {self.name} to scratch")
+        self.writeable_copy_async = asyncio.create_task(self.make_writeable_copy("", initial_build=True))
+
+    def _read_project_yaml(self):
+        project_yaml_path = self.path / "project.yaml"
+        return yaml.safe_load(project_yaml_path.read_text())
+
+    def open_project_source_file(self, source: str, file_path: Path) -> str:
+        """Opens a file path in the CP.
+        source must be one of `self.sources`
+        file_path must be relative to source folder (can be obtained from git history)
+        """
+        return (self.path / "src" / source / file_path).read_text()
+
+    async def make_writeable_copy(self, name_extra: str, initial_build: bool = False) -> "ChallengeProject":
+        destination_path = AIXCC_CRS_SCRATCH_SPACE / AIXCC_CP_ROOT.name / f"{self.path.name}{name_extra}"
+        await copytree(self.path, destination_path, copy_function=copy, dirs_exist_ok=True)
+        return ChallengeProject(destination_path, self.input_path, self.patch_path, initial_build=initial_build)
+
+
+class ChallengeProject(ChallengeProjectReadOnly):
+    def __init__(self, path: Path, input_path: Path, patch_path: Path, initial_build: bool = False):
+        super().__init__(path, input_path, patch_path)
+        if initial_build:
+            logger.info(f"Building {self.name}")
+            asyncio.create_task(self.build_project())
+        self._build_lock = aiorwlock.RWLock()
+        self.writeable_copy_async = asyncio.create_task(self._return_self())
+        # self._set_docker_env()
+
+    @property
+    def writer_lock(self):
+        return self._build_lock.writer_lock
+
+    @property
+    def reader_lock(self):
+        return self._build_lock.reader_lock
+
+    async def _return_self(self) -> "ChallengeProject":
+        return self
+
+    def _make_main_writeable_copy(self, build=True):
+        pass
 
     def _set_docker_env(self):
+        # not used currently
         docker_env_path = self.path / ".env.docker"
         output = {}
         match self.language:
@@ -120,11 +165,7 @@ class ChallengeProject:
         if output:
             docker_env_path.write_text("\n".join([f"{k}={v}" for k, v in output.items()]))
 
-    def _read_project_yaml(self):
-        project_yaml_path = self.path / "project.yaml"
-        return yaml.safe_load(project_yaml_path.read_text())
-
-    def _run_cp_run_sh(self, *command, **kwargs):
+    async def _run_cp_run_sh(self, *command, **kwargs):
         """
         Copied from run.sh:
         A helper script for CP interactions.
@@ -139,70 +180,67 @@ class ChallengeProject:
         """
 
         # TODO: check if -x flag is more convenient
-        return run_command(self.path / "run.sh", *command, **kwargs)
+        async with self._build_lock.reader_lock:
+            return await run_command(self.path / "run.sh", *command, **kwargs)
 
     def reset_source_repo(self, source):
         git_repo, ref = self.repos[source]
         git_repo.git.restore(".")
         git_repo.git.switch("--detach", ref)
 
-    def build_project(self):
+    async def _build(self, *args):
+        async with self._build_lock.writer_lock:
+            try:
+                _, _, stderr = await self._run_cp_run_sh("build", *args)
+                if stderr:
+                    raise ProjectBuildException(stderr=stderr)
+            except CalledProcessError as err:
+                raise ProjectBuildException(stderr=err.stderr) from err
+
+    async def build_project(self):
         """Build a project.
         Raises ProjectBuildException, check ProjectBuildException.stderr for output
         """
-        try:
-            result = self._run_cp_run_sh("build")
-            if result.stderr:
-                raise ProjectBuildException(stderr=result.stderr)
-        except CalledProcessError as err:
-            raise ProjectBuildException(stderr=err.stderr) from err
-        return result
+        await self._build()
 
-    def patch_and_build_project(self, patch: Patch, cp_source):
+    async def patch_and_build_project(self, patch: Patch, cp_source):
         """Build a project after applying a patch file to the specified source.
         Raises ProjectBuildAfterPatchException if patch cannot be applied, check ProjectBuildAfterPatchException.stderr
           for output.
         Raises ProjectBuildException, check ProjectBuildException.stderr for output.
         """
-        try:
-            result = self._run_cp_run_sh("build", str(patch.diff_file.absolute()), cp_source)
-            if result.stderr:
-                raise ProjectBuildAfterPatchException(stderr=result.stderr, patch=patch)
-            return result
-        except CalledProcessError as err:
-            raise ProjectPatchException(stderr=err.stderr, patch=patch) from err
+        await self._build(str(patch.diff_file.absolute()), cp_source)
 
-    def run_harness(self, harness_input_file, harness_id, timeout=60):
+    async def run_harness(self, harness_input_file, harness_id, timeout=60):
         """Runs a specified project test harness and returns the output of the process.
         Check result.stderr for sanitizer output if it exists.
         Can time out when input does not terminate programme.
         Raises:
-            subprocess.TimeoutExpired: if harness does not finish in set time
+            asyncio.TimeoutError: if harness does not finish in set time
         """
-        return self._run_cp_run_sh("run_pov", harness_input_file, self.harnesses[harness_id].name, timeout=timeout)
+        return await self._run_cp_run_sh(
+            "run_pov", harness_input_file, self.harnesses[harness_id].name, timeout=timeout
+        )
 
-    def run_harness_and_check_sanitizer(self, harness_input_file, harness_id, sanitizer_id, timeout=60):
+    async def run_harness_and_check_sanitizer(
+        self, harness_input_file, harness_id, sanitizer_id, timeout=60
+    ) -> tuple[bool, str]:
         """Runs a specified project test harness and returns whether sanitizer is triggered.
         Can time out when input does not terminate programme.
         Raises:
-            subprocess.TimeoutExpired: if harness does not finish in set time
+            asyncio.TimeoutError: if harness does not finish in set time
         """
-        harness_output = self.run_harness(harness_input_file, harness_id, timeout=timeout)
+        _, _, stderr = await self.run_harness(harness_input_file, harness_id, timeout=timeout)
         sanitizer, error_code = self.sanitizers[sanitizer_id]
-        return sanitizer in harness_output.stderr and error_code in harness_output.stderr, harness_output.stderr
+        return sanitizer in stderr and error_code in stderr, stderr
 
-    def run_tests(self):
+    async def run_tests(self):
         """Runs a specified project test suite and returns the output of the process.
-        Check result.stderr for failed test output if it exists.
+        Check stderr for failed test output if it exists.
         """
-        return self._run_cp_run_sh("run_tests")
+        _, _, stderr = await self._run_cp_run_sh("run_tests")
 
-    def _run_cp_make(self, *command):
-        return run_command("make", "-C", self.path, *command)
+        return stderr
 
-    def open_project_source_file(self, source, file_path):
-        """Opens a file path in the CP.
-        source must be one of self.sources
-        file_path must be relative to source folder (can be obtained from git history)
-        """
-        return (self.path / "src" / source / file_path).read_text()
+    async def _run_cp_make(self, *command):
+        return await run_command("make", "-C", self.path, *command)

@@ -184,7 +184,7 @@ async def generate(state: GraphState) -> GraphState:
         e_handler.raise_exception()
 
 
-def run_harness(state: GraphState) -> GraphState:
+async def run_harness(state: GraphState) -> GraphState:
     logger.info("Checking harness input")
 
     project = state["project"]
@@ -196,21 +196,20 @@ def run_harness(state: GraphState) -> GraphState:
         project, state["solution"], state["iterations"], harness_id, sanitizer_id, model_name
     )
 
-    # Check harness input
     try:
-        has_sanitizer_triggered, stderr = project.run_harness_and_check_sanitizer(
+        has_sanitizer_triggered, stderr = await project.run_harness_and_check_sanitizer(
             harness_input_file,
             harness_id,
             sanitizer_id,
         )
         if not has_sanitizer_triggered:
             raise Exception(
-                f"The correct sanitizer {state['sanitizer_str']} was not triggered. Instead, this was the sanitizer"
+                f"The correct sanitizer {state['sanitizer_str']} was not triggered. Instead, this was the"
                 f" output: {stderr}"
             )
     except Exception as error:
         logger.info("Harness input check: Failed")
-        state["chat_history"].add_user_message(f"Your solution failed. Here is the error: {error}")
+        state["chat_history"].add_user_message(f"Your solution failed. Here is the output: {error}")
         return GraphState(**{
             **state,
             "error": error,

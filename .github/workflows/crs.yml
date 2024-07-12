@@ -31,10 +31,13 @@ jobs:
         with:
           working-directory: crs/src
       - name: isort
+        if: always()
         run: |
           isort crs/src --check --diff
       - name: black
+        if: always()
         run: |
           black crs/src --check --diff
 #      - name: Run test
+#        if: always()
 #        run: pytest -c crs/src/pyproject.toml crs/src/py
