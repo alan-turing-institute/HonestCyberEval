@@ -253,23 +253,29 @@ class VulnDiscovery:
 
             for filename in commit:
                 file_diff = commit[filename]
-                file_latest = self.project_read_only.open_project_source_file(self.cp_source, file_path=Path(filename))
 
-                # populate lists of strings
-                files.append(file_diff.after_str())
-                file_diffs.append(file_diff.diff_str())
-                files_latest.append(file_latest)
-                file_commits.append(commit_sha)
-                file_names.append(filename)
-
-                for function_diff_name in file_diff.diff_functions:
-                    function_diff = file_diff.diff_functions[function_diff_name]
-
-                    # populate list of strings
-                    funcs.append(function_diff.after_str())
-                    func_diffs.append(function_diff.diff_str())
-                    func_commits.append(commit_sha)
+                try:
+                    file_latest = self.project_read_only.open_project_source_file(
+                        self.cp_source, file_path=Path(filename)
+                    )
+                except FileNotFoundError:
+                    pass
+                else:
+                    # populate lists of strings
+                    files.append(file_diff.after_str())
+                    file_diffs.append(file_diff.diff_str())
+                    files_latest.append(file_latest)
+                    file_commits.append(commit_sha)
                     file_names.append(filename)
+
+                    for function_diff_name in file_diff.diff_functions:
+                        function_diff = file_diff.diff_functions[function_diff_name]
+
+                        # populate list of strings
+                        funcs.append(function_diff.after_str())
+                        func_diffs.append(function_diff.diff_str())
+                        func_commits.append(commit_sha)
+                        file_names.append(filename)
 
         metadatas = []
         match detail_level:
@@ -313,7 +319,7 @@ class VulnDiscovery:
 
         # vulnerabilities = await self.detect_vulns_in_commits(preprocessed_commits, top_docs=1)
         vulnerabilities = await self.detect_with_unified_vectorstore(
-            preprocessed_commits, top_docs=5, detail_level=VDDetailLevel.LATEST_FILES
+            preprocessed_commits, top_docs=10, detail_level=VDDetailLevel.LATEST_FILES
         )
 
         logger.info(f"Found {len(vulnerabilities)} vulnerabilities")
