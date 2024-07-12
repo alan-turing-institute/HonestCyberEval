@@ -34,7 +34,8 @@ harness_input_gen_prompt = ChatPromptTemplate.from_messages([
     (
         "system",
         """You are a coding assistant with expertise in finding bugs and vulnerabilities in {language} program code.
-    Your task is to help the user find vulnerabilities in the code provided by the user.
+    Your task is to help the user find vulnerabilities in the code provided by the user. 
+    Your output will help the user in patching those vulnerabilities. 
     Here is the harness: \n ------- \n {harness_code} \n ------- \n
     Provide the user with an input to the above harness that would trigger the sanitizer {sanitizer}.
     Ensure any harness input you generate is not too long and that it will result in a valid run. \n
@@ -72,6 +73,30 @@ class HarnessInput(BaseModel):
         return self.input
 
 
+probing_prompt = ChatPromptTemplate.from_messages([
+    placeholder_fix_anthropic_weirdness,
+    (
+        "system",
+        """You are a coding assistant with expertise in finding bugs and vulnerabilities in {language} program code.
+    Your task is to help the user find vulnerabilities in the code provided by the user.
+    Do you think the code below could trigger the sanitizer {sanitizer}?
+    Structure your answer so that it only includes a boolean value: true if the code is potentially vulnerable, and false if the code is safe.\n
+    Here is the potentially vulnerable code:""",
+    ),
+    ("placeholder", "{messages}"),
+    ("user", "{question}"),
+])
+
+
+class ProbeResult(BaseModel):
+    """Result of whether a code snippet is vulnerable and might trigger a certain code sanitizer"""
+
+    is_vuln: bool = Field(description="a boolean describing whether the code snippet could result in a vulnerability")
+
+    def __str__(self):
+        return str(self.is_vuln)
+
+
 class GraphState(TypedDict):
     """
     Represents the state of our graph.
@@ -89,6 +114,7 @@ class GraphState(TypedDict):
     chat_history: ChatMessageHistory
     solution: str
     error: Optional[Exception]
+    continue_after_probe: bool
     iterations: int
     max_iterations: int
     harness_id: str
@@ -102,6 +128,7 @@ class GraphState(TypedDict):
 
 
 class Nodes(StrEnum):
+    PROBE = auto()
     GENERATE = auto()
     RUN_HARNESS = auto()
     REFLECT = auto()
@@ -109,6 +136,60 @@ class Nodes(StrEnum):
 
 
 # Nodes
+async def probe(state: GraphState) -> GraphState:
+    logger.info("Probing for the code snippet")
+
+    question = state["code_snippet"] + ("\n" + state["diff"] if state["diff"] else "")
+    model = state["model"]
+
+    # probing_chain = probing_prompt | add_structured_output(model, ProbeResult, "oai-gpt-4o")
+    probing_chain = RunnableWithMessageHistory(
+        probing_prompt
+        | add_structured_output(  # type: ignore  # types around with_structured_output are a mess
+            model,
+            ProbeResult,
+            "oai-gpt-4o",
+        ),
+        # | model.with_structured_output(ProbeResult),
+        lambda _: state["chat_history"],
+        output_messages_key="ai_message",
+        input_messages_key="question",
+        history_messages_key="messages",
+    )
+
+    e_handler = ErrorHandler()
+    while e_handler.ok_to_retry():
+        try:
+            output = await probing_chain.ainvoke(
+                {
+                    "language": state["project"].language,
+                    "sanitizer": state["sanitizer_str"],
+                    "question": question,
+                    **fix_anthropic_weirdness(model),
+                },
+                {"configurable": {"session_id": "other"}},
+            )
+        except Exception as e:
+            await e_handler.exception_caught(e)
+        else:
+            probe_solution = output["parsed"]
+
+            try:
+                assert type(probe_solution) is ProbeResult
+            except AssertionError:
+                error = output["parsing_error"]
+                ai_message = output["raw"]
+                raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
+            else:
+                is_vuln = probe_solution.is_vuln
+                return GraphState(**{
+                    **state,
+                    "continue_after_probe": is_vuln,
+                })
+    else:
+        e_handler.raise_exception()
+
+
 async def generate(state: GraphState) -> GraphState:
     logger.info("Generating harness solution")
 
@@ -251,12 +332,22 @@ def check_if_finished(state: GraphState) -> Literal[Nodes.END, Nodes.REFLECT, No
     if (not state["error"]) or state["iterations"] == state["max_iterations"]:
         logger.info("Decision: Finish")
         return Nodes.END
+
+    logger.info("Decision: re-try solution")
+    if state["should_reflect"]:
+        return Nodes.REFLECT
     else:
-        logger.info("Decision: re-try solution")
-        if state["should_reflect"]:
-            return Nodes.REFLECT
-        else:
-            return Nodes.GENERATE
+        return Nodes.GENERATE
+
+
+def check_if_probe_finished(state: GraphState) -> Literal[Nodes.END, Nodes.REFLECT, Nodes.GENERATE]:
+    if not state["continue_after_probe"]:
+        logger.info("Decision: Early finish")
+        return Nodes.END
+
+    logger.info("Decision: Code snippet worth investigation")
+    state["chat_history"].clear()
+    return Nodes.GENERATE
 
 
 # Setup
@@ -270,10 +361,13 @@ def make_workflow(key: str = "default") -> CompiledGraph:
         match key:
             case "default":
                 workflow = StateGraph(GraphState)
+                workflow.add_node(Nodes.PROBE, probe)
                 workflow.add_node(Nodes.GENERATE, generate)
                 workflow.add_node(Nodes.RUN_HARNESS, run_harness)
                 workflow.add_node(Nodes.REFLECT, reflect)
-                workflow.add_edge(START, Nodes.GENERATE)
+                workflow.add_edge(START, Nodes.PROBE)
+                workflow.add_conditional_edges(Nodes.PROBE, check_if_probe_finished)
+                # workflow.add_edge(START, Nodes.GENERATE)
                 workflow.add_edge(Nodes.GENERATE, Nodes.RUN_HARNESS)
                 workflow.add_conditional_edges(Nodes.RUN_HARNESS, check_if_finished)
                 workflow.add_edge(Nodes.REFLECT, Nodes.GENERATE)
@@ -318,5 +412,6 @@ async def run_vuln_langraph(
             "sanitizer_str": sanitizer_str,
             "code_snippet": code_snippet,
             "diff": diff,
+            "continue_after_probe": True,
         })
     )

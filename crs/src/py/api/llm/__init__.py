@@ -1,6 +1,6 @@
 import functools
 from operator import itemgetter
-from typing import Literal, Optional, Type, TypeAlias, TypeVar
+from typing import List, Literal, Optional, Type, TypeAlias, TypeVar
 
 from langchain.output_parsers import OutputFixingParser
 from langchain_chroma import Chroma
@@ -17,6 +17,7 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import Language, RecursiveCharacterTextSplitter
 
 from config import AIXCC_LITELLM_HOSTNAME, LITELLM_KEY
+from logger import logger
 
 from .error_handler import ErrorHandler as ErrorHandler
 
@@ -240,13 +241,43 @@ def fix_anthropic_weirdness(model: ChatOpenAI | LLMmodel) -> dict[str, list[tupl
 placeholder_fix_anthropic_weirdness = ("placeholder", "{anthropic_weirdness}")
 
 
-def create_rag_docs(cp_text_list: list[str], cp_language: str, chunk_size: int = 1000, chunk_overlap: int = 0):
+def create_rag_docs(
+    cp_text_list: list[str],
+    cp_language: str,
+    metadatas: List = [],
+    chunk_size: int = 1000,
+    chunk_overlap: int = 0,
+):
     language = Language.CPP if cp_language == "C" else Language.JAVA
 
     code_splitter = RecursiveCharacterTextSplitter.from_language(
         language=language, chunk_size=chunk_size, chunk_overlap=chunk_overlap
     )
-    return code_splitter.create_documents(cp_text_list)
+
+    return code_splitter.create_documents(cp_text_list, metadatas=metadatas)
+
+
+def create_vector_store() -> Chroma:
+    return Chroma(embedding_function=create_embeddings(model_name="oai-text-embedding-3-large"))
+
+
+async def add_docs_to_vectorstore(rag_docs, vectorstore, step: int = 50) -> Chroma:
+    while rag_docs:
+        e_handler = ErrorHandler()
+        while e_handler.ok_to_retry():
+            try:
+                vectorstore.add_documents(
+                    documents=rag_docs[:step],
+                    embedding=create_embeddings(model_name="oai-text-embedding-3-large"),
+                )
+            except Exception as e:
+                await e_handler.exception_caught(e)
+            else:
+                rag_docs = rag_docs[step:]
+                break
+        else:
+            e_handler.raise_exception()
+    return vectorstore
 
 
 def get_retriever(code_docs, topk: int = 1, embedding_model: EmbeddingModel = "oai-text-embedding-3-large"):

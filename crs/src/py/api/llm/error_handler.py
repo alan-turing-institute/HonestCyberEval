@@ -1,5 +1,5 @@
 import asyncio
-from typing import NoReturn
+from typing import List, NoReturn
 
 from openai import APIStatusError, RateLimitError
 
@@ -8,8 +8,8 @@ from logger import logger
 
 class ErrorHandler(Exception):
 
-    RETRIES = 4
-    DELAYS = [10, 20, 30, 60]
+    RETRIES: int = 4
+    DELAYS: List[float] = [10, 20, 30, 60]
 
     def __init__(self):
         self.attempts = -1
@@ -22,6 +22,7 @@ class ErrorHandler(Exception):
         return self.attempts < self.RETRIES
 
     async def exception_caught(self, e):
+        logger.debug(f"Error details: {e}")
         if isinstance(e, APIStatusError) and e.status_code == 500:
             logger.info(f"Error 500. Retrying in {self.DELAYS[self.attempts]} secs.")
             await asyncio.sleep(self.DELAYS[self.attempts])

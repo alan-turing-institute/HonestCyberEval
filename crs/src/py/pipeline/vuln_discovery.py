@@ -1,5 +1,6 @@
 import pprint
 from enum import auto
+from pathlib import Path
 from typing import Optional, TypeAlias
 
 from strenum import StrEnum
@@ -7,7 +8,15 @@ from strenum import StrEnum
 from api.cp import ChallengeProjectReadOnly
 from api.data_types import Vulnerability, VulnerabilityWithSha
 from api.fs import write_harness_input_to_disk
-from api.llm import LLMmodel, create_rag_docs, format_chat_history, get_retriever
+from api.llm import (
+    LLMmodel,
+    add_docs_to_vectorstore,
+    create_embeddings,
+    create_rag_docs,
+    create_vector_store,
+    format_chat_history,
+    get_retriever,
+)
 from logger import logger
 
 from .langgraph_vuln import run_vuln_langraph
@@ -27,11 +36,10 @@ b
 ProcessedCommits: TypeAlias = dict[str, dict[str, FileDiff]]
 
 
-class VDLLMInputType(StrEnum):
-    ONE_FILE = auto()
-    ONE_FUNC = auto()
-    MULTI_FILE = auto()
-    MULTI_FUNC = auto()
+class VDDetailLevel(StrEnum):
+    LATEST_FILES = auto()
+    COMMIT_FILES = auto()
+    COMMIT_FUNCS = auto()
     FILE_DIFFS = auto()
     FUNC_DIFFS = auto()
 
@@ -45,7 +53,7 @@ class VulnDiscovery:
     ) -> Optional[Vulnerability]:
 
         sanitizer, error_code = self.project_read_only.sanitizers[sanitizer_id]
-        models: list[LLMmodel] = ["gemini-1.5-pro", "oai-gpt-4o", "claude-3.5-sonnet"]
+        models: list[LLMmodel] = ["oai-gpt-4o", "gemini-1.5-pro", "claude-3.5-sonnet"]
 
         for model_name in models:
             try:
@@ -63,6 +71,10 @@ class VulnDiscovery:
                 logger.error(f"LangGraph vulnerability detection failed for {model_name} with\n{repr(error)}")
             else:
                 logger.debug(f"LangGraph Message History\n\n{format_chat_history(output['chat_history'])}\n\n")
+
+                if not output["continue_after_probe"]:
+                    logger.info(f"Aborting: {model_name} did not think this document is suspicious")
+                    continue
 
                 if not output["error"]:
                     logger.info(f"Found vulnerability using harness {harness_id}: {sanitizer}: {error_code}")
@@ -178,79 +190,18 @@ class VulnDiscovery:
 
         return preprocessed_commits
 
-    def potential_llm_inputs(self, preprocessed_commits: ProcessedCommits) -> list[tuple[VDLLMInputType, str]]:
-        """ "
-        Returns:
-            List of potential strings representing the commit changes in the CP,
-            which we could send to the LLM. Each element includes the type of input [VDLLMInputType]
-            and the string itself.
-
-        Example usage:
-            potential_inputs = self.potential_llm_inputs(preprocessed_commits)
-            simp_simp_list = [ f"{k} {len(v)}" for (k,v) in potential_inputs]
-            logger.info("\n".join(simp_simp_list))
-        """
-        potential_texts = []
-
-        for commit_sha, file_diffs in preprocessed_commits.items():
-
-            logger.debug("=" * 20)
-            logger.debug(f"#files changed in commit {commit_sha}: {len(file_diffs)}")
-
-            cumulative_files_str = ""
-            cumulative_funcs_str = ""
-            cumulative_file_diffs_str = ""
-            cumulative_func_diffs_str = ""
-
-            for file_name, file_diff in file_diffs.items():
-                after_str = file_diff.print_after()
-                diff_str = file_diff.print_diff()
-                logger.debug("")
-                logger.debug(f"\tFilename: {file_name}")
-                logger.debug(
-                    f"\tFile Diff length [chars]: {len(diff_str)}. After commit file length [chars]: {len(after_str)}"
-                )
-
-                file_text = after_str
-                # file_text = self.project.open_project_source_file(self.cp_source, bad_file)
-
-                cumulative_files_str += f"File: {file_name}\n{file_text}\n\n"
-                cumulative_file_diffs_str += f"Diff of file: {file_name}\n{diff_str}\n\n"
-
-                potential_texts.append((VDLLMInputType.ONE_FILE, file_text))
-
-                for func_name, func_diff in file_diff.diff_functions.items():
-                    after_str = func_diff.print_after()
-                    diff_str = func_diff.print_diff()
-
-                    logger.debug("")
-                    logger.debug(f"\t\tFunction Name: {func_name}")
-                    logger.debug(
-                        f"\t\tFunction Diff length [chars]: {len(diff_str)}. After commit function length [chars]: {len(after_str)}"
-                    )
-
-                    cumulative_funcs_str += f"Function: {func_name}\n{after_str}\n\n"
-                    cumulative_func_diffs_str += f"Diff of function: {func_name}\n{diff_str}\n\n"
-
-                    potential_texts.append((VDLLMInputType.ONE_FUNC, after_str))
-
-            # append cumulative stuff
-            potential_texts.append((VDLLMInputType.MULTI_FILE, cumulative_files_str))
-            potential_texts.append((VDLLMInputType.FILE_DIFFS, cumulative_file_diffs_str))
-            potential_texts.append((VDLLMInputType.MULTI_FUNC, cumulative_funcs_str))
-            potential_texts.append((VDLLMInputType.FUNC_DIFFS, cumulative_func_diffs_str))
-        return potential_texts
-
-    async def detect_commit_vulns_rag(self, retriever, max_trials: int = 2) -> list[Vulnerability]:
+    async def detect_vulns_rag(self, retriever, max_trials: int = 2) -> list[Vulnerability]:
         vulnerabilities = []
         for harness_id in self.project_read_only.harnesses.keys():
             for sanitizer_id in self.project_read_only.sanitizers.keys():
                 sanitizer_str = self.project_read_only.sanitizer_str[sanitizer_id]
 
-                retrieved_docs = retriever.invoke(f"""{sanitizer_str} error bug vulnerability""")
+                retrieved_docs = retriever.invoke(f"""{sanitizer_str} memory error bug vulnerability""")
                 logger.debug(f"Retrieved docs:\n{pprint.pformat(retrieved_docs)}")
 
                 for doc in retrieved_docs:
+                    logger.debug(f"Using document:\n{pprint.pformat(doc)}")
+                    logger.info(f"Using document:\n{doc.metadata}")
                     vuln = await self.harness_input_langgraph(
                         harness_id=harness_id,
                         sanitizer_id=sanitizer_id,
@@ -283,9 +234,75 @@ class VulnDiscovery:
             rag_docs = create_rag_docs(text_list, self.project_read_only.language)
             retriever = get_retriever(code_docs=rag_docs, topk=top_docs, embedding_model="oai-text-embedding-3-large")
 
-            vulns = await self.detect_commit_vulns_rag(retriever)
+            vulns = await self.detect_vulns_rag(retriever)
             vulnerabilities.extend(vulns)
         return vulnerabilities
+
+    async def detect_with_unified_vectorstore(
+        self,
+        preprocessed_commits: ProcessedCommits,
+        top_docs: int = 1,
+        detail_level: VDDetailLevel = VDDetailLevel.LATEST_FILES,
+    ) -> list[Vulnerability]:
+
+        files_latest, files, file_diffs, funcs, func_diffs = [], [], [], [], []
+        file_names, file_commits, func_commits = [], [], []
+        vectorstore = create_vector_store()
+
+        for commit_sha, commit in preprocessed_commits.items():
+
+            for filename in commit:
+                file_diff = commit[filename]
+                file_latest = self.project_read_only.open_project_source_file(self.cp_source, file_path=Path(filename))
+
+                # populate lists of strings
+                files.append(file_diff.after_str())
+                file_diffs.append(file_diff.diff_str())
+                files_latest.append(file_latest)
+                file_commits.append(commit_sha)
+                file_names.append(filename)
+
+                for function_diff_name in file_diff.diff_functions:
+                    function_diff = file_diff.diff_functions[function_diff_name]
+
+                    # populate list of strings
+                    funcs.append(function_diff.after_str())
+                    func_diffs.append(function_diff.diff_str())
+                    func_commits.append(commit_sha)
+                    file_names.append(filename)
+
+        metadatas = []
+        match detail_level:
+            case VDDetailLevel.LATEST_FILES:
+                text_list = list(set(files_latest))
+                metadatas = [{"file": filename} for filename in list(set(file_names))]
+            case VDDetailLevel.COMMIT_FILES:
+                text_list = files
+                metadatas = [
+                    {"commit": commit_sha, "file": filename} for commit_sha, filename in zip(file_commits, file_names)
+                ]
+            case VDDetailLevel.COMMIT_FUNCS:
+                text_list = funcs
+                metadatas = [
+                    {"commit": commit_sha, "file": filename} for commit_sha, filename in zip(func_commits, file_names)
+                ]
+            case VDDetailLevel.FILE_DIFFS:
+                text_list = file_diffs
+                metadatas = [
+                    {"commit": commit_sha, "file": filename} for commit_sha, filename in zip(file_commits, file_names)
+                ]
+            case VDDetailLevel.FUNC_DIFFS:
+                text_list = func_diffs
+                metadatas = [
+                    {"commit": commit_sha, "file": filename} for commit_sha, filename in zip(func_commits, file_names)
+                ]
+
+        rag_docs = create_rag_docs(text_list, self.project_read_only.language, metadatas=metadatas)
+        vectorstore = await add_docs_to_vectorstore(rag_docs, vectorstore)
+        logger.info(f"Total number of RAG docs in vector store: {len(vectorstore. get()['documents'])}")
+        retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": top_docs})
+
+        return await self.detect_vulns_rag(retriever)
 
     async def run(self, project_read_only: ChallengeProjectReadOnly, cp_source: str) -> list[VulnerabilityWithSha]:
         self.project_read_only = project_read_only
@@ -294,7 +311,10 @@ class VulnDiscovery:
         preprocessed_commits = self.find_functional_changes()
         # logger.debug(f"Preprocessed Commits:\n {pprint.pformat(preprocessed_commits)}\n")
 
-        vulnerabilities = await self.detect_vulns_in_commits(preprocessed_commits, top_docs=1)
+        # vulnerabilities = await self.detect_vulns_in_commits(preprocessed_commits, top_docs=1)
+        vulnerabilities = await self.detect_with_unified_vectorstore(
+            preprocessed_commits, top_docs=5, detail_level=VDDetailLevel.LATEST_FILES
+        )
 
         logger.info(f"Found {len(vulnerabilities)} vulnerabilities")
 
