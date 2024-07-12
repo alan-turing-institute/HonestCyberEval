@@ -154,19 +154,13 @@ class VulnDiscovery:
 
         repo, ref = self.project.repos[self.cp_source]
 
-        # firstly get all the commits needed:
-        all_commits_set = set()
-        for commit in repo.iter_commits(ref):
-            all_commits_set.add(commit)
+        logger.info("Preprocessing commits")
 
-        # Sort commits by date
-        all_commits = sorted(all_commits_set, key=lambda c: c.committed_datetime)
-
-        # then for each commit and compare with its parent to find the relevant files changed and the functional
+        # for each commit compare with it's parent to find the relevant files changed and the functional
         # changes within each file
         preprocessed_commits = {}
 
-        for commit in all_commits:
+        for commit in repo.iter_commits(ref):
             if commit.parents:
                 parent_commit = commit.parents[0]
                 diffs = find_diff_between_commits(parent_commit, commit)
@@ -174,7 +168,11 @@ class VulnDiscovery:
 
                 if diffs:
                     preprocessed_commits[commit.hexsha] = diffs
-                    # TODO: do we want the commit objects in here too?
+
+        logger.debug(f"Functional changes found in the following commits: {list(preprocessed_commits.keys())}")
+        logger.info(
+            f"{len(preprocessed_commits)} out of {len(list(repo.iter_commits(ref)))} commits have potentially functional differences."
+        )
 
         return preprocessed_commits
 

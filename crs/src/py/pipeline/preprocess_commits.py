@@ -72,10 +72,15 @@ TYPES: TypesDictType = {
     DeclType.VAR_TYPE: CursorKind.VAR_DECL,  # type: ignore
     DeclType.PARAM_TYPE: CursorKind.PARM_DECL,  # type: ignore
     DeclType.FUNCTION_TYPE: CursorKind.FUNCTION_DECL,  # type: ignore
+    DeclType.ENUM_CONST_TYPE: CursorKind.ENUM_CONSTANT_DECL,  # type: ignore
+    DeclType.PARAM_TYPE: CursorKind.PARM_DECL,  # type: ignore
+    DeclType.STRUCT_TYPE: CursorKind.STRUCT_DECL,  # type: ignore
+    DeclType.DECL_REF_TYPE: CursorKind.DECL_REF_EXPR,  # type: ignore
 }
 
 TYPES_FOR_EXTERNAL_DEFINED_VARS: TypesDictType = {
     DeclType.VAR_TYPE: CursorKind.VAR_DECL,  # type: ignore
+    DeclType.PARAM_TYPE: CursorKind.PARM_DECL,  # type: ignore
     DeclType.DECL_REF_TYPE: CursorKind.DECL_REF_EXPR,  # type: ignore
 }
 
@@ -117,6 +122,9 @@ class BaseDiff:
 
     def after_str(self):
         return "\n".join(self.after_lines)
+
+    def before_str(self):
+        return "\n".join(self.before_lines)
 
     def print_diff(self):
         return self.print("Diff", self.diff_lines)
@@ -390,7 +398,7 @@ def is_node_local(cursor: Cursor, filename: str) -> bool:
 
 def parse_snippet(snippet: str, filepath: str) -> Cursor:
 
-    filename = filepath.split("/")[-1]  # only take filename bit of the filepath
+    filename = filepath  # filepath.split("/")[-1]  # only take filename bit of the filepath
 
     # set up unsaved files so can use string of the c code with the libclang parser
     unsaved_files = [(filename, snippet)]
@@ -438,16 +446,12 @@ def _search_ast_for_node_type(node: Cursor, types: TypesDictType, nodes: NodesDi
 
 def clean_up_snippet(snippet: str) -> list[str]:
 
-    function_def_pattern = r"\)\s*{"
-    new_function_def = "){"
     whitespace_pattern = r"\s+"
     # unnecessary_space_pattern_1 = r'(\W)\s+(\w)'
     # unnecessary_space_pattern_2 = r'(\w)\s+(\W)'
 
     comment_pattern = r"^\s*(\/\*|\*|\/\/)"
     comment_in_code_line_pattern = r"(\/\*.*\*\/|\\\\.*)"
-
-    snippet = re.sub(function_def_pattern, new_function_def, snippet)
 
     stripped_lines = []
 
@@ -476,7 +480,8 @@ def clean_up_snippet(snippet: str) -> list[str]:
             #     new_match = match.replace(" ", "")
             #     line = re.sub(match, new_match, line)
 
-            stripped_lines.append(line.strip())
+            if line != "":
+                stripped_lines.append(line.strip())
 
     return stripped_lines
 
@@ -491,10 +496,10 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
     for diff in diffs:
         logger.debug(f"\nDiff for file: {diff.b_path}")
 
-        filename = diff.b_path
+        filepath = diff.b_path
 
-        if filename is not None:
-            files_checked.append(filename)
+        if filepath is not None:
+            files_checked.append(filepath)
             file_extensions = [".c", ".h"]
 
             regex_pattern = r"("
@@ -505,14 +510,17 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
                 else:
                     regex_pattern += ")"
 
-            if not re.search(regex_pattern, filename):
+            if not re.search(regex_pattern, filepath):
                 continue
         else:
             if diff.a_path is None:
                 continue
             else:
-                filename = diff.a_path
-                logger.debug(f"diff b_path is none, diff a_path is: {filename}, file deleted.")
+                filepath = diff.a_path
+                logger.debug(f"Diff b_path is none so file was deleted in commit, diff a_path is: {filepath}.")
+
+        # filename = (filepath.split("/"))[-1]
+        filename = filepath
 
         change_type = ChangeType.FUNCTIONAL_CHANGE
 
@@ -522,13 +530,13 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
         after_file_lines: list[str] = []
 
         try:
-            before_file = (before_commit.tree / filename).data_stream.read().decode("utf-8")
+            before_file = (before_commit.tree / filepath).data_stream.read().decode("utf-8")
 
         except KeyError:
             change_type = ChangeType.FILE_ADDED
 
         try:
-            after_file = (after_commit.tree / filename).data_stream.read().decode("utf-8")
+            after_file = (after_commit.tree / filepath).data_stream.read().decode("utf-8")
 
         except KeyError:
             change_type = ChangeType.FILE_REMOVED
@@ -559,15 +567,28 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
         diff_functions = get_function_diffs(before_function_lines, after_function_lines)
 
         if change_type == ChangeType.FUNCTIONAL_CHANGE:
-            before_variables: VarsDictType = before_nodes[DeclType.VAR_TYPE] if before_nodes else {}
-            after_variables: VarsDictType = after_nodes[DeclType.VAR_TYPE] if after_nodes else {}
+
+            before_refs = []
+
+            if before_nodes:
+                for type_key in before_nodes:
+                    before_refs = before_refs + list(before_nodes[type_key][VarSourceType.FILE_LOCAL].keys())
+                    before_refs = before_refs + list(before_nodes[type_key][VarSourceType.IMPORTED].keys())
+
+            after_refs = []
+            if after_nodes:
+                for type_key in after_nodes:
+                    after_refs = after_refs + list(before_nodes[type_key][VarSourceType.FILE_LOCAL].keys())
+                    after_refs = after_refs + list(before_nodes[type_key][VarSourceType.IMPORTED].keys())
 
             new_diff_functions = {}
             for function_name in diff_functions:
                 function_before = diff_functions[function_name].before_lines
                 function_after = diff_functions[function_name].after_lines
 
-                is_functional = is_diff_functional(function_before, function_after, before_variables, after_variables)
+                is_functional = is_diff_functional(function_before, function_after, before_refs, after_refs, filename)
+
+                logger.debug(f"Is {function_name} diff functional? {is_functional}")
 
                 if is_functional:
                     new_diff_functions[function_name] = copy.deepcopy(diff_functions[function_name])
@@ -587,7 +608,6 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
                         )
 
                     new_diff_functions[function_name].append_external_variable_decls_to_code_lines()
-                    # logger.debug(str(new_diff_functions[function_name]))
 
             diff_functions = new_diff_functions
 
@@ -608,10 +628,9 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
                 og_diff=og_diff,
             )
 
-            logger.debug(f"FileDiffs print for {filename}:")
-            logger.debug(str(filename_diffs[filename]))
-
-            # logger.info(filename)
+            logger.debug(f"FileDiff created for {filename}.")
+            # logger.debug(f"FileDiffs print for {filename}:")
+            # logger.debug(str(filename_diffs[filename]))
             # logger.info(abstract_code(before_file_lines, before_file_ast, filename))
 
     return filename_diffs
@@ -634,11 +653,13 @@ def get_function_diffs(before: FunctionDictType, after: FunctionDictType) -> dic
 
             if after_functions and function_name in after:
                 # function exists in both files
-
                 after_functions.remove(function_name)
 
                 # check if functions are same:
                 functions_same = before[function_name] == after[function_name]
+
+                # logger.info(f"{function_name} is not diff = {functions_same}")
+                # logger.info(f"diff: {make_diff(before[function_name], after[function_name])}")
 
                 if not functions_same:
                     # diff in these functions so make the diff
@@ -651,14 +672,17 @@ def get_function_diffs(before: FunctionDictType, after: FunctionDictType) -> dic
                         diff_lines=diff,
                     )
             else:
-                diff = make_diff(before[function_name], after[function_name])
+                after_function = [""] if function_name not in after else after[function_name]
+
+                diff = make_diff(before[function_name], after_function)
                 diff_functions[function_name] = FunctionDiff(
                     function_name, before_lines=before[function_name], diff_lines=diff
                 )
 
     if after_functions:
         for function_name in after_functions:
-            diff = make_diff(before[function_name], after[function_name])
+            before_function = [""] if function_name not in before else before[function_name]
+            diff = make_diff(before_function, after[function_name])
             diff_functions[function_name] = FunctionDiff(
                 function_name, after_lines=after[function_name], diff_lines=diff
             )
@@ -678,7 +702,7 @@ def get_full_function_snippets(full_file: list[str], functions: dict[str, Cursor
     while lines:
         function_name_mentioned = None
         for function_name in functions:
-            function_name_pattern = r"\b" + function_name + r"\b"
+            function_name_pattern = r"\b" + function_name + r"\(.*\)\s*{?$"
             if re.search(function_name_pattern, lines[0]):
                 function_name_mentioned = function_name
                 break
@@ -766,101 +790,89 @@ def get_variable_snippets(full_snippet: list[str], variable_name: str) -> list[s
     return variable_refs
 
 
-def get_function_variables(code_lines: list[str], variables: VarsDictType) -> dict[VarType, list[str]]:
-
-    local_variables = []
-    other_variables = []
-
-    for line in code_lines:
-        for variable in variables[VarSourceType.FILE_LOCAL]:
-            if variable in line:
-                if variable not in local_variables:
-                    local_variables.append(variable)
-
-        for variable in variables[VarSourceType.IMPORTED]:
-            if variable in line:
-                if variable not in other_variables:
-                    other_variables.append(variable)
-
-    return {VarType.FUNCTION_LOCAL: local_variables, VarType.OTHER: other_variables}
-
-
 def check_functional_diff_in_variable_lines_order(
-    before_code: list[str], after_code: list[str], variable_names: list[str]
+    before_code: list[str], after_code: list[str], variable_names: set[str]
 ) -> bool:
 
     for variable_name in variable_names:
         variable_before_lines = get_variable_snippets(before_code, variable_name)
         variable_after_lines = get_variable_snippets(after_code, variable_name)
 
+        # logger.info(variable_before_lines)
+        # logger.info(variable_after_lines)
+        # logger.info(f'{variable_name} code is same in both? {variable_before_lines == variable_after_lines}')
+
         if not variable_before_lines == variable_after_lines:
             return True
 
-        # if compare_lists_exact(variable_before_lines, variable_after_lines):
-        #     print(f"{variable_name} lines are the same in both diffs")
-        # else:
-        #     print(f"some sort of potentially functional diff with {variable_name}")
-        # return True
-
     return False  # I think?
+
+
+def get_function_refs(function_lines, ref_names):
+
+    function_refs = set()
+    function_string = "\n".join(function_lines)
+
+    for ref_name in ref_names:
+        ref_name_regex = r"\b" + re.escape(ref_name) + r"\b"
+        if re.search(ref_name_regex, function_string):
+            function_refs.add(ref_name)
+
+    return function_refs
 
 
 def is_diff_functional(
     function_before_code: list[str],
     function_after_code: list[str],
-    before_variables: VarsDictType,
-    after_variables: VarsDictType,
-) -> bool:  # function_before_ast, function_after_ast):
+    all_refs_before,
+    all_refs_after,
+    filename,
+) -> bool:
 
     # are they exactly the same? - essentially is it just whitespace or other formatting that's been changed?
     if function_before_code == function_after_code:  # could also probs check the asts here instead??
         return False  # no functional change made
 
-    variable_names_before = get_function_variables(function_before_code, before_variables)
-    variable_names_after = get_function_variables(function_after_code, after_variables)
+    # decl_ref_types = {
+    #     DeclType.VAR_TYPE: CursorKind.VAR_DECL, # type: ignore
+    #     DeclType.DECL_REF_TYPE: CursorKind.DECL_REF_EXPR, # type: ignore
+    #     DeclType.PARAM_TYPE: CursorKind.PARAM_DECL, # type: ignore
+    #     }
+    # before_nodes = search_ast_for_node_types(before_ast, decl_ref_types, filename)
+    # after_nodes = search_ast_for_node_types(after_ast, decl_ref_types, filename)
 
-    local_variables_same = variable_names_before[VarType.FUNCTION_LOCAL] == variable_names_after[VarType.FUNCTION_LOCAL]
-    other_variables_same = variable_names_before[VarType.OTHER] == variable_names_after[VarType.OTHER]
+    # vars referenced only?
+    # before_refs = set(list(before_nodes[DeclType.DECL_REF_TYPE][VarSourceType.FILE_LOCAL].keys()) + list(before_nodes[DeclType.DECL_REF_TYPE][VarSourceType.IMPORTED].keys()))
+    # after_refs = set(list(after_nodes[DeclType.DECL_REF_TYPE][VarSourceType.FILE_LOCAL].keys()) + list(after_nodes[DeclType.DECL_REF_TYPE][VarSourceType.IMPORTED].keys()))
 
-    if not other_variables_same:
-        # potential difference as these are defined outside the function?
-        other_variables_before = set(variable_names_before[VarType.OTHER])
-        other_variables_after = set(variable_names_after[VarType.OTHER])
-        if other_variables_before != other_variables_after:
-            return True
+    before_refs = get_function_refs(function_before_code, all_refs_before)
+    after_refs = get_function_refs(function_after_code, all_refs_after)
 
-        # check for other variable reordering
-        if check_functional_diff_in_variable_lines_order(
-            function_before_code, function_after_code, variable_names_before[VarType.OTHER]
-        ):
-            return True
-        # else -> the other variables are the same (or at least not a functional diff?) so check the local ones now?
+    # logger.info(f'variables referenced: {after_refs}')
 
-    if local_variables_same:
+    variables_same = before_refs == after_refs
+
+    # logger.info(f'variables are the same? {variables_same}')
+    if variables_same:
         # check for non-functional reordering
-        return check_functional_diff_in_variable_lines_order(
-            function_before_code, function_after_code, variable_names_before[VarType.FUNCTION_LOCAL]
-        )
+        # logger.info(f"variable_lines reordered?: {check_functional_diff_in_variable_lines_order(function_before_code, function_after_code, before_refs)}")
+
+        return check_functional_diff_in_variable_lines_order(function_before_code, function_after_code, before_refs)
 
     else:
-        # check if a variable has been renamed (also checks for non-functional reordering of the code here too)
-        # check list size of variables is the same as otherwise might not be renaming
-        if len(variable_names_before[VarType.FUNCTION_LOCAL]) != len(variable_names_after[VarType.FUNCTION_LOCAL]):
+        # check if a variable has been renamed (also checks nonfunctional reordering changes too)
+        # check list size of variables is the same as if they aren't then likely functional change (i.e. not just variable renaming)
+        if len(before_refs) != len(after_refs):
             return True
 
         # find the different variable/s
-        unique_variable_names_before = []
-        unique_variable_names_after = []
-        for variable_name in variable_names_before:
-            if variable_name not in variable_names_after:
-                unique_variable_names_before.append(variable_name)
-
-        for variable_name in variable_names_after:
-            if variable_name not in variable_names_before:
-                unique_variable_names_after.append(variable_name)
+        unique_variable_names_before = list(before_refs - after_refs)
+        unique_variable_names_after = list(after_refs - before_refs)
 
         for before_variable in unique_variable_names_before:
             variable_before_lines = get_variable_snippets(function_before_code, before_variable)
+
+            variables_swapped = False
 
             for after_variable in unique_variable_names_after:
                 variable_after_lines = get_variable_snippets(function_after_code, after_variable)
@@ -869,63 +881,928 @@ def is_diff_functional(
                 for i, line in enumerate(variable_after_lines):
                     variable_after_lines[i] = re.sub(after_variable, before_variable, line)
 
-                if not variable_before_lines == variable_after_lines:
-                    return True
-                # if compare_lists_exact(variable_before_lines, variable_after_lines):
-                #     print(f"variable {before_variable} renamed to {after_variable} with no functional difference?")
-                # else:
-                #     return True
+                if variable_before_lines == variable_after_lines:
+                    variables_swapped = True
+                    break
+
+            if not variables_swapped:
+                return True
 
     return False  # any functional diff should have been returned by this point I think?
 
 
+def create_patch(function_name, file_lines, new_function_lines, filename=""):
+
+    open_code_block_pattern = r"{"
+    close_code_block_pattern = r"}"
+    lines = copy.deepcopy(file_lines)
+    function_name_pattern = r"\b" + function_name + r"\b"
+
+    start_index = -1
+    end_index = -1
+
+    open_brackets = 0
+
+    for i, line in enumerate(lines):
+
+        if start_index < 0 and re.search(function_name_pattern, line):
+            start_index = i
+
+        if start_index > 0:
+            if re.search(open_code_block_pattern, line):
+                open_brackets += len(re.findall(open_code_block_pattern, line))
+
+            if re.search(close_code_block_pattern, line):
+                open_brackets -= len(re.findall(close_code_block_pattern, line))
+                if open_brackets == 0:
+                    end_index = i + 1
+                    break
+
+    start_file = lines[:start_index]
+    end_file = lines[end_index:]
+
+    new_file = start_file + new_function_lines + end_file
+
+    diff = make_diff(file_lines, new_file, filename)
+
+    return diff
+
+
 # test code below -> leaving for now so that I can use again when setting up the Java stuff
 # C code string
+# code = """
+# #include <stdio.h>
+# #include <string.h>
+# #include <unistd.h>
+
+# char items[3][10];
+
+# void func_a(){
+#     char* buff;
+#     int i = 0;
+#     do{
+#         printf("input item:");
+#         buff = &items[i][0];
+#         i++;
+#         fgets(buff, 40, stdin);
+#         buff[strcspn(buff, "\\n")] = 0;
+#     }while(strlen(buff)!=0);
+#     i--;
+# }
+
+# void func_b(){
+#     char *buff;
+#     printf("done adding items\\n");
+#     int j;
+#     printf("display item #:");
+#     scanf("%d", &j);
+#     buff = &items[j][0];
+#     printf("item %d: %s\\n", j, buff);
+# }
+
+# #ifndef ___TEST___
+# int main()
+# {
+
+#     func_a();
+
+#     func_b();
+
+#     return 0;
+# }
+# #endif
+# """
+
+# new_func = """
+# void func_b(){
+#     char *buff;
+#     printf("done adding items but this is a change\\n");
+#     int j;
+#     printf("display item #:");
+#     scanf("%d", &j);
+#     buff = &items[j][1];
+#     printf("item %d: %s\\n", j, buff);
+# }
+# """
+
 code = """
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
 
-char items[3][10];
+/*
+ * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
+ */
 
-void func_a(){
-    char* buff;
-    int i = 0;
-    do{
-        printf("input item:");
-        buff = &items[i][0];
-        i++;
-        fgets(buff, 40, stdin);
-        buff[strcspn(buff, "\\n")] = 0;
-    }while(strlen(buff)!=0);
-    i--;
-}
 
-void func_b(){
-    char *buff;
-    printf("done adding items\\n");
-    int j;
-    printf("display item #:");
-    scanf("%d", &j);
-    buff = &items[j][0];
-    printf("item %d: %s\\n", j, buff);
-}
+#include <ngx_config.h>
+#include <ngx_core.h>
+#include <ngx_event.h>
 
-#ifndef ___TEST___
-int main()
-{
 
-    func_a();
-
-    func_b();
-
-    return 0;
-}
+#if 0
+#define NGX_SENDFILE_LIMIT  4096
 #endif
 
+/*
+ * When DIRECTIO is enabled FreeBSD, Solaris, and MacOSX read directly
+ * to an application memory from a device if parameters are aligned
+ * to device sector boundary (512 bytes).  They fallback to usual read
+ * operation if the parameters are not aligned.
+ * Linux allows DIRECTIO only if the parameters are aligned to a filesystem
+ * sector boundary, otherwise it returns EINVAL.  The sector size is
+ * usually 512 bytes, however, on XFS it may be 4096 bytes.
+ */
+
+#define NGX_NONE            1
+
+
+static ngx_inline ngx_int_t
+    ngx_output_chain_as_is(ngx_output_chain_ctx_t *ctx, ngx_buf_t *buf);
+static ngx_int_t ngx_output_chain_add_copy(ngx_pool_t *pool,
+    ngx_chain_t **chain, ngx_chain_t *in);
+static ngx_int_t ngx_output_chain_align_file_buf(ngx_output_chain_ctx_t *ctx,
+    off_t bsize);
+static ngx_int_t ngx_output_chain_get_buf(ngx_output_chain_ctx_t *ctx,
+    off_t bsize);
+static ngx_int_t ngx_output_chain_copy_buf(ngx_output_chain_ctx_t *ctx);
+
+
+ngx_int_t
+ngx_output_chain(ngx_output_chain_ctx_t *ctx, ngx_chain_t *in)
+{
+    off_t         bsize;
+    ngx_int_t     rc, last;
+    ngx_chain_t  *cl, *out, **last_out;
+
+    if (ctx->in == NULL && ctx->busy == NULL
+#if (NGX_HAVE_FILE_AIO || NGX_THREADS)
+        && !ctx->aio
+#endif
+       )
+    {
+        /*
+         * the short path for the case when the ctx->in and ctx->busy chains
+         * are empty, the incoming chain is empty too or has the single buf
+         * that does not require the copy
+         */
+
+        if (in == NULL) {
+            return ctx->output_filter(ctx->filter_ctx, in);
+        }
+
+        if (in->next == NULL
+#if (NGX_SENDFILE_LIMIT)
+            && !(in->buf->in_file && in->buf->file_last > NGX_SENDFILE_LIMIT)
+#endif
+            && ngx_output_chain_as_is(ctx, in->buf))
+        {
+            return ctx->output_filter(ctx->filter_ctx, in);
+        }
+    }
+
+    /* add the incoming buf to the chain ctx->in */
+
+    if (in) {
+        if (ngx_output_chain_add_copy(ctx->pool, &ctx->in, in) == NGX_ERROR) {
+            return NGX_ERROR;
+        }
+    }
+
+    out = NULL;
+    last_out = &out;
+    last = NGX_NONE;
+
+    for ( ;; ) {
+
+#if (NGX_HAVE_FILE_AIO || NGX_THREADS)
+        if (ctx->aio) {
+            return NGX_AGAIN;
+        }
+#endif
+
+        while (ctx->in) {
+
+            /*
+             * cycle while there are the ctx->in bufs
+             * and there are the free output bufs to copy in
+             */
+
+            bsize = ngx_buf_size(ctx->in->buf);
+
+            if (bsize == 0 && !ngx_buf_special(ctx->in->buf)) {
+
+                ngx_log_error(NGX_LOG_ALERT, ctx->pool->log, 0,
+                              "zero size buf in output "
+                              "t:%d r:%d f:%d %p %p-%p %p %O-%O",
+                              ctx->in->buf->temporary,
+                              ctx->in->buf->recycled,
+                              ctx->in->buf->in_file,
+                              ctx->in->buf->start,
+                              ctx->in->buf->pos,
+                              ctx->in->buf->last,
+                              ctx->in->buf->file,
+                              ctx->in->buf->file_pos,
+                              ctx->in->buf->file_last);
+
+                ngx_debug_point();
+
+                cl = ctx->in;
+                ctx->in = cl->next;
+
+                ngx_free_chain(ctx->pool, cl);
+
+                continue;
+            }
+
+            if (bsize < 0) {
+
+                ngx_log_error(NGX_LOG_ALERT, ctx->pool->log, 0,
+                              "negative size buf in output "
+                              "t:%d r:%d f:%d %p %p-%p %p %O-%O",
+                              ctx->in->buf->temporary,
+                              ctx->in->buf->recycled,
+                              ctx->in->buf->in_file,
+                              ctx->in->buf->start,
+                              ctx->in->buf->pos,
+                              ctx->in->buf->last,
+                              ctx->in->buf->file,
+                              ctx->in->buf->file_pos,
+                              ctx->in->buf->file_last);
+
+                ngx_debug_point();
+
+                return NGX_ERROR;
+            }
+
+            if (ngx_output_chain_as_is(ctx, ctx->in->buf)) {
+
+                /* move the chain link to the output chain */
+
+                cl = ctx->in;
+                ctx->in = cl->next;
+
+                *last_out = cl;
+                last_out = &cl->next;
+                cl->next = NULL;
+
+                continue;
+            }
+
+            if (ctx->buf == NULL) {
+
+                rc = ngx_output_chain_align_file_buf(ctx, bsize);
+
+                if (rc == NGX_ERROR) {
+                    return NGX_ERROR;
+                }
+
+                if (rc != NGX_OK) {
+
+                    if (ctx->free) {
+
+                        /* get the free buf */
+
+                        cl = ctx->free;
+                        ctx->buf = cl->buf;
+                        ctx->free = cl->next;
+
+                        ngx_free_chain(ctx->pool, cl);
+
+                    } else if (out || ctx->allocated == ctx->bufs.num) {
+
+                        break;
+
+                    } else if (ngx_output_chain_get_buf(ctx, bsize) != NGX_OK) {
+                        return NGX_ERROR;
+                    }
+                }
+            }
+
+            rc = ngx_output_chain_copy_buf(ctx);
+
+            if (rc == NGX_ERROR) {
+                return rc;
+            }
+
+            if (rc == NGX_AGAIN) {
+                if (out) {
+                    break;
+                }
+
+                return rc;
+            }
+
+            /* delete the completed buf from the ctx->in chain */
+
+            if (ngx_buf_size(ctx->in->buf) == 0) {
+                cl = ctx->in;
+                ctx->in = cl->next;
+
+                ngx_free_chain(ctx->pool, cl);
+            }
+
+            cl = ngx_alloc_chain_link(ctx->pool);
+            if (cl == NULL) {
+                return NGX_ERROR;
+            }
+
+            cl->buf = ctx->buf;
+            cl->next = NULL;
+            *last_out = cl;
+            last_out = &cl->next;
+            ctx->buf = NULL;
+        }
+
+        if (out == NULL && last != NGX_NONE) {
+
+            if (ctx->in) {
+                return NGX_AGAIN;
+            }
+
+            return last;
+        }
+
+        last = ctx->output_filter(ctx->filter_ctx, out);
+
+        if (last == NGX_ERROR || last == NGX_DONE) {
+            return last;
+        }
+
+        ngx_chain_update_chains(ctx->pool, &ctx->free, &ctx->busy, &out,
+                                ctx->tag);
+        last_out = &out;
+    }
+}
+
+
+static ngx_inline ngx_int_t
+ngx_output_chain_as_is(ngx_output_chain_ctx_t *ctx, ngx_buf_t *buf)
+{
+    ngx_uint_t  sendfile;
+
+    if (ngx_buf_special(buf)) {
+        return 1;
+    }
+
+#if (NGX_THREADS)
+    if (buf->in_file) {
+        buf->file->thread_handler = ctx->thread_handler;
+        buf->file->thread_ctx = ctx->filter_ctx;
+    }
+#endif
+
+    sendfile = ctx->sendfile;
+
+#if (NGX_SENDFILE_LIMIT)
+
+    if (buf->in_file && buf->file_pos >= NGX_SENDFILE_LIMIT) {
+        sendfile = 0;
+    }
+
+#endif
+
+#if !(NGX_HAVE_SENDFILE_NODISKIO)
+
+    /*
+     * With DIRECTIO, disable sendfile() unless sendfile(SF_NOCACHE)
+     * is available.
+     */
+
+    if (buf->in_file && buf->file->directio) {
+        sendfile = 0;
+    }
+
+#endif
+
+    if (!sendfile) {
+
+        if (!ngx_buf_in_memory(buf)) {
+            return 0;
+        }
+
+        buf->in_file = 0;
+    }
+
+    if (ctx->need_in_memory && !ngx_buf_in_memory(buf)) {
+        return 0;
+    }
+
+    if (ctx->need_in_temp && (buf->memory || buf->mmap)) {
+        return 0;
+    }
+
+    return 1;
+}
+
+
+static ngx_int_t
+ngx_output_chain_add_copy(ngx_pool_t *pool, ngx_chain_t **chain,
+    ngx_chain_t *in)
+{
+    ngx_chain_t  *cl, **ll;
+#if (NGX_SENDFILE_LIMIT)
+    ngx_buf_t    *b, *buf;
+#endif
+
+    ll = chain;
+
+    for (cl = *chain; cl; cl = cl->next) {
+        ll = &cl->next;
+    }
+
+    while (in) {
+
+        cl = ngx_alloc_chain_link(pool);
+        if (cl == NULL) {
+            return NGX_ERROR;
+        }
+
+#if (NGX_SENDFILE_LIMIT)
+
+        buf = in->buf;
+
+        if (buf->in_file
+            && buf->file_pos < NGX_SENDFILE_LIMIT
+            && buf->file_last > NGX_SENDFILE_LIMIT)
+        {
+            /* split a file buf on two bufs by the sendfile limit */
+
+            b = ngx_calloc_buf(pool);
+            if (b == NULL) {
+                return NGX_ERROR;
+            }
+
+            ngx_memcpy(b, buf, sizeof(ngx_buf_t));
+
+            if (ngx_buf_in_memory(buf)) {
+                buf->pos += (ssize_t) (NGX_SENDFILE_LIMIT - buf->file_pos);
+                b->last = buf->pos;
+            }
+
+            buf->file_pos = NGX_SENDFILE_LIMIT;
+            b->file_last = NGX_SENDFILE_LIMIT;
+
+            cl->buf = b;
+
+        } else {
+            cl->buf = buf;
+            in = in->next;
+        }
+
+#else
+        cl->buf = in->buf;
+        in = in->next;
+
+#endif
+
+        cl->next = NULL;
+        *ll = cl;
+        ll = &cl->next;
+    }
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t
+ngx_output_chain_align_file_buf(ngx_output_chain_ctx_t *ctx, off_t bsize)
+{
+    size_t      size;
+    ngx_buf_t  *in;
+
+    in = ctx->in->buf;
+
+    if (in->file == NULL || !in->file->directio) {
+        return NGX_DECLINED;
+    }
+
+    ctx->directio = 1;
+
+    size = (size_t) (in->file_pos - (in->file_pos & ~(ctx->alignment - 1)));
+
+    if (size == 0) {
+
+        if (bsize >= (off_t) ctx->bufs.size) {
+            return NGX_DECLINED;
+        }
+
+        size = (size_t) bsize;
+
+    } else {
+        size = (size_t) ctx->alignment - size;
+
+        if ((off_t) size > bsize) {
+            size = (size_t) bsize;
+        }
+    }
+
+    ctx->buf = ngx_create_temp_buf(ctx->pool, size);
+    if (ctx->buf == NULL) {
+        return NGX_ERROR;
+    }
+
+    /*
+     * we do not set ctx->buf->tag, because we do not want
+     * to reuse the buf via ctx->free list
+     */
+
+#if (NGX_HAVE_ALIGNED_DIRECTIO)
+    ctx->unaligned = 1;
+#endif
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t
+ngx_output_chain_get_buf(ngx_output_chain_ctx_t *ctx, off_t bsize)
+{
+    size_t       size;
+    ngx_buf_t   *b, *in;
+    ngx_uint_t   recycled;
+
+    in = ctx->in->buf;
+    size = ctx->bufs.size;
+    recycled = 1;
+
+    if (in->last_in_chain) {
+
+        if (bsize < (off_t) size) {
+
+            /*
+             * allocate a small temp buf for a small last buf
+             * or its small last part
+             */
+
+            size = (size_t) bsize;
+            recycled = 0;
+
+        } else if (!ctx->directio
+                   && ctx->bufs.num == 1
+                   && (bsize < (off_t) (size + size / 4)))
+        {
+            /*
+             * allocate a temp buf that equals to a last buf,
+             * if there is no directio, the last buf size is lesser
+             * than 1.25 of bufs.size and the temp buf is single
+             */
+
+            size = (size_t) bsize;
+            recycled = 0;
+        }
+    }
+
+    b = ngx_calloc_buf(ctx->pool);
+    if (b == NULL) {
+        return NGX_ERROR;
+    }
+
+    if (ctx->directio) {
+
+        /*
+         * allocate block aligned to a disk sector size to enable
+         * userland buffer direct usage conjunctly with directio
+         */
+
+        b->start = ngx_pmemalign(ctx->pool, size, (size_t) ctx->alignment);
+        if (b->start == NULL) {
+            return NGX_ERROR;
+        }
+
+    } else {
+        b->start = ngx_palloc(ctx->pool, size);
+        if (b->start == NULL) {
+            return NGX_ERROR;
+        }
+    }
+
+    b->pos = b->start;
+    b->last = b->start;
+    b->end = b->last + size;
+    b->temporary = 1;
+    b->tag = ctx->tag;
+    b->recycled = recycled;
+
+    ctx->buf = b;
+    ctx->allocated++;
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t
+ngx_output_chain_copy_buf(ngx_output_chain_ctx_t *ctx)
+{
+    off_t        size;
+    ssize_t      n;
+    ngx_buf_t   *src, *dst;
+    ngx_uint_t   sendfile;
+
+    src = ctx->in->buf;
+    dst = ctx->buf;
+
+    size = ngx_buf_size(src);
+    size = ngx_min(size, dst->end - dst->pos);
+
+    sendfile = ctx->sendfile && !ctx->directio;
+
+#if (NGX_SENDFILE_LIMIT)
+
+    if (src->in_file && src->file_pos >= NGX_SENDFILE_LIMIT) {
+        sendfile = 0;
+    }
+
+#endif
+
+    if (ngx_buf_in_memory(src)) {
+        ngx_memcpy(dst->pos, src->pos, (size_t) size);
+        src->pos += (size_t) size;
+        dst->last += (size_t) size;
+
+        if (src->in_file) {
+
+            if (sendfile) {
+                dst->in_file = 1;
+                dst->file = src->file;
+                dst->file_pos = src->file_pos;
+                dst->file_last = src->file_pos + size;
+
+            } else {
+                dst->in_file = 0;
+            }
+
+            src->file_pos += size;
+
+        } else {
+            dst->in_file = 0;
+        }
+
+        if (src->pos == src->last) {
+            dst->flush = src->flush;
+            dst->last_buf = src->last_buf;
+            dst->last_in_chain = src->last_in_chain;
+        }
+
+    } else {
+
+#if (NGX_HAVE_ALIGNED_DIRECTIO)
+
+        if (ctx->unaligned) {
+            if (ngx_directio_off(src->file->fd) == NGX_FILE_ERROR) {
+                ngx_log_error(NGX_LOG_ALERT, ctx->pool->log, ngx_errno,
+                              ngx_directio_off_n " \"%s\" failed",
+                              src->file->name.data);
+            }
+        }
+
+#endif
+
+#if (NGX_HAVE_FILE_AIO)
+        if (ctx->aio_handler) {
+            n = ngx_file_aio_read(src->file, dst->pos, (size_t) size,
+                                  src->file_pos, ctx->pool);
+            if (n == NGX_AGAIN) {
+                ctx->aio_handler(ctx, src->file);
+                return NGX_AGAIN;
+            }
+
+        } else
+#endif
+#if (NGX_THREADS)
+        if (ctx->thread_handler) {
+            src->file->thread_task = ctx->thread_task;
+            src->file->thread_handler = ctx->thread_handler;
+            src->file->thread_ctx = ctx->filter_ctx;
+
+            n = ngx_thread_read(src->file, dst->pos, (size_t) size,
+                                src->file_pos, ctx->pool);
+            if (n == NGX_AGAIN) {
+                ctx->thread_task = src->file->thread_task;
+                return NGX_AGAIN;
+            }
+
+        } else
+#endif
+        {
+            n = ngx_read_file(src->file, dst->pos, (size_t) size,
+                              src->file_pos);
+        }
+
+#if (NGX_HAVE_ALIGNED_DIRECTIO)
+
+        if (ctx->unaligned) {
+            ngx_err_t  err;
+
+            err = ngx_errno;
+
+            if (ngx_directio_on(src->file->fd) == NGX_FILE_ERROR) {
+                ngx_log_error(NGX_LOG_ALERT, ctx->pool->log, ngx_errno,
+                              ngx_directio_on_n " \"%s\" failed",
+                              src->file->name.data);
+            }
+
+            ngx_set_errno(err);
+
+            ctx->unaligned = 0;
+        }
+
+#endif
+
+        if (n == NGX_ERROR) {
+            return (ngx_int_t) n;
+        }
+
+        if (n != size) {
+            ngx_log_error(NGX_LOG_ALERT, ctx->pool->log, 0,
+                          ngx_read_file_n " read only %z of %O from \"%s\"",
+                          n, size, src->file->name.data);
+            return NGX_ERROR;
+        }
+
+        dst->last += n;
+
+        if (sendfile) {
+            dst->in_file = 1;
+            dst->file = src->file;
+            dst->file_pos = src->file_pos;
+            dst->file_last = src->file_pos + n;
+
+        } else {
+            dst->in_file = 0;
+        }
+
+        src->file_pos += n;
+
+        if (src->file_pos == src->file_last) {
+            dst->flush = src->flush;
+            dst->last_buf = src->last_buf;
+            dst->last_in_chain = src->last_in_chain;
+        }
+    }
+
+    return NGX_OK;
+}
+
+
+ngx_int_t
+ngx_chain_writer(void *data, ngx_chain_t *in)
+{
+    ngx_chain_writer_ctx_t *ctx = data;
+
+    off_t              size;
+    ngx_chain_t       *cl, *ln, *chain;
+    ngx_connection_t  *c;
+
+    c = ctx->connection;
+
+    for (size = 0; in; in = in->next) {
+
+        if (ngx_buf_size(in->buf) == 0 && !ngx_buf_special(in->buf)) {
+
+            ngx_log_error(NGX_LOG_ALERT, ctx->pool->log, 0,
+                          "zero size buf in chain writer "
+                          "t:%d r:%d f:%d %p %p-%p %p %O-%O",
+                          in->buf->temporary,
+                          in->buf->recycled,
+                          in->buf->in_file,
+                          in->buf->start,
+                          in->buf->pos,
+                          in->buf->last,
+                          in->buf->file,
+                          in->buf->file_pos,
+                          in->buf->file_last);
+
+            ngx_debug_point();
+
+            continue;
+        }
+
+        if (ngx_buf_size(in->buf) < 0) {
+
+            ngx_log_error(NGX_LOG_ALERT, ctx->pool->log, 0,
+                          "negative size buf in chain writer "
+                          "t:%d r:%d f:%d %p %p-%p %p %O-%O",
+                          in->buf->temporary,
+                          in->buf->recycled,
+                          in->buf->in_file,
+                          in->buf->start,
+                          in->buf->pos,
+                          in->buf->last,
+                          in->buf->file,
+                          in->buf->file_pos,
+                          in->buf->file_last);
+
+            ngx_debug_point();
+
+            return NGX_ERROR;
+        }
+
+        size += ngx_buf_size(in->buf);
+
+        ngx_log_debug2(NGX_LOG_DEBUG_CORE, c->log, 0,
+                       "chain writer buf fl:%d s:%uO",
+                       in->buf->flush, ngx_buf_size(in->buf));
+
+        cl = ngx_alloc_chain_link(ctx->pool);
+        if (cl == NULL) {
+            return NGX_ERROR;
+        }
+
+        cl->buf = in->buf;
+        cl->next = NULL;
+        *ctx->last = cl;
+        ctx->last = &cl->next;
+    }
+
+    ngx_log_debug1(NGX_LOG_DEBUG_CORE, c->log, 0,
+                   "chain writer in: %p", ctx->out);
+
+    for (cl = ctx->out; cl; cl = cl->next) {
+
+        if (ngx_buf_size(cl->buf) == 0 && !ngx_buf_special(cl->buf)) {
+
+            ngx_log_error(NGX_LOG_ALERT, ctx->pool->log, 0,
+                          "zero size buf in chain writer "
+                          "t:%d r:%d f:%d %p %p-%p %p %O-%O",
+                          cl->buf->temporary,
+                          cl->buf->recycled,
+                          cl->buf->in_file,
+                          cl->buf->start,
+                          cl->buf->pos,
+                          cl->buf->last,
+                          cl->buf->file,
+                          cl->buf->file_pos,
+                          cl->buf->file_last);
+
+            ngx_debug_point();
+
+            continue;
+        }
+
+        if (ngx_buf_size(cl->buf) < 0) {
+
+            ngx_log_error(NGX_LOG_ALERT, ctx->pool->log, 0,
+                          "negative size buf in chain writer "
+                          "t:%d r:%d f:%d %p %p-%p %p %O-%O",
+                          cl->buf->temporary,
+                          cl->buf->recycled,
+                          cl->buf->in_file,
+                          cl->buf->start,
+                          cl->buf->pos,
+                          cl->buf->last,
+                          cl->buf->file,
+                          cl->buf->file_pos,
+                          cl->buf->file_last);
+
+            ngx_debug_point();
+
+            return NGX_ERROR;
+        }
+
+        size += ngx_buf_size(cl->buf);
+    }
+
+    if (size == 0 && !c->buffered) {
+        return NGX_OK;
+    }
+
+    chain = c->send_chain(c, ctx->out, ctx->limit);
+
+    ngx_log_debug1(NGX_LOG_DEBUG_CORE, c->log, 0,
+                   "chain writer out: %p", chain);
+
+    if (chain == NGX_CHAIN_ERROR) {
+        return NGX_ERROR;
+    }
+
+    if (chain && c->write->ready) {
+        ngx_post_event(c->write, &ngx_posted_next_events);
+    }
+
+    for (cl = ctx->out; cl && cl != chain; /* void */) {
+        ln = cl;
+        cl = cl->next;
+        ngx_free_chain(ctx->pool, ln);
+    }
+
+    ctx->out = chain;
+
+    if (ctx->out == NULL) {
+        ctx->last = &ctx->out;
+
+        if (!c->buffered) {
+            return NGX_OK;
+        }
+    }
+
+    return NGX_AGAIN;
+}
 """
 
 # code_lines = clean_up_snippet(code)
+# new_func_lines = clean_up_snippet(new_func)
+# diff = create_patch("func_b", code_lines, new_func_lines, "example.c")
+# print("\n".join(diff))
+
 # ast = parse_snippet(code, "test.c")
 
 # after_nodes = search_ast_for_node_types(ast, TYPES, 'test.c')
@@ -960,6 +1837,3 @@ int main()
 
 # # print_ast(nodes[FUNCTION_TYPE][FILE_LOCAL]['protect'])
 # print(functions['protect'])
-
-
-# variables = get_function_variables(functions["func_a"], nodes[VAR_TYPE])
