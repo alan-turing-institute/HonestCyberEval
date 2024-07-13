@@ -1,9 +1,11 @@
+import pprint
+from pathlib import Path
 from typing import Optional
 
 from api.cp import ChallengeProject
 from api.data_types import Patch, VulnerabilityWithSha
 from api.fs import write_patch_to_disk
-from api.llm import LLMmodel, format_chat_history
+from api.llm import LLMmodel, create_rag_docs, format_chat_history, get_retriever
 from logger import logger
 from pipeline.langgraph_patch import (
     HarnessTriggeredAfterPatchException,
@@ -11,6 +13,9 @@ from pipeline.langgraph_patch import (
     patched_file_to_diff,
     run_patch_langraph,
 )
+
+from .langgraph_patch import TestFailedException
+from .preprocess_commits import ProcessedCommits
 
 mock_patches = {
     "id_1": r"""diff --git a/mock_vp.c b/mock_vp.c
@@ -59,8 +64,9 @@ class PatchGen:
             return "\n".join([mock_patches["id_1"], mock_patches["id_2"]])
         return mock_patches[f"id_{i}"]
 
-    async def gen_patch_langgraph(self, cpv_uuid, vulnerability: VulnerabilityWithSha, bad_file, max_trials=3):
-        vuln_code = self.project.open_project_source_file(self.cp_source, bad_file)
+    async def gen_patch_langgraph(
+        self, cpv_uuid, vulnerability: VulnerabilityWithSha, vuln_code: str, bad_file: str, max_trials: int = 3
+    ) -> Optional[Patch]:
         models: list[LLMmodel] = ["oai-gpt-4o", "claude-3.5-sonnet", "gemini-1.5-pro"]
         for model_name in models:
             try:
@@ -93,26 +99,42 @@ class PatchGen:
         return None
 
     async def run(
-        self, project: ChallengeProject, cp_source: str, cpv_uuid, vulnerability: VulnerabilityWithSha
+        self,
+        project: ChallengeProject,
+        cp_source: str,
+        preprocessed_commits: ProcessedCommits,
+        cpv_uuid,
+        vulnerability: VulnerabilityWithSha,
+        use_funcdiffs: bool = False,
     ) -> Optional[Patch]:
         self.project = project
         self.cp_source = cp_source
 
-        patch = await self.gen_patch_langgraph(cpv_uuid, vulnerability, "mock_vp.c")
+        if vulnerability.commit in preprocessed_commits:
+            logger.info(f"Patching Functional Commit")
+            commit = preprocessed_commits[vulnerability.commit]
 
-        # For now, we hard code the patch here to avoid exceptions
-        if not patch and self.project.name == "Mock CP":
-            potential_patch = self.gen_mock_patch(1)
-            patch_path = write_patch_to_disk(project, cpv_uuid, potential_patch, 0, vulnerability, "mock")
-            patch = Patch(diff=potential_patch, diff_file=patch_path)
-            try:
-                await apply_patch_and_check(project, cp_source, vulnerability, patch)
-            except HarnessTriggeredAfterPatchException:
-                # some inputs require both hard coded patches applied together to fix
-                potential_patch = self.gen_mock_patch()
-                patch = Patch(diff_file=patch_path, diff=potential_patch)
+            for filename, file_diff in commit.items():
 
-        return patch
+                # file_text = file_diff.after_str()
+                file_text = self.project.open_project_source_file(self.cp_source, Path(filename))
+
+                funcs = []
+                for function_diff in file_diff.diff_functions.values():
+                    funcs.append(function_diff.after_str())
+
+                vuln_code = "".join(f + "\n" for f in funcs) if use_funcdiffs else file_text
+
+                patch = await self.gen_patch_langgraph(
+                    cpv_uuid=cpv_uuid, vulnerability=vulnerability, vuln_code=vuln_code, bad_file=filename
+                )
+
+                if patch:
+                    return patch
+
+        else:
+            logger.warning(f"NO FUNCTIONAL COMMIT MATCHES VULN COMMIT")
+            return None
 
 
 patch_generation = PatchGen()

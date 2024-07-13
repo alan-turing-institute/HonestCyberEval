@@ -226,6 +226,7 @@ async def check_patch(state: GraphState) -> GraphState:
     model_name: LLMmodel = state["model"].model_name  # type: ignore  # we know it's one of the models...
 
     patch_text = patched_file_to_diff(state["vuln_code"], state["patched_file"], state["bad_file"])
+
     patch_path = write_patch_to_disk(
         state["project"], state["cpv_uuid"], patch_text, state["iterations"], vulnerability, model_name
     )

@@ -161,6 +161,7 @@ class FunctionDiff(BaseDiff):
     _: KW_ONLY
     after_external_variable_decls: dict[str, str] = field(default_factory=dict)
     before_external_variable_decls: dict[str, str] = field(default_factory=dict)
+
     # _external_variable_decls: dict[str, str]
 
     def __str__(self):
@@ -291,7 +292,6 @@ class FileDiff(BaseDiff):
 
 
 def build_regex_pattern_from_list(pattern_list, word_boundary=True):
-
     if word_boundary:
         regex_pattern = r"(\s|\W|^)("
     else:
@@ -316,7 +316,6 @@ def build_regex_pattern_from_list(pattern_list, word_boundary=True):
 
 
 def search_line_and_replace(line, pattern, replace_term):
-
     for match in re.findall(pattern, line):
 
         if not isinstance(match, str):
@@ -330,7 +329,6 @@ def search_line_and_replace(line, pattern, replace_term):
 
 
 def abstract_code(code_snippet, ast, filename):
-
     nodes = search_ast_for_node_types(ast, TYPES_FOR_ABSTRACT, filename)
 
     patterns = {}
@@ -397,7 +395,6 @@ def is_node_local(cursor: Cursor, filename: str) -> bool:
 
 
 def parse_snippet(snippet: str, filepath: str) -> Cursor:
-
     filename = filepath  # filepath.split("/")[-1]  # only take filename bit of the filepath
 
     # set up unsaved files so can use string of the c code with the libclang parser
@@ -431,7 +428,6 @@ def search_ast_for_node_types(node: Cursor, types: TypesDictType, filename: str)
 
 
 def _search_ast_for_node_type(node: Cursor, types: TypesDictType, nodes: NodesDictType, filename: str) -> NodesDictType:
-
     for node_type in types:
         if node.kind == types[node_type]:
             if is_node_local(node, filename):
@@ -445,7 +441,6 @@ def _search_ast_for_node_type(node: Cursor, types: TypesDictType, nodes: NodesDi
 
 
 def clean_up_snippet(snippet: str) -> list[str]:
-
     whitespace_pattern = r"\s+"
     # unnecessary_space_pattern_1 = r'(\W)\s+(\w)'
     # unnecessary_space_pattern_2 = r'(\w)\s+(\W)'
@@ -641,7 +636,6 @@ def make_diff(before: list[str], after: list[str], filename: str = "") -> list[s
 
 
 def get_function_diffs(before: FunctionDictType, after: FunctionDictType) -> dict[str, FunctionDiff]:
-
     diff_functions: dict[str, FunctionDiff] = {}
     after_functions: list[str] = []
 
@@ -691,7 +685,6 @@ def get_function_diffs(before: FunctionDictType, after: FunctionDictType) -> dic
 
 
 def get_full_function_snippets(full_file: list[str], functions: dict[str, Cursor]) -> FunctionDictType:
-
     open_code_block_pattern = r"{"
     close_code_block_pattern = r"}"
     lines = copy.deepcopy(full_file)
@@ -737,7 +730,6 @@ def get_full_function_snippets(full_file: list[str], functions: dict[str, Cursor
 
 
 def get_function_external_variables_decl(function_name, full_file_nodes, non_function_code_snippets):
-
     if FILE_CODE == function_name:
         return {}
 
@@ -779,7 +771,6 @@ def get_function_external_variables_decl(function_name, full_file_nodes, non_fun
 
 
 def get_variable_snippets(full_snippet: list[str], variable_name: str) -> list[str]:
-
     variable_refs = []
     full_snippet = copy.deepcopy(full_snippet)
 
@@ -793,7 +784,6 @@ def get_variable_snippets(full_snippet: list[str], variable_name: str) -> list[s
 def check_functional_diff_in_variable_lines_order(
     before_code: list[str], after_code: list[str], variable_names: set[str]
 ) -> bool:
-
     for variable_name in variable_names:
         variable_before_lines = get_variable_snippets(before_code, variable_name)
         variable_after_lines = get_variable_snippets(after_code, variable_name)
@@ -809,7 +799,6 @@ def check_functional_diff_in_variable_lines_order(
 
 
 def get_function_refs(function_lines, ref_names):
-
     function_refs = set()
     function_string = "\n".join(function_lines)
 
@@ -828,7 +817,6 @@ def is_diff_functional(
     all_refs_after,
     filename,
 ) -> bool:
-
     # are they exactly the same? - essentially is it just whitespace or other formatting that's been changed?
     if function_before_code == function_after_code:  # could also probs check the asts here instead??
         return False  # no functional change made
@@ -891,8 +879,37 @@ def is_diff_functional(
     return False  # any functional diff should have been returned by this point I think?
 
 
-def create_patch(function_name, file_lines, new_function_lines, filename=""):
+ProcessedCommits: TypeAlias = dict[str, dict[str, FileDiff]]
 
+
+def find_functional_changes(project_read_only, cp_source) -> ProcessedCommits:
+
+    repo, ref = project_read_only.repos[cp_source]
+
+    logger.info("Preprocessing commits")
+
+    # for each commit compare with it's parent to find the relevant files changed and the functional
+    # changes within each file
+    preprocessed_commits = {}
+
+    for commit in repo.iter_commits(ref):
+        if commit.parents:
+            parent_commit = commit.parents[0]
+            diffs = find_diff_between_commits(parent_commit, commit)
+            # logger.info(f"Commit: {commit.hexsha}:\n{diffs}")
+
+            if diffs:
+                preprocessed_commits[commit.hexsha] = diffs
+
+    logger.debug(f"Functional changes found in the following commits: {list(preprocessed_commits.keys())}")
+    logger.info(
+        f"{len(preprocessed_commits)} out of {len(list(repo.iter_commits(ref)))} commits have potentially functional differences."
+    )
+
+    return preprocessed_commits
+
+
+def create_patch(function_name, file_lines, new_function_lines, filename=""):
     open_code_block_pattern = r"{"
     close_code_block_pattern = r"}"
     lines = copy.deepcopy(file_lines)

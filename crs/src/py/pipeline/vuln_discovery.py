@@ -20,7 +20,7 @@ from api.llm import (
 from logger import logger
 
 from .langgraph_vuln import run_vuln_langraph
-from .preprocess_commits import FileDiff, find_diff_between_commits
+from .preprocess_commits import ProcessedCommits
 
 mock_input_data = r"""abcdefabcdefabcdefabcdefabcdefabcdef
 b
@@ -32,8 +32,6 @@ b
 
 501
 """
-
-ProcessedCommits: TypeAlias = dict[str, dict[str, FileDiff]]
 
 
 class VDDetailLevel(StrEnum):
@@ -164,32 +162,6 @@ class VulnDiscovery:
 
         return vulnerabilities_with_sha
 
-    def find_functional_changes(self) -> ProcessedCommits:
-
-        repo, ref = self.project_read_only.repos[self.cp_source]
-
-        logger.info("Preprocessing commits")
-
-        # for each commit compare with it's parent to find the relevant files changed and the functional
-        # changes within each file
-        preprocessed_commits = {}
-
-        for commit in repo.iter_commits(ref):
-            if commit.parents:
-                parent_commit = commit.parents[0]
-                diffs = find_diff_between_commits(parent_commit, commit)
-                # logger.info(f"Commit: {commit.hexsha}:\n{diffs}")
-
-                if diffs:
-                    preprocessed_commits[commit.hexsha] = diffs
-
-        logger.debug(f"Functional changes found in the following commits: {list(preprocessed_commits.keys())}")
-        logger.info(
-            f"{len(preprocessed_commits)} out of {len(list(repo.iter_commits(ref)))} commits have potentially functional differences."
-        )
-
-        return preprocessed_commits
-
     async def detect_vulns_rag(self, retriever, max_trials: int = 2) -> list[Vulnerability]:
         vulnerabilities = []
         for harness_id in self.project_read_only.harnesses.keys():
@@ -310,12 +282,11 @@ class VulnDiscovery:
 
         return await self.detect_vulns_rag(retriever)
 
-    async def run(self, project_read_only: ChallengeProjectReadOnly, cp_source: str) -> list[VulnerabilityWithSha]:
+    async def run(
+        self, project_read_only: ChallengeProjectReadOnly, cp_source: str, preprocessed_commits: ProcessedCommits
+    ) -> list[VulnerabilityWithSha]:
         self.project_read_only = project_read_only
         self.cp_source = cp_source
-
-        preprocessed_commits = self.find_functional_changes()
-        # logger.debug(f"Preprocessed Commits:\n {pprint.pformat(preprocessed_commits)}\n")
 
         # vulnerabilities = await self.detect_vulns_in_commits(preprocessed_commits, top_docs=1)
         vulnerabilities = await self.detect_with_unified_vectorstore(
