@@ -1,6 +1,6 @@
 import functools
 from operator import itemgetter
-from typing import List, Literal, Optional, Type, TypeAlias, TypeVar
+from typing import Literal, Optional, Type, TypeAlias, TypeVar
 
 from langchain.output_parsers import OutputFixingParser
 from langchain_chroma import Chroma
@@ -244,10 +244,12 @@ placeholder_fix_anthropic_weirdness = ("placeholder", "{anthropic_weirdness}")
 def create_rag_docs(
     cp_text_list: list[str],
     cp_language: str,
-    metadatas: List = [],
+    metadatas=None,
     chunk_size: int = 1000,
     chunk_overlap: int = 0,
 ):
+    if metadatas is None:
+        metadatas = []
     language = Language.CPP if cp_language == "C" else Language.JAVA
 
     code_splitter = RecursiveCharacterTextSplitter.from_language(
@@ -266,7 +268,7 @@ async def add_docs_to_vectorstore(rag_docs, vectorstore, step: int = 50) -> Chro
         e_handler = ErrorHandler()
         while e_handler.ok_to_retry():
             try:
-                vectorstore.add_documents(
+                await vectorstore.aadd_documents(
                     documents=rag_docs[:step],
                     embedding=create_embeddings(model_name="oai-text-embedding-3-large"),
                 )

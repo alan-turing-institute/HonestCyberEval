@@ -56,7 +56,6 @@ index 9dc6bf0..ca80ed1 100644
 
 class PatchGen:
     project: ChallengeProject
-    cp_source: str
 
     @staticmethod
     def gen_mock_patch(i=None):
@@ -73,7 +72,6 @@ class PatchGen:
                 output = await run_patch_langraph(
                     model_name=model_name,
                     project=self.project,
-                    cp_source=self.cp_source,
                     cpv_uuid=cpv_uuid,
                     vulnerability=vulnerability,
                     bad_file=bad_file,
@@ -101,14 +99,12 @@ class PatchGen:
     async def run(
         self,
         project: ChallengeProject,
-        cp_source: str,
         preprocessed_commits: ProcessedCommits,
         cpv_uuid,
         vulnerability: VulnerabilityWithSha,
         use_funcdiffs: bool = False,
     ) -> Optional[Patch]:
         self.project = project
-        self.cp_source = cp_source
 
         if vulnerability.commit in preprocessed_commits:
             logger.info(f"Patching Functional Commit")
@@ -117,7 +113,7 @@ class PatchGen:
             for filename, file_diff in commit.items():
 
                 # file_text = file_diff.after_str()
-                file_text = self.project.open_project_source_file(self.cp_source, Path(filename))
+                file_text = self.project.open_project_source_file(vulnerability.cp_source, Path(filename))
 
                 funcs = []
                 for function_diff in file_diff.diff_functions.values():

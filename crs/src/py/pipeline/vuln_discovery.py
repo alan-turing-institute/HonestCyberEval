@@ -1,9 +1,8 @@
 import pprint
-import random
 from enum import auto
 from itertools import product
 from pathlib import Path
-from typing import Optional, TypeAlias
+from typing import Optional
 
 from strenum import StrEnum
 
@@ -13,7 +12,6 @@ from api.fs import write_harness_input_to_disk
 from api.llm import (
     LLMmodel,
     add_docs_to_vectorstore,
-    create_embeddings,
     create_rag_docs,
     create_vector_store,
     format_chat_history,
@@ -42,6 +40,33 @@ class VDDetailLevel(StrEnum):
     COMMIT_FUNCS = auto()
     FILE_DIFFS = auto()
     FUNC_DIFFS = auto()
+
+
+def remove_duplicate_vulns(vulnerabilities: list[VulnerabilityWithSha]) -> list[VulnerabilityWithSha]:
+    # create vulnerability bucket for each commit
+    commit_buckets = {vuln.commit: [] for vuln in vulnerabilities}
+    for vuln in vulnerabilities:
+        commit_buckets[vuln.commit].append(vuln)
+
+    # deduplicate each bucket
+    deduped_commit_buckets = {}
+    for commit, commit_vuln_list in commit_buckets.items():
+        deduped_dict = {(vuln.harness_id, vuln.sanitizer_id): vuln for vuln in commit_vuln_list}
+        deduped_list = [vuln for (_, vuln) in deduped_dict.items()]
+        deduped_commit_buckets[commit] = deduped_list
+
+    # choose vulnerabilities that maximizes coverage
+    vuln_combinations = product(*[commit_vuln_list for commit_vuln_list in deduped_commit_buckets.values()])
+    best_coverage = 0
+    deduped_vuln_list = []
+    for vuln_list in vuln_combinations:
+        num_unique_sanitizers = len(set([vuln.sanitizer_id for vuln in vuln_list]))
+        if num_unique_sanitizers > best_coverage:
+            deduped_vuln_list = list(vuln_list)
+            best_coverage = num_unique_sanitizers
+
+    logger.info(f"Compressed {len(vulnerabilities)} vulnerabilities into {len(deduped_vuln_list)} unique ones")
+    return deduped_vuln_list
 
 
 class VulnDiscovery:
@@ -83,7 +108,7 @@ class VulnDiscovery:
                         project, harness_input, "work", harness_id, sanitizer_id, model_name
                     )
 
-                    return Vulnerability(harness_id, sanitizer_id, harness_input, harness_input_file)
+                    return Vulnerability(harness_id, sanitizer_id, harness_input, harness_input_file, self.cp_source)
 
                 logger.info(f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id}")
                 logger.debug(
@@ -126,7 +151,7 @@ class VulnDiscovery:
             # step 2: revert the Git repo to the commit
             logger.debug(f"Reverting to commit: {inspected_commit.hexsha}")
 
-            async with project.writer_lock:
+            async with project.build_lock:
                 git_repo.git.switch("--detach", inspected_commit.hexsha)
                 await project.build_project()
 
@@ -292,49 +317,6 @@ class VulnDiscovery:
 
         return await self.detect_vulns_rag(retriever)
 
-    def test_deduplication(
-        self,
-    ):
-        v1 = VulnerabilityWithSha(harness_id="1", sanitizer_id="a", input_data="", input_file=Path(""), commit="abc")
-
-        v2 = VulnerabilityWithSha(harness_id="1", sanitizer_id="a", input_data="", input_file=Path(""), commit="123")
-        v3 = VulnerabilityWithSha(harness_id="1", sanitizer_id="b", input_data="", input_file=Path(""), commit="123")
-
-        v4 = VulnerabilityWithSha(harness_id="1", sanitizer_id="a", input_data="", input_file=Path(""), commit="999")
-        v5 = VulnerabilityWithSha(harness_id="1", sanitizer_id="b", input_data="", input_file=Path(""), commit="999")
-        v6 = VulnerabilityWithSha(harness_id="1", sanitizer_id="c", input_data="", input_file=Path(""), commit="999")
-
-        vulnerabilities = [v1, v2, v3, v4, v5, v6]
-        deduped_vulns = self.remove_duplicate_vulns(vulnerabilities)
-
-        assert set(deduped_vulns) == set([v1, v3, v6])
-
-    def remove_duplicate_vulns(self, vulnerabilities: list[VulnerabilityWithSha]) -> list[VulnerabilityWithSha]:
-        # create vulnerability bucket for each commit
-        commit_buckets = {vuln.commit: [] for vuln in vulnerabilities}
-        for vuln in vulnerabilities:
-            commit_buckets[vuln.commit].append(vuln)
-
-        # deduplicate each bucket
-        deduped_commit_buckets = {}
-        for commit, commit_vuln_list in commit_buckets.items():
-            deduped_dict = {(vuln.harness_id, vuln.sanitizer_id): vuln for vuln in commit_vuln_list}
-            deduped_list = [vuln for (_, vuln) in deduped_dict.items()]
-            deduped_commit_buckets[commit] = deduped_list
-
-        # choose vulnerabilities that maximizes coverage
-        vuln_combinations = product(*[commit_vuln_list for commit_vuln_list in deduped_commit_buckets.values()])
-        best_coverage = 0
-        deduped_vuln_list = []
-        for vuln_list in vuln_combinations:
-            num_unique_sanitizers = len(set([vuln.sanitizer_id for vuln in vuln_list]))
-            if num_unique_sanitizers > best_coverage:
-                deduped_vuln_list = list(vuln_list)
-                best_coverage = num_unique_sanitizers
-
-        logger.info(f"Compressed {len(vulnerabilities)} vulnerabilities into {len(deduped_vuln_list)} unique ones")
-        return deduped_vuln_list
-
     async def run(
         self, project_read_only: ChallengeProjectReadOnly, cp_source: str, preprocessed_commits: ProcessedCommits
     ) -> list[VulnerabilityWithSha]:
@@ -357,17 +339,17 @@ class VulnDiscovery:
 
             if both or vulnerabilities[0].sanitizer_id == "id_2":
                 mock_input_file = write_harness_input_to_disk(project, mock_input_data, 0, "id_1", "id_1", "mock")
-                vulnerabilities.append(Vulnerability("id_1", "id_1", mock_input_data, mock_input_file))
+                vulnerabilities.append(Vulnerability("id_1", "id_1", mock_input_data, mock_input_file, cp_source))
 
             if both or vulnerabilities[0].sanitizer_id == "id_1":
                 mock_input_file = write_harness_input_to_disk(project, mock_input_data_segv, 0, "id_1", "id_2", "mock")
 
-                vulnerabilities.append(Vulnerability("id_1", "id_2", mock_input_data_segv, mock_input_file))
+                vulnerabilities.append(Vulnerability("id_1", "id_2", mock_input_data_segv, mock_input_file, cp_source))
 
         # Left this check in even though we have the SHA for the commit as a final confirmation check
         vulnerabilities_with_sha = await self.identify_bad_commits(vulnerabilities)
 
-        deduped_vulnerabilities_with_sha = self.remove_duplicate_vulns(vulnerabilities_with_sha)
+        deduped_vulnerabilities_with_sha = remove_duplicate_vulns(vulnerabilities_with_sha)
 
         return deduped_vulnerabilities_with_sha
 

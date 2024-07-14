@@ -1,7 +1,10 @@
 import asyncio
 from shutil import rmtree
 from subprocess import CalledProcessError
+from time import time
 from typing import TYPE_CHECKING, Literal
+
+import psutil
 
 from api.data_types import Patch, VulnerabilityWithSha
 from api.llm import LLMmodel
@@ -10,8 +13,6 @@ from logger import logger
 
 if TYPE_CHECKING:
     from api.cp import ChallengeProject
-
-build_lock = asyncio.Lock()
 
 
 class RunException(Exception):
@@ -39,7 +40,7 @@ class PatchException(RunException):
         ])
 
 
-async def run_command(*args, timeout=None, **kwargs):
+async def run_command(*args, timeout=None, timed: bool = False, **kwargs):
     logger.debug(f"Running {' '.join((str(arg) for arg in args))}")
     process = await asyncio.create_subprocess_exec(
         *args,
@@ -47,11 +48,19 @@ async def run_command(*args, timeout=None, **kwargs):
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    await asyncio.wait_for(process.wait(), timeout=timeout)
-    assert isinstance(process.stdout, asyncio.StreamReader)
-    stdout = (await process.stdout.read()).decode()
-    assert isinstance(process.stderr, asyncio.StreamReader)
-    stderr = (await process.stderr.read()).decode()
+    logger.debug(
+        f"Running {' '.join((str(arg) for arg in args))} in process {process.pid} {f'with timeout{timeout}' if timeout else ''}"
+    )
+    duration: float = 0
+    if timed:
+        duration = psutil.Process(process.pid).create_time()
+    stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+    if timed:
+        # not perfect, an overestimation; should be fine, since we just want to avoid it running forever
+        duration = time() - duration
+
+    stdout = stdout.decode()
+    stderr = stderr.decode()
 
     logger.debug(
         "\n".join([
@@ -63,7 +72,7 @@ async def run_command(*args, timeout=None, **kwargs):
     returncode = process.returncode
     if returncode:
         raise CalledProcessError(returncode, args, stdout, stderr)
-    return process, stdout, stderr
+    return process, stdout, stderr, duration
 
 
 def get_projects():

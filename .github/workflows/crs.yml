@@ -38,6 +38,6 @@ jobs:
         if: always()
         run: |
           black crs/src --check --diff
-#      - name: Run test
-#        if: always()
-#        run: pytest -c crs/src/pyproject.toml crs/src/py
+      - name: Run test
+        if: always()
+        run: pytest -c crs/src/pyproject.toml crs/src/py

@@ -1,3 +1,6 @@
+[tool.pytest.ini_options]
+minversion = "6.0"
+
 [tool.pyright]
 pythonVersion = "3.10"
 pythonPlatform = "Linux"

@@ -1,4 +1,5 @@
 import asyncio
+import math
 from copy import deepcopy
 from pathlib import Path
 from shutil import copy
@@ -102,19 +103,24 @@ class ChallengeProjectReadOnly:
 class ChallengeProject(ChallengeProjectReadOnly):
     def __init__(self, path: Path, input_path: Path, patch_path: Path, initial_build: bool = False):
         super().__init__(path, input_path, patch_path)
-        if initial_build:
-            logger.info(f"Building {self.name}")
-            asyncio.create_task(self.build_project())
         self._build_lock = aiorwlock.RWLock()
         self.writeable_copy_async = asyncio.create_task(self._return_self())
+        self._test_duration = None
+        self._harness_duration = None
+        if initial_build:
+            logger.info(f"Building {self.name}")
+            self.initial_build = asyncio.create_task(self.build_project())
+            self._initial_test_run = asyncio.create_task(self._run_tests_for_timing())
+        else:
+            self.initial_build = self.writeable_copy_async
         # self._set_docker_env()
 
     @property
-    def writer_lock(self):
+    def build_lock(self):
         return self._build_lock.writer_lock
 
     @property
-    def reader_lock(self):
+    def run_lock(self):
         return self._build_lock.reader_lock
 
     async def _return_self(self) -> "ChallengeProject":
@@ -180,8 +186,13 @@ class ChallengeProject(ChallengeProjectReadOnly):
         """
 
         # TODO: check if -x flag is more convenient
-        async with self._build_lock.reader_lock:
+        async with self.run_lock:
             return await run_command(self.path / "run.sh", *command, **kwargs)
+
+    async def _run_tests_for_timing(self):
+        await self.initial_build
+        _, _, _, duration = await self._run_cp_run_sh("run_tests", timed=True)
+        self._test_duration = math.ceil(duration) * 2  # double it just to be sure
 
     def reset_source_repo(self, source):
         git_repo, ref = self.repos[source]
@@ -189,11 +200,12 @@ class ChallengeProject(ChallengeProjectReadOnly):
         git_repo.git.switch("--detach", ref)
 
     async def _build(self, *args):
-        async with self._build_lock.writer_lock:
+        async with self.build_lock:
             try:
-                _, _, stderr = await self._run_cp_run_sh("build", *args)
+                process, _, stderr, _ = await self._run_cp_run_sh("build", *args)
                 if stderr:
                     raise ProjectBuildException(stderr=stderr)
+                return process
             except CalledProcessError as err:
                 raise ProjectBuildException(stderr=err.stderr) from err
 
@@ -201,7 +213,7 @@ class ChallengeProject(ChallengeProjectReadOnly):
         """Build a project.
         Raises ProjectBuildException, check ProjectBuildException.stderr for output
         """
-        await self._build()
+        return await self._build()
 
     async def patch_and_build_project(self, patch: Patch, cp_source):
         """Build a project after applying a patch file to the specified source.
@@ -209,21 +221,33 @@ class ChallengeProject(ChallengeProjectReadOnly):
           for output.
         Raises ProjectBuildException, check ProjectBuildException.stderr for output.
         """
-        await self._build(str(patch.diff_file.absolute()), cp_source)
+        # ensure we are on the tip and no other patches are lingering before patching
+        async with self.build_lock:
+            self.reset_source_repo(cp_source)
+            return await self._build(str(patch.diff_file.absolute()), cp_source)
 
-    async def run_harness(self, harness_input_file, harness_id, timeout=60):
+    async def run_harness(self, harness_input_file, harness_id, timeout=False):
         """Runs a specified project test harness and returns the output of the process.
         Check result.stderr for sanitizer output if it exists.
         Can time out when input does not terminate programme.
         Raises:
             asyncio.TimeoutError: if harness does not finish in set time
         """
-        return await self._run_cp_run_sh(
-            "run_pov", harness_input_file, self.harnesses[harness_id].name, timeout=timeout
+        if timeout:
+            extra_kwargs = {"timeout": max(5, self._harness_duration or 0)}
+        elif not self._harness_duration:
+            extra_kwargs = {"timed": True}
+        else:
+            extra_kwargs = {}
+        process, stdout, stderr, duration = await self._run_cp_run_sh(
+            "run_pov", harness_input_file, self.harnesses[harness_id].name, **extra_kwargs
         )
+        if self._harness_duration is None:
+            self._harness_duration = math.ceil(duration) * 2
+        return process, stdout, stderr
 
     async def run_harness_and_check_sanitizer(
-        self, harness_input_file, harness_id, sanitizer_id, timeout=60
+        self, harness_input_file, harness_id, sanitizer_id, timeout=False
     ) -> tuple[bool, str]:
         """Runs a specified project test harness and returns whether sanitizer is triggered.
         Can time out when input does not terminate programme.
@@ -238,7 +262,7 @@ class ChallengeProject(ChallengeProjectReadOnly):
         """Runs a specified project test suite and returns the output of the process.
         Check stderr for failed test output if it exists.
         """
-        _, _, stderr = await self._run_cp_run_sh("run_tests")
+        _, _, stderr, _ = await self._run_cp_run_sh("run_tests", timeout=self._test_duration)
 
         return stderr
 

@@ -6,8 +6,9 @@ GitPython==3.1.43
 langchain==0.2.7
 langchain-community==0.2.7
 langchain-openai==0.1.14
-libclang==14.0.1
-langgraph==0.1.5
-StrEnum==0.4.15
 langchain-text-splitters==0.2.2
 langchain-chroma==0.1.2
+langgraph==0.1.5
+libclang==14.0.1
+StrEnum==0.4.15
+psutil==6.0.0

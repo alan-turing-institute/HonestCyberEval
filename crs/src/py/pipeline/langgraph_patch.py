@@ -13,7 +13,7 @@ from strenum import StrEnum
 
 from api.cp import ChallengeProject
 from api.data_types import Patch, VulnerabilityWithSha
-from api.fs import PatchException, build_lock, write_patch_to_disk
+from api.fs import PatchException, write_patch_to_disk
 from api.llm import (
     ErrorHandler,
     LLMmodel,
@@ -88,7 +88,6 @@ class GraphState(TypedDict):
     model: ChatOpenAI
     project: ChallengeProject
     chat_history: ChatMessageHistory
-    cp_source: str
     cpv_uuid: CPVuuid
     vulnerability: VulnerabilityWithSha
     vuln_code: str
@@ -122,19 +121,20 @@ def patched_file_to_diff(vuln_code, patched_file, bad_file_name):
     return patch_text
 
 
-async def apply_patch_and_check(project: ChallengeProject, cp_source: str, vuln: VulnerabilityWithSha, patch: Patch):
+async def apply_patch_and_check(project: ChallengeProject, vuln: VulnerabilityWithSha, patch: Patch):
     # only one patch should be applied and building at any one time
-    async with build_lock:
+    async with project.build_lock:
         logger.info("Re-building CP with patch")
         try:
-            await project.patch_and_build_project(patch, cp_source)
+            await project.patch_and_build_project(patch, vuln.cp_source)
         finally:
-            project.reset_source_repo(cp_source)
+            project.reset_source_repo(vuln.cp_source)
 
         has_sanitizer_triggered, stderr = await project.run_harness_and_check_sanitizer(
             vuln.input_file,
             vuln.harness_id,
             vuln.sanitizer_id,
+            timeout=True,
         )
         if has_sanitizer_triggered:
             raise HarnessTriggeredAfterPatchException(
@@ -233,7 +233,7 @@ async def check_patch(state: GraphState) -> GraphState:
     patch = Patch(diff=patch_text, diff_file=patch_path)
 
     try:
-        await apply_patch_and_check(state["project"], state["cp_source"], vulnerability, patch)
+        await apply_patch_and_check(state["project"], vulnerability, patch)
     except Exception as error:
         logger.info("Patch check: Failed")
         return GraphState(**{
@@ -314,7 +314,6 @@ async def run_patch_langraph(
     *,
     model_name: LLMmodel,
     project: ChallengeProject,
-    cp_source: str,
     cpv_uuid: CPVuuid,
     vulnerability: VulnerabilityWithSha,
     vuln_code: str,
@@ -333,7 +332,6 @@ async def run_patch_langraph(
         GraphState(**{
             "model": model,
             "project": project,
-            "cp_source": cp_source,
             "chat_history": chat_history,
             "cpv_uuid": cpv_uuid,
             "vulnerability": vulnerability,
