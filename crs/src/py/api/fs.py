@@ -94,7 +94,8 @@ def write_harness_input_to_disk(
     model_name: LLMmodel | Literal["mock"],
 ):
     return write_file_to_scratch(
-        project.input_path / f"harness_{harness_id}_sanitizer_{sanitizer_id}_{model_name}_{i}.blob",
+        project.input_path
+        / f"harness_{harness_id}_sanitizer_{sanitizer_id}_{model_name}_{i}_hash{str(hash(harness_input))[:6]}.blob",
         harness_input,
     )
 
