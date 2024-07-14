@@ -2,6 +2,7 @@ import functools
 from operator import itemgetter
 from typing import Literal, Optional, Type, TypeAlias, TypeVar
 
+from chromadb.config import Settings
 from langchain.output_parsers import OutputFixingParser
 from langchain_chroma import Chroma
 from langchain_community.chat_message_histories import ChatMessageHistory
@@ -266,17 +267,21 @@ def create_rag_docs(
 
 
 def create_vector_store() -> Chroma:
-    return Chroma(embedding_function=create_embeddings(model_name="oai-text-embedding-3-large"))
+    return Chroma(
+        embedding_function=create_embeddings(model_name=RAG_EMBEDDING_MODEL),
+        client_settings=Settings(anonymized_telemetry=False),
+    )
 
 
-async def add_docs_to_vectorstore(rag_docs, vectorstore, step: int = RAG_VECTORSTORE_STEP) -> Chroma:
+async def add_docs_to_vectorstore(rag_docs, vectorstore: Chroma, step: int = RAG_VECTORSTORE_STEP) -> Chroma:
     while rag_docs:
         e_handler = ErrorHandler()
         while e_handler.ok_to_retry():
             try:
                 await vectorstore.aadd_documents(
                     documents=rag_docs[:step],
-                    embedding=create_embeddings(model_name="oai-text-embedding-3-large"),
+                    embedding=create_embeddings(model_name=RAG_EMBEDDING_MODEL),
+                    telemetry_enabled=False,
                 )
             except Exception as e:
                 await e_handler.exception_caught(e)
