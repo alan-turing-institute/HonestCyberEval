@@ -81,6 +81,7 @@ TYPES: TypesDictType = {
 TYPES_FOR_EXTERNAL_DEFINED_VARS: TypesDictType = {
     DeclType.VAR_TYPE: CursorKind.VAR_DECL,  # type: ignore
     DeclType.PARAM_TYPE: CursorKind.PARM_DECL,  # type: ignore
+    DeclType.PARAM_TYPE: CursorKind.PARM_DECL,  # type: ignore
     DeclType.DECL_REF_TYPE: CursorKind.DECL_REF_EXPR,  # type: ignore
 }
 
@@ -248,6 +249,7 @@ class FileDiff(BaseDiff):
     after_ast: Optional[Cursor]
     diff_functions: dict[str, FunctionDiff]
     og_diff: list[str]
+    filepath: str
 
     def __str__(self):
         string_to_print = self.build_full_string("")
@@ -394,19 +396,161 @@ def is_node_local(cursor: Cursor, filename: str) -> bool:
     return cursor.location.file and cursor.location.file.name == filename
 
 
-def parse_snippet(snippet: str, filepath: str) -> Cursor:
-    filename = filepath  # filepath.split("/")[-1]  # only take filename bit of the filepath
+def get_included_files_content(tree, included_filenames, included_files, prefix="", parser_prefix=""):
+
+    for item in tree.trees:
+        path = prefix + "/" + item.name if prefix else item.name
+        # logger.info(f"{item.name} is a {item.type} - {item.trees}")
+        for file in item:
+            if file.name in included_filenames:
+                # logger.info(file.name)
+                filepath = prefix + "/" + file.name
+                file_snippet = (item / file.name).data_stream.read().decode("utf-8")
+                # file_tupple = (f'{parser_prefix}{file.name}', file_snippet)
+                file_tupple = (f"./{file.name}", file_snippet)
+                included_files.append(file_tupple)
+        if item.trees:
+            included_files = get_included_files_content(item, included_filenames, included_files, path, parser_prefix)
+
+    return included_files
+
+
+def get_included_file_names(snippet):
+    # get the include files
+    include_pattern = re.compile(r'#include\s*[<"]([^>"]+)[>"]')
+
+    # Find all matches in the C code string
+    included_filenames = include_pattern.findall(snippet)
+
+    return set(included_filenames)
+
+
+def get_included_files(snippet, commit):
+
+    # get included files from the main code:
+    included_filenames = get_included_file_names(snippet)
+
+    # get the actual file content for each of those files
+    included_files = []
+    included_files = get_included_files_content(commit.tree, included_filenames, included_files)
+
+    include_files_to_search = copy.deepcopy(included_filenames)
+
+    files_to_search = True if len(include_files_to_search) != 0 else False
+
+    parser_prefix = ""
+
+    while files_to_search:
+
+        parser_prefix = "./"
+        files_to_search = False
+        next_files_to_search = set()
+
+        # now for each include file included, find the include files it requires (if any)
+        for file_name, file_string in included_files:
+            if file_name in include_files_to_search:
+                # if name isn't in the list anymore means it's already been searched so don't need to re-search it
+                this_files_include_files = get_included_file_names(file_string)
+
+                # find the include files we haven't looked at yet
+                different_include_files = this_files_include_files - included_filenames
+
+                if len(different_include_files) != 0:
+                    files_to_search = True
+
+                next_files_to_search = next_files_to_search.union(different_include_files)
+                # included_files_to_search =
+
+                # remove this file from the search list:
+                # include_files_to_search.remove(file_name)
+
+        # then get the include file snippets
+        included_files = get_included_files_content(commit.tree, include_files_to_search, included_files)
+
+        include_files_to_search = next_files_to_search
+
+    # filenames_found = set()
+
+    # if len(included_files) != len(included_filenames):
+    #     for file_name, _ in included_files:
+    #         filenames_found.add(file_name)
+
+    #     filenames_not_found = included_filenames - filenames_found
+
+    #     for file_name in filenames_not_found:
+    #         included_files.append((f'./{file_name}', ""))
+
+    if "ngx_auto_headers.h" in included_filenames:
+        logger.info(f"exists")
+
+    return included_files
+
+
+def parse_snippet(snippet: str, filepath: str, commit) -> Cursor:
+
+    filename = filepath.split("/")[-1]  # only take filename bit of the filepath
+
+    logger.debug(f"Parsing {filename}")
 
     # set up unsaved files so can use string of the c code with the libclang parser
     unsaved_files = [(filename, snippet)]
 
+    included_files = get_included_files(snippet, commit)
+
+    not_header_file = True
+
+    if re.search(r"\.h$", filename):
+        not_header_file = False
+        # need to make a fake c file so it can parse
+        fake_c_file = """
+                        #include "{filename}"
+                        """
+        fake_c_file += """
+                        int main() {
+                            return 0;
+                        }
+                        """
+
+        unsaved_files = [("fake_c_file.c", fake_c_file), (f"./{filename}", snippet)]
+        unsaved_files.append(("fake_c_file.c", fake_c_file))
+
+    # included_filenames = []
+
+    # for file_name, _ in included_files:
+    #     included_filenames.append(file_name.split("/")[-1])
+
+    # if 'ngx_auto_headers.h' in included_filenames:
+    #     logger.info(f'def exists')
+
+    # included_files = included_files[::-1]
+
+    unsaved_files = unsaved_files + included_files
+
     # Create an index
     index = clang.cindex.Index.create()
 
+    filename_for_parsing = filename if not_header_file else "fake_c_file.c"
+
     # Parse the code from the string
     translation_unit = index.parse(
-        path=filename, unsaved_files=unsaved_files, options=clang.cindex.TranslationUnit.PARSE_NONE
+        path=filename_for_parsing,
+        unsaved_files=unsaved_files,
+        options=clang.cindex.TranslationUnit.PARSE_INCOMPLETE,
+        args=["-I."],
     )
+
+    for diagnostic in translation_unit.diagnostics:
+        logger.debug(f"Parsing Diagnostics: {diagnostic}")
+
+    # test = FileDiff(name='test.c', before_ast=None, change_type=0, before_commit=None, after_commit=None, after_ast=None, diff_functions=[], og_diff="")
+
+    # logger.info(translation_unit)
+
+    # logger.info(test.ast_string(translation_unit.cursor))
+
+    # if filename == 'nginx.h':
+    # if filename == 'ngx_http_v3_table.c':
+    #     logger.info(test.ast_string(translation_unit.cursor))
 
     return translation_unit.cursor
 
@@ -495,7 +639,7 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
 
         if filepath is not None:
             files_checked.append(filepath)
-            file_extensions = [".c", ".h"]
+            file_extensions = [".c", ".h", ".java", ".in"]
 
             regex_pattern = r"("
             for i, extension in enumerate(file_extensions):
@@ -514,8 +658,7 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
                 filepath = diff.a_path
                 logger.debug(f"Diff b_path is none so file was deleted in commit, diff a_path is: {filepath}.")
 
-        # filename = (filepath.split("/"))[-1]
-        filename = filepath
+        filename = (filepath.split("/"))[-1]
 
         change_type = ChangeType.FUNCTIONAL_CHANGE
 
@@ -536,77 +679,42 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
         except KeyError:
             change_type = ChangeType.FILE_REMOVED
 
-        before_function_lines: FunctionDictType = {}
-        after_function_lines: FunctionDictType = {}
+        before_file_lines = []
+        after_file_lines = []
         before_file_ast: Optional[Cursor] = None
         after_file_ast: Optional[Cursor] = None
-        before_nodes: NodesDictType = {}
-        after_nodes: NodesDictType = {}
+        diff_functions = {}
 
         if change_type in {ChangeType.FUNCTIONAL_CHANGE, ChangeType.FILE_REMOVED} and before_file is not None:
             before_file_lines = clean_up_snippet(before_file)
-            before_file_ast = parse_snippet(before_file, filename)
-            before_nodes = search_ast_for_node_types(before_file_ast, TYPES, filename)
-            before_function_lines = get_full_function_snippets(
-                before_file_lines, before_nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL]
-            )
 
         if change_type in {ChangeType.FUNCTIONAL_CHANGE, ChangeType.FILE_ADDED} and after_file is not None:
             after_file_lines = clean_up_snippet(after_file)
-            after_file_ast = parse_snippet(after_file, filename)
-            after_nodes = search_ast_for_node_types(after_file_ast, TYPES, filename)
-            after_function_lines = get_full_function_snippets(
-                after_file_lines, after_nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL]
-            )
 
-        diff_functions = get_function_diffs(before_function_lines, after_function_lines)
+        # basic check for whitespace changes only:
+        if before_file_lines and after_file_lines:
+            if before_file_lines == after_file_lines:
+                logger.debug(f"Nonfunctional change only in {filename} from {after_commit.hexsha}.")
+                continue  # as only whitespace/comment changes have occurred
 
-        if change_type == ChangeType.FUNCTIONAL_CHANGE:
+        make_file_diff = (
+            True  # using this for now as parsing is causing more issues with this not finding header files stuff
+        )
 
-            before_refs = []
+        # make_file_diff = False
+        # c_file_pattern = re.escape(".c") + "$"
+        # if re.search(c_file_pattern, filename):
+        #     # c file
+        #     diff_functions = c_file_check(filename, before_commit, after_commit, before_file_lines, after_file_lines, change_type)
 
-            if before_nodes:
-                for type_key in before_nodes:
-                    before_refs = before_refs + list(before_nodes[type_key][VarSourceType.FILE_LOCAL].keys())
-                    before_refs = before_refs + list(before_nodes[type_key][VarSourceType.IMPORTED].keys())
+        #     if diff_functions:
+        #         make_file_diff = True
 
-            after_refs = []
-            if after_nodes:
-                for type_key in after_nodes:
-                    after_refs = after_refs + list(before_nodes[type_key][VarSourceType.FILE_LOCAL].keys())
-                    after_refs = after_refs + list(before_nodes[type_key][VarSourceType.IMPORTED].keys())
+        # else:
+        #     # essentially if header file or java so only the whitespace check is used for filtering in those cases atm
+        #     make_file_diff = True
 
-            new_diff_functions = {}
-            for function_name in diff_functions:
-                function_before = diff_functions[function_name].before_lines
-                function_after = diff_functions[function_name].after_lines
-
-                is_functional = is_diff_functional(function_before, function_after, before_refs, after_refs, filename)
-
-                logger.debug(f"Is {function_name} diff functional? {is_functional}")
-
-                if is_functional:
-                    new_diff_functions[function_name] = copy.deepcopy(diff_functions[function_name])
-
-                    if FILE_CODE in after_function_lines:
-                        new_diff_functions[function_name].after_external_variable_decls = (
-                            get_function_external_variables_decl(
-                                function_name, after_nodes, after_function_lines[FILE_CODE]
-                            )
-                        )
-
-                    if FILE_CODE in before_function_lines:
-                        new_diff_functions[function_name].before_external_variable_decls = (
-                            get_function_external_variables_decl(
-                                function_name, before_nodes, before_function_lines[FILE_CODE]
-                            )
-                        )
-
-                    new_diff_functions[function_name].append_external_variable_decls_to_code_lines()
-
-            diff_functions = new_diff_functions
-
-        if diff_functions:
+        if make_file_diff:
             full_file_diff_lines = make_diff(before_file_lines, after_file_lines, filename)
             og_diff = diff.diff.decode("utf-8")
             filename_diffs[filename] = FileDiff(
@@ -621,14 +729,85 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
                 after_ast=after_file_ast,
                 diff_functions=diff_functions,
                 og_diff=og_diff,
+                filepath=filepath,
             )
 
             logger.debug(f"FileDiff created for {filename}.")
-            # logger.debug(f"FileDiffs print for {filename}:")
-            # logger.debug(str(filename_diffs[filename]))
-            # logger.info(abstract_code(before_file_lines, before_file_ast, filename))
 
     return filename_diffs
+
+
+def c_file_check(filename, before_commit, after_commit, before_file_lines, after_file_lines, change_type):
+
+    before_function_lines: FunctionDictType = {}
+    after_function_lines: FunctionDictType = {}
+    before_file_ast: Optional[Cursor] = None
+    after_file_ast: Optional[Cursor] = None
+    before_nodes: NodesDictType = {}
+    after_nodes: NodesDictType = {}
+
+    if change_type in {ChangeType.FUNCTIONAL_CHANGE, ChangeType.FILE_REMOVED} and before_file_lines:
+        before_file_ast = parse_snippet("/n".join(before_file_lines), filename, before_commit)
+        before_nodes = search_ast_for_node_types(before_file_ast, TYPES, filename)
+        before_function_lines = get_full_function_snippets(
+            before_file_lines, before_nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL]
+        )
+
+    if change_type in {ChangeType.FUNCTIONAL_CHANGE, ChangeType.FILE_ADDED} and after_file_lines:
+        after_file_ast = parse_snippet("/n".join(after_file_lines), filename, after_commit)
+        after_nodes = search_ast_for_node_types(after_file_ast, TYPES, filename)
+        after_function_lines = get_full_function_snippets(
+            after_file_lines, after_nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL]
+        )
+
+    diff_functions = get_function_diffs(before_function_lines, after_function_lines)
+
+    if change_type == ChangeType.FUNCTIONAL_CHANGE:
+
+        before_refs = []
+
+        if before_nodes:
+            for type_key in before_nodes:
+                before_refs = before_refs + list(before_nodes[type_key][VarSourceType.FILE_LOCAL].keys())
+                before_refs = before_refs + list(before_nodes[type_key][VarSourceType.IMPORTED].keys())
+
+        after_refs = []
+        if after_nodes:
+            for type_key in after_nodes:
+                after_refs = after_refs + list(before_nodes[type_key][VarSourceType.FILE_LOCAL].keys())
+                after_refs = after_refs + list(before_nodes[type_key][VarSourceType.IMPORTED].keys())
+
+        new_diff_functions = {}
+        for function_name in diff_functions:
+            function_before = diff_functions[function_name].before_lines
+            function_after = diff_functions[function_name].after_lines
+
+            is_functional = is_diff_functional(function_before, function_after, before_refs, after_refs, filename)
+
+            logger.debug(f"Is {function_name} diff functional? {is_functional}")
+
+            if is_functional:
+                new_diff_functions[function_name] = copy.deepcopy(diff_functions[function_name])
+
+                if FILE_CODE in after_function_lines:
+                    new_diff_functions[function_name].after_external_variable_decls = (
+                        get_function_external_variables_decl(
+                            function_name, after_nodes, after_function_lines[FILE_CODE]
+                        )
+                    )
+
+                if FILE_CODE in before_function_lines:
+                    new_diff_functions[function_name].before_external_variable_decls = (
+                        get_function_external_variables_decl(
+                            function_name, before_nodes, before_function_lines[FILE_CODE]
+                        )
+                    )
+
+                new_diff_functions[function_name].append_external_variable_decls_to_code_lines()
+
+        diff_functions = new_diff_functions
+
+    return diff_functions
 
 
 def make_diff(before: list[str], after: list[str], filename: str = "") -> list[str]:
@@ -821,29 +1000,18 @@ def is_diff_functional(
     if function_before_code == function_after_code:  # could also probs check the asts here instead??
         return False  # no functional change made
 
-    # decl_ref_types = {
-    #     DeclType.VAR_TYPE: CursorKind.VAR_DECL, # type: ignore
-    #     DeclType.DECL_REF_TYPE: CursorKind.DECL_REF_EXPR, # type: ignore
-    #     DeclType.PARAM_TYPE: CursorKind.PARAM_DECL, # type: ignore
-    #     }
-    # before_nodes = search_ast_for_node_types(before_ast, decl_ref_types, filename)
-    # after_nodes = search_ast_for_node_types(after_ast, decl_ref_types, filename)
-
-    # vars referenced only?
-    # before_refs = set(list(before_nodes[DeclType.DECL_REF_TYPE][VarSourceType.FILE_LOCAL].keys()) + list(before_nodes[DeclType.DECL_REF_TYPE][VarSourceType.IMPORTED].keys()))
-    # after_refs = set(list(after_nodes[DeclType.DECL_REF_TYPE][VarSourceType.FILE_LOCAL].keys()) + list(after_nodes[DeclType.DECL_REF_TYPE][VarSourceType.IMPORTED].keys()))
-
     before_refs = get_function_refs(function_before_code, all_refs_before)
     after_refs = get_function_refs(function_after_code, all_refs_after)
 
-    # logger.info(f'variables referenced: {after_refs}')
+    if len(function_before_code) != len(function_after_code):
+        # as white space is removed, if the length is different can likely assume a more functional change has occurred?
+        return True
 
     variables_same = before_refs == after_refs
 
     # logger.info(f'variables are the same? {variables_same}')
     if variables_same:
         # check for non-functional reordering
-        # logger.info(f"variable_lines reordered?: {check_functional_diff_in_variable_lines_order(function_before_code, function_after_code, before_refs)}")
 
         return check_functional_diff_in_variable_lines_order(function_before_code, function_after_code, before_refs)
 
