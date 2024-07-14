@@ -8,12 +8,12 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.graph import CompiledGraph
+from params import BACKUP_MODEL_GEMINI, MAX_ALLOWED_HISTORY_CHARS, NUM_MESSAGES_PER_ROUND
 from strenum import StrEnum
 
 from api.cp import ChallengeProject
 from api.fs import write_harness_input_to_disk
 from api.llm import (
-    MAX_ALLOWED_HISTORY_CHARS,
     ErrorHandler,
     LLMmodel,
     add_structured_output,
@@ -148,7 +148,7 @@ async def probe(state: GraphState) -> GraphState:
         | add_structured_output(  # type: ignore  # types around with_structured_output are a mess
             model,
             ProbeResult,
-            "oai-gpt-4o",
+            BACKUP_MODEL_GEMINI,
         ),
         # | model.with_structured_output(ProbeResult),
         lambda _: state["chat_history"],
@@ -214,14 +214,14 @@ async def generate(state: GraphState) -> GraphState:
         logger.debug("Had to unfortunately prune chat history!")
         old_messages = state["chat_history"].messages
         state["chat_history"].clear()
-        state["chat_history"].add_messages([old_messages[0]] + old_messages[-4:])
+        state["chat_history"].add_messages([old_messages[0]] + old_messages[-NUM_MESSAGES_PER_ROUND:])
 
     harness_input_gen_chain = RunnableWithMessageHistory(
         prompt
         | add_structured_output(  # type: ignore  # types around with_structured_output are a mess
             model,
             HarnessInput,
-            "oai-gpt-4o",
+            BACKUP_MODEL_GEMINI,
         ),
         lambda _: state["chat_history"],
         output_messages_key="ai_message",

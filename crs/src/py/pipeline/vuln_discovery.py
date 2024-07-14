@@ -1,10 +1,9 @@
 import pprint
-from enum import auto
 from itertools import product
 from pathlib import Path
 from typing import Optional
 
-from strenum import StrEnum
+from params import VD_CHOSEN_DETAIL_LEVEL, VD_MAX_LLM_TRIALS, VD_MODEL_LIST, VD_TOP_RAG_DOCS, VDDetailLevel
 
 from api.cp import ChallengeProjectReadOnly
 from api.data_types import Vulnerability, VulnerabilityWithSha
@@ -32,14 +31,6 @@ b
 
 501
 """
-
-
-class VDDetailLevel(StrEnum):
-    LATEST_FILES = auto()
-    COMMIT_FILES = auto()
-    COMMIT_FUNCS = auto()
-    FILE_DIFFS = auto()
-    FUNC_DIFFS = auto()
 
 
 def remove_duplicate_vulns(vulnerabilities: list[VulnerabilityWithSha]) -> list[VulnerabilityWithSha]:
@@ -78,7 +69,7 @@ class VulnDiscovery:
     ) -> Optional[Vulnerability]:
 
         sanitizer, error_code = self.project_read_only.sanitizers[sanitizer_id]
-        models: list[LLMmodel] = ["oai-gpt-4o", "gemini-1.5-pro", "claude-3.5-sonnet"]
+        models: list[LLMmodel] = VD_MODEL_LIST
 
         for model_name in models:
             try:
@@ -189,7 +180,7 @@ class VulnDiscovery:
 
         return vulnerabilities_with_sha
 
-    async def detect_vulns_rag(self, retriever, max_trials: int = 2) -> list[Vulnerability]:
+    async def detect_vulns_rag(self, retriever, max_trials: int = VD_MAX_LLM_TRIALS) -> list[Vulnerability]:
         vulnerabilities = []
         for harness_id in self.project_read_only.harnesses.keys():
             for sanitizer_id in self.project_read_only.sanitizers.keys():
@@ -210,31 +201,6 @@ class VulnDiscovery:
 
                     if vuln:
                         vulnerabilities.append(vuln)
-        return vulnerabilities
-
-    async def detect_vulns_in_commits(
-        self, preprocessed_commits: ProcessedCommits, top_docs: int = 1, use_funcdiffs: bool = False
-    ) -> list[Vulnerability]:
-        vulnerabilities = []
-
-        for commit_sha, commit in preprocessed_commits.items():
-            logger.info(f"Commit: {commit_sha}")
-
-            files, funcs = [], []
-            for filename in commit:
-                file_diff = commit[filename]
-                files.append(file_diff.after_str())
-
-                for function_diff_name in file_diff.diff_functions:
-                    function_diff = file_diff.diff_functions[function_diff_name]
-                    funcs.extend([function_diff.after_str(), function_diff.diff_str()])
-
-            text_list = funcs if use_funcdiffs else files
-            rag_docs = create_rag_docs(text_list, self.project_read_only.language)
-            retriever = get_retriever(code_docs=rag_docs, topk=top_docs, embedding_model="oai-text-embedding-3-large")
-
-            vulns = await self.detect_vulns_rag(retriever)
-            vulnerabilities.extend(vulns)
         return vulnerabilities
 
     async def detect_with_unified_vectorstore(
@@ -323,9 +289,8 @@ class VulnDiscovery:
         self.project_read_only = project_read_only
         self.cp_source = cp_source
 
-        # vulnerabilities = await self.detect_vulns_in_commits(preprocessed_commits, top_docs=1)
         vulnerabilities = await self.detect_with_unified_vectorstore(
-            preprocessed_commits, top_docs=10, detail_level=VDDetailLevel.LATEST_FILES
+            preprocessed_commits, top_docs=VD_TOP_RAG_DOCS, detail_level=VD_CHOSEN_DETAIL_LEVEL
         )
 
         logger.info(f"Found {len(vulnerabilities)} vulnerabilities")

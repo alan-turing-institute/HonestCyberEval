@@ -15,6 +15,14 @@ from langchain_core.runnables import RunnableMap, RunnablePassthrough
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import Language, RecursiveCharacterTextSplitter
+from params import (
+    MAX_BACKUP_LLM_RETRIES,
+    MAX_CHAT_CLIENT_RETRIES,
+    RAG_CHUNK_OVERLAP,
+    RAG_CHUNK_SIZE,
+    RAG_EMBEDDING_MODEL,
+    RAG_VECTORSTORE_STEP,
+)
 
 from config import AIXCC_LITELLM_HOSTNAME, LITELLM_KEY
 from logger import logger
@@ -69,15 +77,13 @@ EmbeddingModel: TypeAlias = Literal[
     "textembedding-gecko",
 ]
 
-MAX_ALLOWED_HISTORY_CHARS = 100_000  # divide by 4 to get approx. number of tokens tokens
-
 
 def create_chat_client(model_name: LLMmodel) -> ChatOpenAI:
     model = ChatOpenAI(
         model=model_name,
         api_key=SecretStr(LITELLM_KEY),
         base_url=AIXCC_LITELLM_HOSTNAME,
-        max_retries=1,
+        max_retries=MAX_CHAT_CLIENT_RETRIES,
     )
     return model
 
@@ -105,7 +111,7 @@ class CustomOutputFixingParser(OutputFixingParser[T]):
         schema,
         parser: PydanticOutputParser,
         prompt: BasePromptTemplate = input_fixing_prompt,
-        max_retries: int = 1,
+        max_retries: int = MAX_BACKUP_LLM_RETRIES,
     ) -> OutputFixingParser[T]:
         chain = prompt | add_structured_output(llm, schema)
         return cls(parser=parser, retry_chain=chain, max_retries=max_retries)
@@ -245,8 +251,8 @@ def create_rag_docs(
     cp_text_list: list[str],
     cp_language: str,
     metadatas=None,
-    chunk_size: int = 1000,
-    chunk_overlap: int = 0,
+    chunk_size: int = RAG_CHUNK_SIZE,
+    chunk_overlap: int = RAG_CHUNK_OVERLAP,
 ):
     if metadatas is None:
         metadatas = []
@@ -263,7 +269,7 @@ def create_vector_store() -> Chroma:
     return Chroma(embedding_function=create_embeddings(model_name="oai-text-embedding-3-large"))
 
 
-async def add_docs_to_vectorstore(rag_docs, vectorstore, step: int = 50) -> Chroma:
+async def add_docs_to_vectorstore(rag_docs, vectorstore, step: int = RAG_VECTORSTORE_STEP) -> Chroma:
     while rag_docs:
         e_handler = ErrorHandler()
         while e_handler.ok_to_retry():
@@ -282,6 +288,6 @@ async def add_docs_to_vectorstore(rag_docs, vectorstore, step: int = 50) -> Chro
     return vectorstore
 
 
-def get_retriever(code_docs, topk: int = 1, embedding_model: EmbeddingModel = "oai-text-embedding-3-large"):
+def get_retriever(code_docs, topk: int = 1, embedding_model: EmbeddingModel = RAG_EMBEDDING_MODEL):
     vectorstore = Chroma.from_documents(documents=code_docs, embedding=create_embeddings(model_name=embedding_model))
     return vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": topk})

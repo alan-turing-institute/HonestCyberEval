@@ -9,6 +9,7 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.graph import CompiledGraph
+from params import BACKUP_MODEL_GEMINI
 from strenum import StrEnum
 
 from api.cp import ChallengeProject
@@ -176,7 +177,7 @@ async def generate(state: GraphState) -> GraphState:
         | add_structured_output(  # type: ignore  # types around with_structured_output are a mess
             model,
             PatchedFile,
-            "oai-gpt-4o",
+            BACKUP_MODEL_GEMINI,
         ),
         lambda _: chat_history,
         output_messages_key="ai_message",

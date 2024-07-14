@@ -2,14 +2,15 @@ import asyncio
 from typing import List, NoReturn
 
 from openai import APIStatusError, RateLimitError
+from params import ERROR_HANDLER_DELAYS, ERROR_HANDLER_RETRIES
 
 from logger import logger
 
 
 class ErrorHandler(Exception):
 
-    RETRIES: int = 4
-    DELAYS: List[float] = [10, 20, 30, 60]
+    RETRIES: int = ERROR_HANDLER_RETRIES
+    DELAYS: list[float] = ERROR_HANDLER_DELAYS
 
     def __init__(self):
         self.attempts = -1

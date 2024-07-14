@@ -2,6 +2,8 @@ import pprint
 from pathlib import Path
 from typing import Optional
 
+from params import PATCH_MAX_LLM_TRIALS, PATCH_MODEL_LIST
+
 from api.cp import ChallengeProject
 from api.data_types import Patch, VulnerabilityWithSha
 from api.fs import write_patch_to_disk
@@ -64,9 +66,14 @@ class PatchGen:
         return mock_patches[f"id_{i}"]
 
     async def gen_patch_langgraph(
-        self, cpv_uuid, vulnerability: VulnerabilityWithSha, vuln_code: str, bad_file: str, max_trials: int = 3
+        self,
+        cpv_uuid,
+        vulnerability: VulnerabilityWithSha,
+        vuln_code: str,
+        bad_file: str,
+        max_trials: int = PATCH_MAX_LLM_TRIALS,
     ) -> Optional[Patch]:
-        models: list[LLMmodel] = ["oai-gpt-4o", "claude-3.5-sonnet", "gemini-1.5-pro"]
+        models: list[LLMmodel] = PATCH_MODEL_LIST
         for model_name in models:
             try:
                 output = await run_patch_langraph(
