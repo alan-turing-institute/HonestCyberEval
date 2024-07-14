@@ -175,7 +175,7 @@ class VulnDiscovery:
 
                 for doc in retrieved_docs:
                     logger.debug(f"Using document:\n{pprint.pformat(doc)}")
-                    logger.info(f"Using document:\n{doc.metadata}")
+                    logger.info(f"Using document: {doc.metadata}")
                     vuln = await self.harness_input_langgraph(
                         harness_id=harness_id,
                         sanitizer_id=sanitizer_id,
@@ -220,27 +220,28 @@ class VulnDiscovery:
     ) -> list[Vulnerability]:
 
         files_latest, files, file_diffs, funcs, func_diffs = [], [], [], [], []
-        file_names, file_commits, func_commits = [], [], []
+        file_paths, func_paths, func_names, file_commits, func_commits = [], [], [], [], []
         vectorstore = create_vector_store()
 
         for commit_sha, commit in preprocessed_commits.items():
 
             for filename in commit:
                 file_diff = commit[filename]
+                file_path = file_diff.filepath
 
                 try:
                     file_latest = self.project_read_only.open_project_source_file(
-                        self.cp_source, file_path=Path(filename)
+                        self.cp_source, file_path=Path(file_path)
                     )
                 except FileNotFoundError:
-                    pass
+                    logger.warning(f"The file {file_path} was not found")
                 else:
                     # populate lists of strings
                     files.append(file_diff.after_str())
                     file_diffs.append(file_diff.diff_str())
                     files_latest.append(file_latest)
                     file_commits.append(commit_sha)
-                    file_names.append(filename)
+                    file_paths.append(file_path)
 
                     for function_diff_name in file_diff.diff_functions:
                         function_diff = file_diff.diff_functions[function_diff_name]
@@ -249,32 +250,39 @@ class VulnDiscovery:
                         funcs.append(function_diff.after_str())
                         func_diffs.append(function_diff.diff_str())
                         func_commits.append(commit_sha)
-                        file_names.append(filename)
+                        func_paths.append(file_path)
+                        func_names.append(function_diff_name)
 
         metadatas = []
         match detail_level:
             case VDDetailLevel.LATEST_FILES:
-                text_list = list(set(files_latest))
-                metadatas = [{"file": filename} for filename in list(set(file_names))]
+                unique_paths, text_list = [], []
+                for text, path in zip(files_latest, file_paths):
+                    if path not in unique_paths:
+                        unique_paths.append(path)
+                        text_list.append(text)
+                metadatas = [{"file": filename} for filename in unique_paths]
             case VDDetailLevel.COMMIT_FILES:
                 text_list = files
                 metadatas = [
-                    {"commit": commit_sha, "file": filename} for commit_sha, filename in zip(file_commits, file_names)
+                    {"commit": commit_sha, "file": filename} for commit_sha, filename in zip(file_commits, file_paths)
                 ]
             case VDDetailLevel.COMMIT_FUNCS:
                 text_list = funcs
                 metadatas = [
-                    {"commit": commit_sha, "file": filename} for commit_sha, filename in zip(func_commits, file_names)
+                    {"commit": commit_sha, "file": filename, "function": funcname}
+                    for commit_sha, filename, funcname in zip(func_commits, func_paths, func_names)
                 ]
             case VDDetailLevel.FILE_DIFFS:
                 text_list = file_diffs
                 metadatas = [
-                    {"commit": commit_sha, "file": filename} for commit_sha, filename in zip(file_commits, file_names)
+                    {"commit": commit_sha, "file": filename} for commit_sha, filename in zip(file_commits, file_paths)
                 ]
             case VDDetailLevel.FUNC_DIFFS:
                 text_list = func_diffs
                 metadatas = [
-                    {"commit": commit_sha, "file": filename} for commit_sha, filename in zip(func_commits, file_names)
+                    {"commit": commit_sha, "file": filename, "function": funcname}
+                    for commit_sha, filename, funcname in zip(func_commits, func_paths, func_names)
                 ]
 
         rag_docs = create_rag_docs(text_list, self.project_read_only.language, metadatas=metadatas)
