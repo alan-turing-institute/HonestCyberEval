@@ -107,7 +107,7 @@ C_TYPES_FOR_ABSTRACT: CTypesDictType = {
     CDeclType.FIELD_TYPE: CursorKind.FIELD_DECL,  # type: ignore
 }
 
-JavaTypesDictType: TypeAlias = dict[JavaDeclType, javalang.ast.MetaNode]
+JavaTypesDictType: TypeAlias = dict[JavaDeclType, javalang.ast.MetaNode]  # type: ignore
 
 JAVA_TYPES: JavaTypesDictType = {
     JavaDeclType.METHOD_TYPE: javalang.tree.MethodDeclaration,  # type: ignore
@@ -629,8 +629,8 @@ def _search_ast_for_node_type(
 def parse_java_snippet(java_snippet):
 
     try:
-        tree: javalang.tree.CompilationUnit = javalang.parse.parse(java_snippet)
-    except javalang.parser.JavaSyntaxError as e:
+        tree: javalang.tree.CompilationUnit = javalang.parse.parse(java_snippet)  # type: ignore
+    except javalang.parser.JavaSyntaxError as e:  # type: ignore
         error_location = e.at
         logger.debug(f"JavaSyntaxError: {e.description} at {error_location}")
         return None, {}
@@ -908,8 +908,8 @@ def java_file_check(filename, before_commit, after_commit, before_file_lines, af
 
     before_function_lines: FunctionDictType = {}
     after_function_lines: FunctionDictType = {}
-    before_file_ast: Optional[javalang.tree.CompilationUnit] = None
-    after_file_ast: Optional[javalang.tree.CompilationUnit] = None
+    before_file_ast: Optional[javalang.tree.CompilationUnit] = None  # type: ignore
+    after_file_ast: Optional[javalang.tree.CompilationUnit] = None  # type: ignore
     before_nodes = {}
     after_nodes = {}
 
