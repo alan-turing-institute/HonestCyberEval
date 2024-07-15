@@ -24,12 +24,6 @@ from api.llm import (
     fix_anthropic_weirdness,
     placeholder_fix_anthropic_weirdness,
 )
-<<<<<<< HEAD
-=======
-from logger import add_prefix_to_logger, logger
-
-logger = add_prefix_to_logger(logger, "Patching Graph")
->>>>>>> main
 
 
 class HarnessTriggeredAfterPatchException(PatchException):
