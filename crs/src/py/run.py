@@ -63,7 +63,7 @@ async def run():
 
         deduped_vulnerabilities = remove_duplicate_vulns(vulnerabilities)
         project_writeable = await project_read_only.writeable_copy_async
-        await submit_vuln_and_patch(*[
+        await asyncio.gather(*[
             submit_vuln_and_patch(
                 vulnerability,
                 project_writeable,
