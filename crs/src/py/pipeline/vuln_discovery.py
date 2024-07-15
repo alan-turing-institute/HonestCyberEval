@@ -1,5 +1,6 @@
 import asyncio
 import pprint
+import random
 from dataclasses import asdict
 from itertools import product
 from pathlib import Path
@@ -184,6 +185,24 @@ class VulnDiscovery:
 
         return vulnerabilities_with_sha
 
+    async def detect_vulns_norag(self, docs, max_trials: int = VD_MAX_LLM_TRIALS) -> list[Vulnerability]:
+        vulnerabilities = []
+        for harness_id in self.project_read_only.harnesses.keys():
+            for sanitizer_id in self.project_read_only.sanitizers.keys():
+                for doc in docs:
+                    logger.debug(f"Using document:\n{pprint.pformat(doc)}")
+                    logger.info(f"Using document: {doc.metadata}")
+                    vuln = await self.harness_input_langgraph(
+                        harness_id=harness_id,
+                        sanitizer_id=sanitizer_id,
+                        code_snippet=doc.page_content,
+                        max_trials=max_trials,
+                    )
+
+                    if vuln:
+                        vulnerabilities.append(vuln)
+        return vulnerabilities
+
     async def detect_vulns_rag(self, retriever, max_trials: int = VD_MAX_LLM_TRIALS) -> list[Vulnerability]:
         vulnerabilities = []
         for harness_id in self.project_read_only.harnesses.keys():
@@ -288,7 +307,14 @@ class VulnDiscovery:
                 ]
 
         rag_docs = create_rag_docs(text_list, self.project_read_only.language, metadatas=metadatas)
-        vectorstore = await add_docs_to_vectorstore(rag_docs, vectorstore)
+
+        try:
+            vectorstore = await add_docs_to_vectorstore(rag_docs, vectorstore)
+        except Exception as error:
+            logger.info(f"RAG Failed: {error}")
+            logger.info("Proceeding with randomly chosen documents")
+            return await self.detect_vulns_norag(random.sample(rag_docs, k=min(top_docs, len(rag_docs))))
+
         logger.info(f"Total number of RAG docs in vector store: {len(vectorstore. get()['documents'])}")
         retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": top_docs})
 

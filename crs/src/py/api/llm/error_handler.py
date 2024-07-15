@@ -4,7 +4,9 @@ from typing import List, NoReturn
 from openai import APIStatusError, RateLimitError
 from params import ERROR_HANDLER_DELAYS, ERROR_HANDLER_RETRIES
 
-from logger import logger
+from logger import add_prefix_to_logger, logger
+
+logger = add_prefix_to_logger(logger, "Error Handler")
 
 
 class ErrorHandler(Exception):
