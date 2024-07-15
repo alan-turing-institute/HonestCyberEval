@@ -1248,7 +1248,7 @@ def create_file_patch(file_lines, new_lines, filename=""):
 
     generic_function_name_pattern = r"\b\w+\(.*\)\s*{?$"
     close_code_block_pattern = r"}"
-    
+
     start_of_functions_index = -1
     end_of_functions_index = -1
 
@@ -1258,13 +1258,13 @@ def create_file_patch(file_lines, new_lines, filename=""):
 
     for i, line in enumerate(file_lines[::-1]):
         if re.search(close_code_block_pattern, line):
-            end_of_functions_index = len(file_lines) - i 
+            end_of_functions_index = len(file_lines) - i
 
     old_trailing_lines = file_lines[end_of_functions_index:]
 
-    new_file = new_lines[:-len(old_trailing_lines)]
+    new_file = new_lines[: -len(old_trailing_lines)]
     new_file += file_lines[start_of_functions_index:end_of_functions_index]
-    new_file += new_lines[-len(old_trailing_lines):]
+    new_file += new_lines[-len(old_trailing_lines) :]
 
     diff = make_diff(file_lines, new_file, filename)
 
@@ -1272,6 +1272,10 @@ def create_file_patch(file_lines, new_lines, filename=""):
 
 
 def create_patch(function_name, file_lines, new_function_lines, filename=""):
+
+    if not isinstance(file_lines, list):
+        file_lines = clean_up_snippet(file_lines)
+
     open_code_block_pattern = r"{"
     close_code_block_pattern = r"}"
     lines = copy.deepcopy(file_lines)
@@ -1315,6 +1319,9 @@ MAX_LINES_FOR_SPLIT = 400
 
 
 def split_file_for_patching(file_lines):
+    if not isinstance(file_lines, list):
+        file_lines = clean_up_snippet(file_lines)
+
     open_code_block_pattern = r"{"
     close_code_block_pattern = r"}"
 
@@ -1361,8 +1368,6 @@ def split_file_for_patching(file_lines):
             file_lines = file_lines[last_convenient_cut_off:]
         elif len(file_lines) < MAX_LINES_FOR_SPLIT:
             break
-        
-        # assert new_split_lines[-1] != file_lines[0]
 
     logger.info(f"new total length: {split_files_length}, old length {file_length}")
     assert split_files_length == file_length
