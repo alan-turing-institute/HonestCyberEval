@@ -8,10 +8,7 @@ from api.data_types import Patch, VulnerabilityWithSha
 from api.fs import write_patch_to_disk
 from api.llm import LLMmodel, format_chat_history
 from logger import logger
-from pipeline.langgraph_patch import (
-    patched_file_to_diff,
-    run_patch_langraph,
-)
+from pipeline.langgraph_patch import patched_file_to_diff, run_patch_langraph
 
 from .preprocess_commits import ProcessedCommits
 
@@ -127,12 +124,12 @@ class PatchGen:
 
                     vuln_code = "".join(f + "\n" for f in funcs) if use_funcdiffs else file_text
 
-                patch = await self.gen_patch_langgraph(
-                    vulnerability=vulnerability, vuln_code=vuln_code, bad_file=filename
-                )
+                    patch = await self.gen_patch_langgraph(
+                        vulnerability=vulnerability, vuln_code=vuln_code, bad_file=filename
+                    )
 
-                if patch:
-                    return
+                    if patch:
+                        return
 
         else:
             logger.warning(f"NO FUNCTIONAL COMMIT MATCHES VULN COMMIT")

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import NamedTuple, TypeAlias, Optional, Literal
+from typing import Literal, NamedTuple, Optional, TypeAlias
 
 from pydantic.dataclasses import dataclass
 

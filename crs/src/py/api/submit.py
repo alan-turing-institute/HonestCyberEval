@@ -3,12 +3,12 @@ import base64
 from typing import TypedDict
 
 from aiohttp import BasicAuth, ClientSession
-
-from config import AIXCC_VDS_URL, AIXCC_GP_URL, AIXCC_HEALTHCHECK_URL
-from logger import logger
 from params import RETRY_SUBMISSIONS
 
-from .data_types import Patch, VulnerabilityWithSha, CPVuuid, CAPIStatus
+from config import AIXCC_GP_URL, AIXCC_HEALTHCHECK_URL, AIXCC_VDS_URL
+from logger import logger
+
+from .data_types import CAPIStatus, CPVuuid, Patch, VulnerabilityWithSha
 
 
 class ProofOfVulnerability(TypedDict):
