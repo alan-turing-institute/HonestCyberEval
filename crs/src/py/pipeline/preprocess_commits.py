@@ -768,7 +768,6 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
 
         if change_type in {ChangeType.FUNCTIONAL_CHANGE, ChangeType.FILE_ADDED} and after_file is not None:
             after_file_lines = clean_up_snippet(after_file)
-            split_file_for_patching(after_file_lines)
 
         # basic check for whitespace changes only:
         if before_file_lines and after_file_lines:
