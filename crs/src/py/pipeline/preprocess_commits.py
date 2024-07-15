@@ -1283,7 +1283,7 @@ def create_patch(function_name, file_lines, new_function_lines, filename=""):
     lines = copy.deepcopy(file_lines)
 
     if function_name == FILE_CODE:
-        return create_file_patch(file_lines, new_lines, filename=filename)
+        return create_file_patch(file_lines, new_function_lines, filename=filename)
 
     function_name_pattern = r"\b" + function_name + r"\(.*\)\s*{?$"
 
