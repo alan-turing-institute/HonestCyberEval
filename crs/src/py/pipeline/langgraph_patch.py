@@ -9,7 +9,7 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.graph import CompiledGraph
-from params import BACKUP_MODEL_GEMINI
+from params import BACKUP_MODEL_GEMINI, MAX_ALLOWED_HISTORY_CHARS, NUM_MESSAGES_PER_ROUND
 from strenum import StrEnum
 
 from api.cp import ChallengeProject
@@ -171,6 +171,14 @@ async def generate(state: GraphState) -> GraphState:
         else:
             question = f"""The previous solution produced: \n {error}
                         Generate another patch that fixes the code."""
+
+    # prune chat history
+    logger.debug(f"Chat history length [chars]: {len(state['chat_history'].__str__())}")
+    if state["iterations"] > 1 and len(state["chat_history"].__str__()) > MAX_ALLOWED_HISTORY_CHARS:
+        logger.debug("Had to unfortunately prune chat history!")
+        old_messages = state["chat_history"].messages
+        state["chat_history"].clear()
+        state["chat_history"].add_messages([old_messages[0]] + old_messages[-NUM_MESSAGES_PER_ROUND:])
 
     patch_gen_chain = RunnableWithMessageHistory(
         patch_gen_prompt

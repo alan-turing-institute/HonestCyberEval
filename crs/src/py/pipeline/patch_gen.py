@@ -118,22 +118,29 @@ class PatchGen:
             commit = preprocessed_commits[vulnerability.commit]
 
             for filename, file_diff in commit.items():
+                file_path = file_diff.filepath
 
                 # file_text = file_diff.after_str()
-                file_text = self.project.open_project_source_file(vulnerability.cp_source, Path(filename))
 
-                funcs = []
-                for function_diff in file_diff.diff_functions.values():
-                    funcs.append(function_diff.after_str())
+                try:
+                    file_text = self.project.open_project_source_file(vulnerability.cp_source, Path(file_path))
 
-                vuln_code = "".join(f + "\n" for f in funcs) if use_funcdiffs else file_text
+                except FileNotFoundError:
+                    logger.warning(f"The file {file_path} was not found")
 
-                patch = await self.gen_patch_langgraph(
-                    cpv_uuid=cpv_uuid, vulnerability=vulnerability, vuln_code=vuln_code, bad_file=filename
-                )
+                else:
+                    funcs = []
+                    for function_diff in file_diff.diff_functions.values():
+                        funcs.append(function_diff.after_str())
 
-                if patch:
-                    return patch
+                    vuln_code = "".join(f + "\n" for f in funcs) if use_funcdiffs else file_text
+
+                    patch = await self.gen_patch_langgraph(
+                        cpv_uuid=cpv_uuid, vulnerability=vulnerability, vuln_code=vuln_code, bad_file=file_path
+                    )
+
+                    if patch:
+                        return patch
 
         else:
             logger.warning(f"NO FUNCTIONAL COMMIT MATCHES VULN COMMIT")
