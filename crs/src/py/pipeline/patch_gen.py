@@ -124,11 +124,11 @@ class PatchGen:
 
                     vuln_code = "".join(f + "\n" for f in funcs) if use_funcdiffs else file_text
 
-                    patch = await self.gen_patch_langgraph(
+                    await self.gen_patch_langgraph(
                         vulnerability=vulnerability, vuln_code=vuln_code, bad_file=filename
                     )
 
-                    if patch:
+                    if vulnerability.patch:
                         return
 
         else:
