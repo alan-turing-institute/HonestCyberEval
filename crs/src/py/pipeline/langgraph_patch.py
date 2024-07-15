@@ -1,5 +1,6 @@
 import difflib
 from enum import auto
+from logging import Logger
 from typing import Literal, Optional, TypedDict
 
 from langchain_community.chat_message_histories import ChatMessageHistory
@@ -23,9 +24,6 @@ from api.llm import (
     fix_anthropic_weirdness,
     placeholder_fix_anthropic_weirdness,
 )
-from logger import add_prefix_to_logger, logger
-
-logger = add_prefix_to_logger(logger, "Patching Graph")
 
 
 class HarnessTriggeredAfterPatchException(PatchException):
@@ -98,6 +96,7 @@ class GraphState(TypedDict):
     patched_file: str
     iterations: int
     max_iterations: int
+    logger: Logger
 
 
 class Nodes(StrEnum):
@@ -123,7 +122,6 @@ def patched_file_to_diff(vuln_code, patched_file, bad_file_name):
 async def apply_patch_and_check(project: ChallengeProject, vuln: VulnerabilityWithSha, patch: Patch):
     # only one patch should be applied and building at any one time
     async with project.build_lock:
-        logger.info("Re-building CP with patch")
         try:
             await project.patch_and_build_project(patch, vuln.cp_source)
         finally:
@@ -152,7 +150,7 @@ async def apply_patch_and_check(project: ChallengeProject, vuln: VulnerabilityWi
 
 # Nodes
 async def generate(state: GraphState) -> GraphState:
-    logger.info("Generating patch")
+    state["logger"].info("Generating patch")
 
     chat_history = state["chat_history"]
     error = state["error"]
@@ -171,9 +169,9 @@ async def generate(state: GraphState) -> GraphState:
                         Generate another patch that fixes the code."""
 
     # prune chat history
-    logger.debug(f"Chat history length [chars]: {len(state['chat_history'].__str__())}")
+    state["logger"].debug(f"Chat history length [chars]: {len(state['chat_history'].__str__())}")
     if state["iterations"] > 1 and len(state["chat_history"].__str__()) > MAX_ALLOWED_HISTORY_CHARS:
-        logger.debug("Had to unfortunately prune chat history!")
+        state["logger"].debug("Had to unfortunately prune chat history!")
         old_messages = state["chat_history"].messages
         state["chat_history"].clear()
         state["chat_history"].add_messages([old_messages[0]] + old_messages[-NUM_MESSAGES_PER_ROUND:])
@@ -227,7 +225,7 @@ async def generate(state: GraphState) -> GraphState:
 
 
 async def check_patch(state: GraphState) -> GraphState:
-    logger.info("Checking patch")
+    state["logger"].info("Checking patch")
 
     vulnerability = state["vulnerability"]
     model_name: LLMmodel = state["model"].model_name  # type: ignore  # we know it's one of the models...
@@ -238,15 +236,16 @@ async def check_patch(state: GraphState) -> GraphState:
     patch = Patch(diff=patch_text, diff_file=patch_path, vulnerability=vulnerability)
 
     try:
+        state["logger"].info("Re-building CP with patch")
         await apply_patch_and_check(state["project"], vulnerability, patch)
     except Exception as error:
-        logger.info("Patch check: Failed")
+        state["logger"].info("Patch check: Failed")
         return GraphState(**{
             **state,
             "error": error,
         })
 
-    logger.info("Patch check: Passed")
+    state["logger"].info("Patch check: Passed")
     return GraphState(**{
         **state,
         "error": None,
@@ -254,7 +253,7 @@ async def check_patch(state: GraphState) -> GraphState:
 
 
 async def reflect(state: GraphState) -> GraphState:
-    logger.info("Generating patch reflections")
+    state["logger"].info("Generating patch reflections")
 
     model = state["model"]
     reflection_chain = RunnableWithMessageHistory(
@@ -284,10 +283,10 @@ async def reflect(state: GraphState) -> GraphState:
 # Branches
 def check_if_finished(state: GraphState) -> Literal[Nodes.END, Nodes.REFLECT, Nodes.GENERATE]:
     if (not state["error"]) or state["iterations"] == state["max_iterations"]:
-        logger.info("Decision: Finish")
+        state["logger"].info("Decision: Finish")
         return Nodes.END
     else:
-        logger.info("Decision: Re-try solution")
+        state["logger"].info("Decision: Re-try solution")
         if state["should_reflect"]:
             return Nodes.REFLECT
         return Nodes.GENERATE
@@ -325,6 +324,9 @@ async def run_patch_langraph(
     max_iterations: int,
     should_reflect: bool = True,
 ):
+    from logger import add_prefix_to_logger, logger
+
+    logger = add_prefix_to_logger(logger, f"Patching Graph - <{model_name}>")
     sanitizer, error_code = project.sanitizers[vulnerability.sanitizer_id]
     sanitizer_str = f"{sanitizer}: {error_code}"
 
@@ -345,5 +347,6 @@ async def run_patch_langraph(
             "iterations": 0,
             "max_iterations": max_iterations,
             "should_reflect": should_reflect,
+            "logger": logger,
         })
     )

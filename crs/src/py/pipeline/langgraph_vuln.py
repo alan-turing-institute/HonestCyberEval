@@ -1,4 +1,5 @@
 from enum import auto
+from logging import Logger
 from typing import Literal, Optional, TypedDict
 
 from langchain_community.chat_message_histories import ChatMessageHistory
@@ -21,9 +22,6 @@ from api.llm import (
     fix_anthropic_weirdness,
     placeholder_fix_anthropic_weirdness,
 )
-from logger import add_prefix_to_logger, logger
-
-logger = add_prefix_to_logger(logger, "Vulnerability Graph")
 
 __all__ = [
     "run_vuln_langraph",
@@ -125,6 +123,7 @@ class GraphState(TypedDict):
     diff: str
     should_reflect: bool
     model: ChatOpenAI
+    logger: Logger
 
 
 class Nodes(StrEnum):
@@ -137,7 +136,7 @@ class Nodes(StrEnum):
 
 # Nodes
 async def probe(state: GraphState) -> GraphState:
-    logger.info("Probing for the code snippet")
+    state["logger"].info("Probing for the code snippet")
 
     question = state["code_snippet"] + ("\n" + state["diff"] if state["diff"] else "")
     model = state["model"]
@@ -191,7 +190,7 @@ async def probe(state: GraphState) -> GraphState:
 
 
 async def generate(state: GraphState) -> GraphState:
-    logger.info("Generating harness solution")
+    state["logger"].info("Generating harness solution")
 
     error = state["error"]
     question = state["code_snippet"] + ("\n" + state["diff"] if state["diff"] else "")
@@ -209,9 +208,9 @@ async def generate(state: GraphState) -> GraphState:
     prompt = harness_input_gen_prompt_diff if state["diff"] else harness_input_gen_prompt
 
     # prune chat history
-    logger.debug(f"Chat history length [chars]: {len(state['chat_history'].__str__())}")
+    state["logger"].debug(f"Chat history length [chars]: {len(state['chat_history'].__str__())}")
     if state["iterations"] > 1 and len(state["chat_history"].__str__()) > MAX_ALLOWED_HISTORY_CHARS:
-        logger.debug("Had to unfortunately prune chat history!")
+        state["logger"].debug("Had to unfortunately prune chat history!")
         old_messages = state["chat_history"].messages
         state["chat_history"].clear()
         state["chat_history"].add_messages([old_messages[0]] + old_messages[-NUM_MESSAGES_PER_ROUND:])
@@ -266,7 +265,7 @@ async def generate(state: GraphState) -> GraphState:
 
 
 async def run_harness(state: GraphState) -> GraphState:
-    logger.info("Checking harness input")
+    state["logger"].info("Checking harness input")
 
     project = state["project"]
     harness_id = state["harness_id"]
@@ -289,19 +288,19 @@ async def run_harness(state: GraphState) -> GraphState:
                 f" output: {stderr}"
             )
     except Exception as error:
-        logger.info("Harness input check: Failed")
+        state["logger"].info("Harness input check: Failed")
         state["chat_history"].add_user_message(f"Your solution failed. Here is the output: {error}")
         return GraphState(**{
             **state,
             "error": error,
         })
 
-    logger.info("Harness input check: Passed")
+    state["logger"].info("Harness input check: Passed")
     return state
 
 
 async def reflect(state: GraphState) -> GraphState:
-    logger.info("Generating harness input reflection")
+    state["logger"].info("Generating harness input reflection")
 
     model = state["model"]
     reflection_chain = RunnableWithMessageHistory(
@@ -330,10 +329,10 @@ async def reflect(state: GraphState) -> GraphState:
 # Branches
 def check_if_finished(state: GraphState) -> Literal[Nodes.END, Nodes.REFLECT, Nodes.GENERATE]:
     if (not state["error"]) or state["iterations"] == state["max_iterations"]:
-        logger.info("Decision: Finish")
+        state["logger"].info("Decision: Finish")
         return Nodes.END
 
-    logger.info("Decision: re-try solution")
+    state["logger"].info("Decision: re-try solution")
     if state["should_reflect"]:
         return Nodes.REFLECT
     else:
@@ -342,10 +341,10 @@ def check_if_finished(state: GraphState) -> Literal[Nodes.END, Nodes.REFLECT, No
 
 def check_if_probe_finished(state: GraphState) -> Literal[Nodes.END, Nodes.REFLECT, Nodes.GENERATE]:
     if not state["continue_after_probe"]:
-        logger.info("Decision: Early finish")
+        state["logger"].info("Decision: Early finish")
         return Nodes.END
 
-    logger.info("Decision: Code snippet worth investigation")
+    state["logger"].info("Decision: Code snippet worth investigation")
     state["chat_history"].clear()
     return Nodes.GENERATE
 
@@ -386,6 +385,9 @@ async def run_vuln_langraph(
     code_snippet: str,
     diff: str,
 ):
+    from logger import add_prefix_to_logger, logger
+
+    logger = add_prefix_to_logger(logger, f"Vulnerability Graph - <{model_name}>")
     harness_path = project.harnesses[harness_id].file_path
     harness_code = harness_path.read_text().replace("\n", "")
 
@@ -413,5 +415,6 @@ async def run_vuln_langraph(
             "code_snippet": code_snippet,
             "diff": diff,
             "continue_after_probe": True,
+            "logger": logger,
         })
     )
