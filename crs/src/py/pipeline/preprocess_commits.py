@@ -768,6 +768,7 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
 
         if change_type in {ChangeType.FUNCTIONAL_CHANGE, ChangeType.FILE_ADDED} and after_file is not None:
             after_file_lines = clean_up_snippet(after_file)
+            logger.info(split_file_for_patching(after_file_lines))
 
         # basic check for whitespace changes only:
         if before_file_lines and after_file_lines:
@@ -1133,10 +1134,6 @@ def check_functional_diff_in_variable_lines_order(
         variable_before_lines = get_variable_snippets(before_code, variable_name)
         variable_after_lines = get_variable_snippets(after_code, variable_name)
 
-        # logger.info(variable_before_lines)
-        # logger.info(variable_after_lines)
-        # logger.info(f'{variable_name} code is same in both? {variable_before_lines == variable_after_lines}')
-
         if not variable_before_lines == variable_after_lines:
             return True
 
@@ -1247,7 +1244,7 @@ def create_patch(function_name, file_lines, new_function_lines, filename=""):
     open_code_block_pattern = r"{"
     close_code_block_pattern = r"}"
     lines = copy.deepcopy(file_lines)
-    function_name_pattern = r"\b" + function_name + r"\b"
+    function_name_pattern = r"\b" + function_name + r"\(.*\)\s*{?$"
 
     start_index = -1
     end_index = -1
@@ -1277,3 +1274,57 @@ def create_patch(function_name, file_lines, new_function_lines, filename=""):
     diff = make_diff(file_lines, new_file, filename)
 
     return diff
+
+
+MAX_LINES_FOR_SPLIT = 400
+
+
+def split_file_for_patching(file_lines):
+    open_code_block_pattern = r"{"
+    close_code_block_pattern = r"}"
+
+    file_length = len(file_lines)
+    split_files_length = 0
+
+    split_files = []
+    potential_cut_off = MAX_LINES_FOR_SPLIT - 100
+
+    while file_lines:
+        num_split_lines = 0
+        new_split_lines = []
+
+        open_brackets = 0
+        last_convenient_cut_off = -1
+
+        for i, line in enumerate(file_lines):
+            new_split_lines.append(line)
+
+            if re.search(open_code_block_pattern, line):
+                open_brackets += len(re.findall(open_code_block_pattern, line))
+
+            if re.search(close_code_block_pattern, line):
+                open_brackets -= len(re.findall(close_code_block_pattern, line))
+                if open_brackets == 0:
+                    last_convenient_cut_off = i
+
+            if len(new_split_lines) > potential_cut_off and len(new_split_lines) < MAX_LINES_FOR_SPLIT:
+                # cut off reached:
+                if last_convenient_cut_off > 0:
+                    new_split_lines = new_split_lines[:last_convenient_cut_off]
+                break
+
+            # if len(new_split_lines) == MAX_LINES_FOR_SPLIT
+
+        if last_convenient_cut_off > 0:
+            file_lines = file_lines[last_convenient_cut_off:]
+        else:
+            file_lines = file_lines[len(new_split_lines) :]
+
+        split_files_length += len(new_split_lines)
+        logger.info(len(new_split_lines))
+
+        split_files.append("\n".join(new_split_lines))
+
+    assert split_files_length == file_length
+
+    return split_files
