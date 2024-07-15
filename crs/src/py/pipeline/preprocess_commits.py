@@ -775,30 +775,32 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
                 logger.debug(f"Nonfunctional change only in {filename} from {after_commit.hexsha}.")
                 continue  # as only whitespace/comment changes have occurred
 
-        # make_file_diff = True  # using this for now as parsing is causing more issues with this not finding header files stuff
+        make_file_diff = (
+            True  # using this for now as parsing is causing more issues with this not finding header files stuff
+        )
 
-        make_file_diff = False
-        c_file_pattern = re.escape(".c") + "$"
-        java_file_pattern = re.escape(".java") + "$"
-        if re.search(c_file_pattern, filename):
-            # c file
-            diff_found, diff_functions = c_file_check(
-                filename, before_commit, after_commit, before_file_lines, after_file_lines, change_type
-            )
+        # make_file_diff = False
+        # c_file_pattern = re.escape(".c") + "$"
+        # java_file_pattern = re.escape(".java") + "$"
+        # if re.search(c_file_pattern, filename):
+        #     # c file
+        #     diff_found, diff_functions = c_file_check(
+        #         filename, before_commit, after_commit, before_file_lines, after_file_lines, change_type
+        #     )
 
-            if diff_found or diff_functions:
-                make_file_diff = True
-        if re.search(java_file_pattern, filename):
-            # c file
-            diff_found, diff_functions = java_file_check(
-                filename, before_commit, after_commit, before_file_lines, after_file_lines, change_type
-            )
+        #     if diff_found or diff_functions:
+        #         make_file_diff = True
+        # if re.search(java_file_pattern, filename):
+        #     # c file
+        #     diff_found, diff_functions = java_file_check(
+        #         filename, before_commit, after_commit, before_file_lines, after_file_lines, change_type
+        #     )
 
-            if diff_found or diff_functions:
-                make_file_diff = True
-        else:
-            # essentially if header file or java so only the whitespace check is used for filtering in those cases atm
-            make_file_diff = True
+        #     if diff_found or diff_functions:
+        #         make_file_diff = True
+        # else:
+        #     # essentially if header file or java so only the whitespace check is used for filtering in those cases atm
+        #     make_file_diff = True
 
         if make_file_diff:
             full_file_diff_lines = make_diff(before_file_lines, after_file_lines, filename)
@@ -842,6 +844,10 @@ def c_file_check(filename, before_commit, after_commit, before_file_lines, after
         before_function_lines = get_full_function_snippets(
             before_file_lines, set(before_nodes[CDeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL].keys())
         )
+        logger.info(set(before_nodes[CDeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL].keys()))
+        for key in before_function_lines:
+            logger.info(key)
+            logger.info("\n".join(before_function_lines[key]))
 
     if change_type in {ChangeType.FUNCTIONAL_CHANGE, ChangeType.FILE_ADDED} and after_file_lines:
         after_file_ast = parse_c_snippet("\n".join(after_file_lines), filename, after_commit)
@@ -1133,10 +1139,6 @@ def check_functional_diff_in_variable_lines_order(
         variable_before_lines = get_variable_snippets(before_code, variable_name)
         variable_after_lines = get_variable_snippets(after_code, variable_name)
 
-        # logger.info(variable_before_lines)
-        # logger.info(variable_after_lines)
-        # logger.info(f'{variable_name} code is same in both? {variable_before_lines == variable_after_lines}')
-
         if not variable_before_lines == variable_after_lines:
             return True
 
@@ -1243,11 +1245,46 @@ def find_functional_changes(project_read_only, cp_source) -> ProcessedCommits:
     return preprocessed_commits
 
 
+def create_file_patch(file_lines, new_lines, filename=""):
+
+    generic_function_name_pattern = r"\b\w+\(.*\)\s*{?$"
+    close_code_block_pattern = r"}"
+
+    start_of_functions_index = -1
+    end_of_functions_index = -1
+
+    for i, line in enumerate(file_lines):
+        if re.search(generic_function_name_pattern, line):
+            start_of_functions_index = i
+
+    for i, line in enumerate(file_lines[::-1]):
+        if re.search(close_code_block_pattern, line):
+            end_of_functions_index = len(file_lines) - i
+
+    old_trailing_lines = file_lines[end_of_functions_index:]
+
+    new_file = new_lines[: -len(old_trailing_lines)]
+    new_file += file_lines[start_of_functions_index:end_of_functions_index]
+    new_file += new_lines[-len(old_trailing_lines) :]
+
+    diff = make_diff(file_lines, new_file, filename)
+
+    return diff
+
+
 def create_patch(function_name, file_lines, new_function_lines, filename=""):
+
+    if not isinstance(file_lines, list):
+        file_lines = clean_up_snippet(file_lines)
+
     open_code_block_pattern = r"{"
     close_code_block_pattern = r"}"
     lines = copy.deepcopy(file_lines)
-    function_name_pattern = r"\b" + function_name + r"\b"
+
+    if function_name == FILE_CODE:
+        return create_file_patch(file_lines, new_function_lines, filename=filename)
+
+    function_name_pattern = r"\b" + function_name + r"\(.*\)\s*{?$"
 
     start_index = -1
     end_index = -1
@@ -1277,3 +1314,69 @@ def create_patch(function_name, file_lines, new_function_lines, filename=""):
     diff = make_diff(file_lines, new_file, filename)
 
     return diff
+
+
+MAX_LINES_FOR_SPLIT = 450
+
+
+def split_file_for_patching(file_lines):
+    if not isinstance(file_lines, list):
+        file_lines = clean_up_snippet(file_lines)
+
+    open_code_block_pattern = r"{"
+    close_code_block_pattern = r"}"
+
+    file_length = len(file_lines)
+    split_files_length = 0
+
+    split_files = []
+    potential_cut_off = MAX_LINES_FOR_SPLIT - 100
+
+    if len(file_lines) <= MAX_LINES_FOR_SPLIT:
+        return ["\n".join(file_lines)]
+
+    while True:
+        num_split_lines = 0
+        new_split_lines = []
+
+        open_brackets = 0
+        last_convenient_cut_off = -1
+
+        for i, line in enumerate(file_lines):
+            new_split_lines.append(line)
+
+            if len(new_split_lines) >= MAX_LINES_FOR_SPLIT:
+                if last_convenient_cut_off > 0:
+                    new_split_lines = new_split_lines[:last_convenient_cut_off]
+                    break
+
+            if re.search(open_code_block_pattern, line):
+                open_brackets += len(re.findall(open_code_block_pattern, line))
+
+            if re.search(close_code_block_pattern, line):
+                open_brackets -= len(re.findall(close_code_block_pattern, line))
+                if open_brackets == 0:
+                    last_convenient_cut_off = i + 1
+
+            # if len(new_split_lines) > potential_cut_off and len(new_split_lines) < MAX_LINES_FOR_SPLIT:
+            #     # cut off reached:
+            #     if last_convenient_cut_off > 0:
+            #         new_split_lines = new_split_lines[:last_convenient_cut_off]
+            #         break
+
+        split_files_length += len(new_split_lines)
+
+        split_files.append("\n".join(new_split_lines))
+
+        if last_convenient_cut_off > 0:
+            file_lines = file_lines[last_convenient_cut_off:]
+        elif len(file_lines) < MAX_LINES_FOR_SPLIT:
+            break
+
+        if not file_lines:
+            break
+
+    # logger.info(f"new total length: {split_files_length}, old length {file_length}")
+    # assert split_files_length == file_length
+
+    return split_files
