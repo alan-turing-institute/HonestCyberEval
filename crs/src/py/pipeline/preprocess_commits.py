@@ -8,6 +8,7 @@ from enum import IntEnum, auto
 from typing import Optional, TypeAlias, Union
 
 import clang.cindex
+import javalang
 from clang.cindex import Cursor, CursorKind
 from git import Commit
 from strenum import StrEnum
@@ -51,7 +52,7 @@ class VarSourceType(StrEnum):
     IMPORTED = auto()
 
 
-class DeclType(StrEnum):
+class CDeclType(StrEnum):
     FUNCTION_TYPE = auto()
     VAR_TYPE = auto()
     STRUCT_TYPE = auto()
@@ -63,36 +64,60 @@ class DeclType(StrEnum):
     DECL_REF_TYPE = auto()
 
 
-TypesDictType: TypeAlias = dict[DeclType, CursorKind]
+class JavaDeclType(StrEnum):
+    METHOD_TYPE = auto()
+    VAR_TYPE = auto()
+    IMPORT_TYPE = auto()
+    CLASS_TYPE = auto()
+    INTERFACES_TYPE = auto()
+    ENUM_TYPE = auto()
+    FIELD_TYPE = auto()
+    ANNOTATION_TYPE = auto()
+
+
+CTypesDictType: TypeAlias = dict[CDeclType, CursorKind]
 VarsDictType: TypeAlias = dict[VarSourceType, dict[str, Cursor]]
-NodesDictType: TypeAlias = dict[DeclType, VarsDictType]
+NodesDictType: TypeAlias = dict[CDeclType, VarsDictType]
 FunctionDictType: TypeAlias = dict[str, list[str]]
 
-TYPES: TypesDictType = {
-    DeclType.VAR_TYPE: CursorKind.VAR_DECL,  # type: ignore
-    DeclType.PARAM_TYPE: CursorKind.PARM_DECL,  # type: ignore
-    DeclType.FUNCTION_TYPE: CursorKind.FUNCTION_DECL,  # type: ignore
-    DeclType.ENUM_CONST_TYPE: CursorKind.ENUM_CONSTANT_DECL,  # type: ignore
-    DeclType.PARAM_TYPE: CursorKind.PARM_DECL,  # type: ignore
-    DeclType.STRUCT_TYPE: CursorKind.STRUCT_DECL,  # type: ignore
-    DeclType.DECL_REF_TYPE: CursorKind.DECL_REF_EXPR,  # type: ignore
+C_TYPES: CTypesDictType = {
+    CDeclType.VAR_TYPE: CursorKind.VAR_DECL,  # type: ignore
+    CDeclType.PARAM_TYPE: CursorKind.PARM_DECL,  # type: ignore
+    CDeclType.FUNCTION_TYPE: CursorKind.FUNCTION_DECL,  # type: ignore
+    CDeclType.ENUM_CONST_TYPE: CursorKind.ENUM_CONSTANT_DECL,  # type: ignore
+    CDeclType.PARAM_TYPE: CursorKind.PARM_DECL,  # type: ignore
+    CDeclType.STRUCT_TYPE: CursorKind.STRUCT_DECL,  # type: ignore
+    CDeclType.DECL_REF_TYPE: CursorKind.DECL_REF_EXPR,  # type: ignore
 }
 
-TYPES_FOR_EXTERNAL_DEFINED_VARS: TypesDictType = {
-    DeclType.VAR_TYPE: CursorKind.VAR_DECL,  # type: ignore
-    DeclType.PARAM_TYPE: CursorKind.PARM_DECL,  # type: ignore
-    DeclType.DECL_REF_TYPE: CursorKind.DECL_REF_EXPR,  # type: ignore
+C_TYPES_FOR_EXTERNAL_DEFINED_VARS: CTypesDictType = {
+    CDeclType.VAR_TYPE: CursorKind.VAR_DECL,  # type: ignore
+    CDeclType.PARAM_TYPE: CursorKind.PARM_DECL,  # type: ignore
+    CDeclType.DECL_REF_TYPE: CursorKind.DECL_REF_EXPR,  # type: ignore
 }
 
-TYPES_FOR_ABSTRACT: TypesDictType = {
-    DeclType.VAR_TYPE: CursorKind.VAR_DECL,  # type: ignore
-    DeclType.FUNCTION_TYPE: CursorKind.FUNCTION_DECL,  # type: ignore
-    DeclType.STRUCT_TYPE: CursorKind.STRUCT_DECL,  # type: ignore
-    DeclType.STRING_TYPE: CursorKind.STRING_LITERAL,  # type: ignore
-    DeclType.PARAM_TYPE: CursorKind.PARM_DECL,  # type: ignore
-    # DeclType.ENUM_TYPE: CursorKind.ENUM_DECL, # type: ignore
-    DeclType.ENUM_CONST_TYPE: CursorKind.ENUM_CONSTANT_DECL,  # type: ignore
-    DeclType.FIELD_TYPE: CursorKind.FIELD_DECL,  # type: ignore
+C_TYPES_FOR_ABSTRACT: CTypesDictType = {
+    CDeclType.VAR_TYPE: CursorKind.VAR_DECL,  # type: ignore
+    CDeclType.FUNCTION_TYPE: CursorKind.FUNCTION_DECL,  # type: ignore
+    CDeclType.STRUCT_TYPE: CursorKind.STRUCT_DECL,  # type: ignore
+    CDeclType.STRING_TYPE: CursorKind.STRING_LITERAL,  # type: ignore
+    CDeclType.PARAM_TYPE: CursorKind.PARM_DECL,  # type: ignore
+    # CDeclType.ENUM_TYPE: CursorKind.ENUM_DECL, # type: ignore
+    CDeclType.ENUM_CONST_TYPE: CursorKind.ENUM_CONSTANT_DECL,  # type: ignore
+    CDeclType.FIELD_TYPE: CursorKind.FIELD_DECL,  # type: ignore
+}
+
+JavaTypesDictType: TypeAlias = dict[JavaDeclType, javalang.ast.MetaNode]  # type: ignore
+
+JAVA_TYPES: JavaTypesDictType = {
+    JavaDeclType.METHOD_TYPE: javalang.tree.MethodDeclaration,  # type: ignore
+    JavaDeclType.VAR_TYPE: javalang.tree.VariableDeclarator,  # type: ignore
+    JavaDeclType.IMPORT_TYPE: javalang.tree.Import,  # type: ignore
+    JavaDeclType.CLASS_TYPE: javalang.tree.ClassDeclaration,  # type: ignore
+    JavaDeclType.INTERFACES_TYPE: javalang.tree.InterfaceDeclaration,  # type: ignore
+    JavaDeclType.ENUM_TYPE: javalang.tree.EnumDeclaration,  # type: ignore
+    JavaDeclType.FIELD_TYPE: javalang.tree.FieldDeclaration,  # type: ignore
+    JavaDeclType.ANNOTATION_TYPE: javalang.tree.Annotation,  # type: ignore
 }
 
 
@@ -338,50 +363,50 @@ def search_line_and_replace(line, pattern, replace_term):
 
 
 def abstract_code(code_snippet, ast, filename):
-    nodes = search_ast_for_node_types(ast, TYPES_FOR_ABSTRACT, filename)
+    nodes = search_ast_for_node_types(ast, C_TYPES_FOR_ABSTRACT, filename)
 
     patterns = {}
     # FIELD_DECL, ENUM_DECL, ENUM_CONSTANT_DECL
     patterns[AbstractReplacementTerms.STRING_LITERAL] = build_regex_pattern_from_list(
         (
-            list(nodes[DeclType.STRING_TYPE][VarSourceType.FILE_LOCAL].keys())
-            + list(nodes[DeclType.STRING_TYPE][VarSourceType.IMPORTED].keys())
+            list(nodes[CDeclType.STRING_TYPE][VarSourceType.FILE_LOCAL].keys())
+            + list(nodes[CDeclType.STRING_TYPE][VarSourceType.IMPORTED].keys())
         ),
         word_boundary=False,
     )
     patterns[AbstractReplacementTerms.LOCAL_VARIABLE] = build_regex_pattern_from_list(
-        nodes[DeclType.VAR_TYPE][VarSourceType.FILE_LOCAL]
+        nodes[CDeclType.VAR_TYPE][VarSourceType.FILE_LOCAL]
     )
     patterns[AbstractReplacementTerms.IMPORTED_VARIABLE] = build_regex_pattern_from_list(
-        nodes[DeclType.VAR_TYPE][VarSourceType.IMPORTED]
+        nodes[CDeclType.VAR_TYPE][VarSourceType.IMPORTED]
     )
     patterns[AbstractReplacementTerms.LOCAL_FUNCTION] = build_regex_pattern_from_list(
-        nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL]
+        nodes[CDeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL]
     )
     patterns[AbstractReplacementTerms.IMPORTED_FUNCTION] = build_regex_pattern_from_list(
-        nodes[DeclType.FUNCTION_TYPE][VarSourceType.IMPORTED]
+        nodes[CDeclType.FUNCTION_TYPE][VarSourceType.IMPORTED]
     )
     patterns[AbstractReplacementTerms.LOCAL_STRUCT] = build_regex_pattern_from_list(
-        nodes[DeclType.STRUCT_TYPE][VarSourceType.FILE_LOCAL]
+        nodes[CDeclType.STRUCT_TYPE][VarSourceType.FILE_LOCAL]
     )
     patterns[AbstractReplacementTerms.IMPORTED_STRUCT] = build_regex_pattern_from_list(
-        nodes[DeclType.STRUCT_TYPE][VarSourceType.IMPORTED]
+        nodes[CDeclType.STRUCT_TYPE][VarSourceType.IMPORTED]
     )
     patterns[AbstractReplacementTerms.LOCAL_STRUCT_FIELD] = build_regex_pattern_from_list(
-        nodes[DeclType.FIELD_TYPE][VarSourceType.FILE_LOCAL]
+        nodes[CDeclType.FIELD_TYPE][VarSourceType.FILE_LOCAL]
     )
     patterns[AbstractReplacementTerms.IMPORTED_STRUCT_FIELD] = build_regex_pattern_from_list(
-        nodes[DeclType.FIELD_TYPE][VarSourceType.IMPORTED]
+        nodes[CDeclType.FIELD_TYPE][VarSourceType.IMPORTED]
     )
     patterns[AbstractReplacementTerms.PARAM] = build_regex_pattern_from_list((
-        list(nodes[DeclType.PARAM_TYPE][VarSourceType.FILE_LOCAL].keys())
-        + list(nodes[DeclType.PARAM_TYPE][VarSourceType.IMPORTED].keys())
+        list(nodes[CDeclType.PARAM_TYPE][VarSourceType.FILE_LOCAL].keys())
+        + list(nodes[CDeclType.PARAM_TYPE][VarSourceType.IMPORTED].keys())
     ))
     patterns[AbstractReplacementTerms.LOCAL_ENUM_CONST] = build_regex_pattern_from_list(
-        nodes[DeclType.ENUM_CONST_TYPE][VarSourceType.FILE_LOCAL]
+        nodes[CDeclType.ENUM_CONST_TYPE][VarSourceType.FILE_LOCAL]
     )
     patterns[AbstractReplacementTerms.IMPORTED_ENUM_CONST] = build_regex_pattern_from_list(
-        nodes[DeclType.ENUM_CONST_TYPE][VarSourceType.IMPORTED]
+        nodes[CDeclType.ENUM_CONST_TYPE][VarSourceType.IMPORTED]
     )
 
     for i, line in enumerate(code_snippet):
@@ -501,7 +526,7 @@ def make_fake_header(full_filename):
     return contents
 
 
-def _parse_files(unsaved_files, filename, options):
+def _parse_c_files(unsaved_files, filename, options):
     index = clang.cindex.Index.create()
     # Parse the code from the string
     translation_unit = index.parse(path=filename, unsaved_files=unsaved_files, options=options)
@@ -523,14 +548,14 @@ def _parse_files(unsaved_files, filename, options):
 
                 failed_header_path = "./" + failed_header_name[1:-1]  # remove the quotes
                 unsaved_files.append((failed_header_path, fake_file_content))
-                return _parse_files(unsaved_files, filename, options)
+                return _parse_c_files(unsaved_files, filename, options)
             else:
                 logger.debug(f"Parsing failed.")
 
     return translation_unit
 
 
-def parse_snippet(snippet: str, filepath: str, commit) -> Cursor:
+def parse_c_snippet(snippet: str, filepath: str, commit) -> Cursor:
 
     filename = filepath.split("/")[-1]  # only take filename bit of the filepath
 
@@ -565,12 +590,12 @@ def parse_snippet(snippet: str, filepath: str, commit) -> Cursor:
 
     filename_for_parsing = filename if not_header_file else "fake_c_file.c"
 
-    translation_unit = _parse_files(unsaved_files, filename_for_parsing, options)
+    translation_unit = _parse_c_files(unsaved_files, filename_for_parsing, options)
 
     return translation_unit.cursor
 
 
-def search_ast_for_node_types(node: Cursor, types: TypesDictType, filename: str) -> NodesDictType:
+def search_ast_for_node_types(node: Cursor, types: CTypesDictType, filename: str) -> NodesDictType:
     # returns a dict with the type as the key and a nested dict containing the separated local and imported sets of
     # the relevant nodes
     nodes: NodesDictType = {}
@@ -586,7 +611,9 @@ def search_ast_for_node_types(node: Cursor, types: TypesDictType, filename: str)
     return nodes
 
 
-def _search_ast_for_node_type(node: Cursor, types: TypesDictType, nodes: NodesDictType, filename: str) -> NodesDictType:
+def _search_ast_for_node_type(
+    node: Cursor, types: CTypesDictType, nodes: NodesDictType, filename: str
+) -> NodesDictType:
     for node_type in types:
         if node.kind == types[node_type]:
             if is_node_local(node, filename):
@@ -597,6 +624,40 @@ def _search_ast_for_node_type(node: Cursor, types: TypesDictType, nodes: NodesDi
         nodes = _search_ast_for_node_type(child, types, nodes, filename)
 
     return nodes
+
+
+def parse_java_snippet(java_snippet):
+
+    try:
+        tree: javalang.tree.CompilationUnit = javalang.parse.parse(java_snippet)  # type: ignore
+    except javalang.parser.JavaSyntaxError as e:  # type: ignore
+        error_location = e.at
+        logger.debug(f"JavaSyntaxError: {e.description} at {error_location}")
+        return None, {}
+
+    declarations = {
+        JavaDeclType.METHOD_TYPE: set(),
+        JavaDeclType.CLASS_TYPE: set(),
+        JavaDeclType.FIELD_TYPE: set(),
+        JavaDeclType.INTERFACES_TYPE: set(),
+        JavaDeclType.ENUM_TYPE: set(),
+        JavaDeclType.ANNOTATION_TYPE: set(),
+        JavaDeclType.VAR_TYPE: set(),
+        JavaDeclType.IMPORT_TYPE: set(),
+    }
+
+    for path, node in tree:
+        for node_type in JAVA_TYPES:
+            if isinstance(node, JAVA_TYPES[node_type]):
+                if node_type == JavaDeclType.FIELD_TYPE:
+                    for declarator in node.declarators:
+                        declarations[node_type].add(declarator.name)
+                elif node_type == JavaDeclType.IMPORT_TYPE:
+                    declarations[node_type].add(node.path)
+                else:
+                    declarations[node_type].add(node.name)
+
+    return tree, declarations
 
 
 def clean_up_snippet(snippet: str) -> list[str]:
@@ -714,12 +775,11 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
                 logger.debug(f"Nonfunctional change only in {filename} from {after_commit.hexsha}.")
                 continue  # as only whitespace/comment changes have occurred
 
-        make_file_diff = (
-            True  # using this for now as parsing is causing more issues with this not finding header files stuff
-        )
+        # make_file_diff = True  # using this for now as parsing is causing more issues with this not finding header files stuff
 
         make_file_diff = False
         c_file_pattern = re.escape(".c") + "$"
+        java_file_pattern = re.escape(".java") + "$"
         if re.search(c_file_pattern, filename):
             # c file
             diff_found, diff_functions = c_file_check(
@@ -728,7 +788,14 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
 
             if diff_found or diff_functions:
                 make_file_diff = True
+        if re.search(java_file_pattern, filename):
+            # c file
+            diff_found, diff_functions = java_file_check(
+                filename, before_commit, after_commit, before_file_lines, after_file_lines, change_type
+            )
 
+            if diff_found or diff_functions:
+                make_file_diff = True
         else:
             # essentially if header file or java so only the whitespace check is used for filtering in those cases atm
             make_file_diff = True
@@ -753,6 +820,10 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
 
             logger.debug(f"FileDiff created for {filename}.")
 
+    logger.debug(
+        f"{len(filename_diffs)} out of {len(diffs)} files have potentially functional differences in commit {after_commit.hexsha}."
+    )
+
     return filename_diffs
 
 
@@ -766,37 +837,36 @@ def c_file_check(filename, before_commit, after_commit, before_file_lines, after
     after_nodes: NodesDictType = {}
 
     if change_type in {ChangeType.FUNCTIONAL_CHANGE, ChangeType.FILE_REMOVED} and before_file_lines:
-        before_file_ast = parse_snippet("/n".join(before_file_lines), filename, before_commit)
-        before_nodes = search_ast_for_node_types(before_file_ast, TYPES, filename)
+        before_file_ast = parse_c_snippet("\n".join(before_file_lines), filename, before_commit)
+        before_nodes = search_ast_for_node_types(before_file_ast, C_TYPES, filename)
         before_function_lines = get_full_function_snippets(
-            before_file_lines, before_nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL]
+            before_file_lines, set(before_nodes[CDeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL].keys())
         )
 
     if change_type in {ChangeType.FUNCTIONAL_CHANGE, ChangeType.FILE_ADDED} and after_file_lines:
-        after_file_ast = parse_snippet("/n".join(after_file_lines), filename, after_commit)
-        after_nodes = search_ast_for_node_types(after_file_ast, TYPES, filename)
+        after_file_ast = parse_c_snippet("\n".join(after_file_lines), filename, after_commit)
+        after_nodes = search_ast_for_node_types(after_file_ast, C_TYPES, filename)
         after_function_lines = get_full_function_snippets(
-            after_file_lines, after_nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL]
+            after_file_lines, set(after_nodes[CDeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL].keys())
         )
 
     diff_functions = get_function_diffs(before_function_lines, after_function_lines)
 
     if change_type == ChangeType.FUNCTIONAL_CHANGE:
 
-        before_refs = []
-
+        before_refs = set()
         if before_nodes:
             for type_key in before_nodes:
-                before_refs = before_refs + list(before_nodes[type_key][VarSourceType.FILE_LOCAL].keys())
-                before_refs = before_refs + list(before_nodes[type_key][VarSourceType.IMPORTED].keys())
+                before_refs = before_refs.union(set(before_nodes[type_key][VarSourceType.FILE_LOCAL].keys()))
+                before_refs = before_refs.union(set(before_nodes[type_key][VarSourceType.IMPORTED].keys()))
 
-        after_refs = []
+        after_refs = set()
         if after_nodes:
             for type_key in after_nodes:
-                after_refs = after_refs + list(before_nodes[type_key][VarSourceType.FILE_LOCAL].keys())
-                after_refs = after_refs + list(before_nodes[type_key][VarSourceType.IMPORTED].keys())
+                after_refs = after_refs.union(set(after_nodes[type_key][VarSourceType.FILE_LOCAL].keys()))
+                after_refs = after_refs.union(set(after_nodes[type_key][VarSourceType.IMPORTED].keys()))
 
-        if not before_refs and not after_refs:
+        if len(before_refs) == 0 or len(after_refs) == 0:
             return True, {}
 
         new_diff_functions = {}
@@ -813,19 +883,91 @@ def c_file_check(filename, before_commit, after_commit, before_file_lines, after
 
                 if FILE_CODE in after_function_lines:
                     new_diff_functions[function_name].after_external_variable_decls = (
-                        get_function_external_variables_decl(
+                        get_c_function_external_variables_decl(
                             function_name, after_nodes, after_function_lines[FILE_CODE]
                         )
                     )
 
                 if FILE_CODE in before_function_lines:
                     new_diff_functions[function_name].before_external_variable_decls = (
-                        get_function_external_variables_decl(
+                        get_c_function_external_variables_decl(
                             function_name, before_nodes, before_function_lines[FILE_CODE]
                         )
                     )
 
                 new_diff_functions[function_name].append_external_variable_decls_to_code_lines()
+
+        diff_functions = new_diff_functions
+
+    diff_found = True if diff_functions else False
+
+    return diff_found, diff_functions
+
+
+def java_file_check(filename, before_commit, after_commit, before_file_lines, after_file_lines, change_type):
+
+    before_function_lines: FunctionDictType = {}
+    after_function_lines: FunctionDictType = {}
+    before_file_ast: Optional[javalang.tree.CompilationUnit] = None  # type: ignore
+    after_file_ast: Optional[javalang.tree.CompilationUnit] = None  # type: ignore
+    before_nodes = {}
+    after_nodes = {}
+
+    if change_type in {ChangeType.FUNCTIONAL_CHANGE, ChangeType.FILE_REMOVED} and before_file_lines:
+        before_file_ast, before_nodes = parse_java_snippet("\n".join(before_file_lines))
+        before_function_lines = get_full_function_snippets(
+            before_file_lines, set(before_nodes[JavaDeclType.METHOD_TYPE])
+        )
+
+    if change_type in {ChangeType.FUNCTIONAL_CHANGE, ChangeType.FILE_ADDED} and after_file_lines:
+        after_file_ast, after_nodes = parse_java_snippet("\n".join(after_file_lines))
+        after_function_lines = get_full_function_snippets(after_file_lines, set(after_nodes[JavaDeclType.METHOD_TYPE]))
+
+    diff_functions = get_function_diffs(before_function_lines, after_function_lines)
+
+    if change_type == ChangeType.FUNCTIONAL_CHANGE:
+
+        before_refs = set()
+
+        if before_nodes:
+            for type_key in before_nodes:
+                before_refs = before_refs.union(before_nodes[type_key])
+
+        after_refs = set()
+        if after_nodes:
+            for type_key in after_nodes:
+                after_refs = after_refs.union(after_nodes[type_key])
+
+        if len(before_refs) == 0 or len(after_refs) == 0:
+            return True, {}
+
+        new_diff_functions = {}
+        for function_name in diff_functions:
+            function_before = diff_functions[function_name].before_lines
+            function_after = diff_functions[function_name].after_lines
+
+            is_functional = is_diff_functional(function_before, function_after, before_refs, after_refs, filename)
+
+            logger.debug(f"Is {function_name} diff functional? {is_functional}")
+
+            if is_functional:
+                new_diff_functions[function_name] = copy.deepcopy(diff_functions[function_name])
+
+                # if FILE_CODE in after_function_lines:
+                #     new_diff_functions[function_name].after_external_variable_decls = (
+                #         get_function_external_variables_decl(
+                #             function_name, after_nodes, after_function_lines[FILE_CODE]
+                #         )
+                #     )
+
+                # if FILE_CODE in before_function_lines:
+                #     new_diff_functions[function_name].before_external_variable_decls = (
+                #         get_function_external_variables_decl(
+                #             function_name, before_nodes, before_function_lines[FILE_CODE]
+                #         )
+                #     )
+
+                # new_diff_functions[function_name].append_external_variable_decls_to_code_lines()
 
         diff_functions = new_diff_functions
 
@@ -887,7 +1029,7 @@ def get_function_diffs(before: FunctionDictType, after: FunctionDictType) -> dic
     return diff_functions
 
 
-def get_full_function_snippets(full_file: list[str], functions: dict[str, Cursor]) -> FunctionDictType:
+def get_full_function_snippets(full_file: list[str], functions: set[str]) -> FunctionDictType:
     open_code_block_pattern = r"{"
     close_code_block_pattern = r"}"
     lines = copy.deepcopy(full_file)
@@ -932,30 +1074,30 @@ def get_full_function_snippets(full_file: list[str], functions: dict[str, Cursor
     return functions_code
 
 
-def get_function_external_variables_decl(function_name, full_file_nodes, non_function_code_snippets):
+def get_c_function_external_variables_decl(function_name, full_file_nodes, non_function_code_snippets):
     if FILE_CODE == function_name:
         return {}
 
-    function_ast = full_file_nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL][function_name]
+    function_ast = full_file_nodes[CDeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL][function_name]
 
-    all_function_names = list(full_file_nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL].keys()) + list(
-        full_file_nodes[DeclType.FUNCTION_TYPE][VarSourceType.IMPORTED].keys()
+    all_function_names = list(full_file_nodes[CDeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL].keys()) + list(
+        full_file_nodes[CDeclType.FUNCTION_TYPE][VarSourceType.IMPORTED].keys()
     )
 
-    imported_to_file_vars = list(full_file_nodes[DeclType.VAR_TYPE][VarSourceType.IMPORTED].keys())
+    imported_to_file_vars = list(full_file_nodes[CDeclType.VAR_TYPE][VarSourceType.IMPORTED].keys())
 
     # get the nodes for the variables declared and the variables/functions referenced
-    nodes = search_ast_for_node_types(function_ast, TYPES_FOR_EXTERNAL_DEFINED_VARS, function_ast.location.file.name)
+    nodes = search_ast_for_node_types(function_ast, C_TYPES_FOR_EXTERNAL_DEFINED_VARS, function_ast.location.file.name)
 
-    vars_declared = nodes[DeclType.VAR_TYPE][VarSourceType.FILE_LOCAL]  # should only be local to the function
+    vars_declared = nodes[CDeclType.VAR_TYPE][VarSourceType.FILE_LOCAL]  # should only be local to the function
 
-    if DeclType.PARAM_TYPE in nodes:
+    if CDeclType.PARAM_TYPE in nodes:
         # include function parameters
-        vars_declared = vars_declared | nodes[DeclType.PARAM_TYPE][VarSourceType.FILE_LOCAL]
+        vars_declared = vars_declared | nodes[CDeclType.PARAM_TYPE][VarSourceType.FILE_LOCAL]
 
     undeclared_vars = []
 
-    for decl_ref in nodes[DeclType.DECL_REF_TYPE][VarSourceType.FILE_LOCAL]:
+    for decl_ref in nodes[CDeclType.DECL_REF_TYPE][VarSourceType.FILE_LOCAL]:
         if decl_ref not in all_function_names and decl_ref not in imported_to_file_vars:
             # then it should be declared within this function, as a parameter to the function or in the body of the function
             if decl_ref not in vars_declared:
@@ -1135,103 +1277,3 @@ def create_patch(function_name, file_lines, new_function_lines, filename=""):
     diff = make_diff(file_lines, new_file, filename)
 
     return diff
-
-
-# test code below -> leaving for now so that I can use again when setting up the Java stuff
-# C code string
-# code = """
-# #include <stdio.h>
-# #include <string.h>
-# #include <unistd.h>
-
-# char items[3][10];
-
-# void func_a(){
-#     char* buff;
-#     int i = 0;
-#     do{
-#         printf("input item:");
-#         buff = &items[i][0];
-#         i++;
-#         fgets(buff, 40, stdin);
-#         buff[strcspn(buff, "\\n")] = 0;
-#     }while(strlen(buff)!=0);
-#     i--;
-# }
-
-# void func_b(){
-#     char *buff;
-#     printf("done adding items\\n");
-#     int j;
-#     printf("display item #:");
-#     scanf("%d", &j);
-#     buff = &items[j][0];
-#     printf("item %d: %s\\n", j, buff);
-# }
-
-# #ifndef ___TEST___
-# int main()
-# {
-
-#     func_a();
-
-#     func_b();
-
-#     return 0;
-# }
-# #endif
-# """
-
-# new_func = """
-# void func_b(){
-#     char *buff;
-#     printf("done adding items but this is a change\\n");
-#     int j;
-#     printf("display item #:");
-#     scanf("%d", &j);
-#     buff = &items[j][1];
-#     printf("item %d: %s\\n", j, buff);
-# }
-# """
-
-
-# generate_header(code)
-# code_lines = clean_up_snippet(code)
-# new_func_lines = clean_up_snippet(new_func)
-# diff = create_patch("func_b", code_lines, new_func_lines, "example.c")
-# print("\n".join(diff))
-
-# ast = parse_snippet(code, "test.c")
-
-# after_nodes = search_ast_for_node_types(ast, TYPES, 'test.c')
-# after_function_lines = get_full_function_snippets(code_lines, after_nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL])
-# get_functions_external_variables_decl(after_nodes[DeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL], after_nodes, after_function_lines[FILE_CODE])
-
-# test = FileDiff(name='test.c', before_ast=ast, change_type=0, before_commit=None, after_commit=None, after_ast=None, diff_functions=[], og_diff="")
-
-# print(test.ast_string(ast))
-
-# print("\n".join(code_lines))
-# print()
-# print("\n".join(abstract_code(code_lines, ast, 'test.c')))
-
-# pattern_test = r'\b"?/sys/block/%s/device/unload_heads"?\b'
-# test_string = '"/sys/block/%s/device/unload_heads", device+5);'
-# print(re.search(pattern_test, test_string))
-# test = re.sub(pattern_test, "TEST", test_string)
-# print(test)
-
-# # types = {VAR_TYPE: clang.cindex.CursorKind.VAR_DECL, FUNCTION_TYPE: clang.cindex.CursorKind.FUNCTION_DECL}
-
-# # after_nodes = search_ast_for_node_types(after_file_ast, TYPES, filename)
-# # after_function_lines = get_full_function_snippets(after_file_lines, after_nodes[FUNCTION_TYPE][FILE_LOCAL])
-
-
-# nodes = search_ast_for_node_types(ast, TYPES, "test.c")
-
-# code_lines = clean_up_snippet(code)
-
-# functions = get_full_function_snippets(code_lines, nodes[FUNCTION_TYPE][FILE_LOCAL])
-
-# # print_ast(nodes[FUNCTION_TYPE][FILE_LOCAL]['protect'])
-# print(functions['protect'])
