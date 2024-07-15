@@ -768,7 +768,7 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
 
         if change_type in {ChangeType.FUNCTIONAL_CHANGE, ChangeType.FILE_ADDED} and after_file is not None:
             after_file_lines = clean_up_snippet(after_file)
-            split_file_for_patching(after_file_lines)
+            # split_file_for_patching(after_file_lines)
 
         # basic check for whitespace changes only:
         if before_file_lines and after_file_lines:
@@ -843,6 +843,10 @@ def c_file_check(filename, before_commit, after_commit, before_file_lines, after
         before_function_lines = get_full_function_snippets(
             before_file_lines, set(before_nodes[CDeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL].keys())
         )
+        logger.info(set(before_nodes[CDeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL].keys()))
+        for key in before_function_lines:
+            logger.info(key)
+            logger.info("\n".join(before_function_lines[key]))
 
     if change_type in {ChangeType.FUNCTIONAL_CHANGE, ChangeType.FILE_ADDED} and after_file_lines:
         after_file_ast = parse_c_snippet("\n".join(after_file_lines), filename, after_commit)
@@ -1240,10 +1244,41 @@ def find_functional_changes(project_read_only, cp_source) -> ProcessedCommits:
     return preprocessed_commits
 
 
+def create_file_patch(file_lines, new_lines, filename=""):
+
+    generic_function_name_pattern = r"\b\w+\(.*\)\s*{?$"
+    close_code_block_pattern = r"}"
+    
+    start_of_functions_index = -1
+    end_of_functions_index = -1
+
+    for i, line in enumerate(file_lines):
+        if re.search(generic_function_name_pattern, line):
+            start_of_functions_index = i
+
+    for i, line in enumerate(file_lines[::-1]):
+        if re.search(close_code_block_pattern, line):
+            end_of_functions_index = i 
+
+    old_trailing_lines = file_lines[end_of_functions_index:]
+
+    new_file = new_lines[:-len(old_trailing_lines)]
+    new_file += file_lines[start_of_functions_index:end_of_functions_index]
+    new_file += new_lines[-len(old_trailing_lines):]
+
+    diff = make_diff(file_lines, new_file, filename)
+
+    return diff
+
+
 def create_patch(function_name, file_lines, new_function_lines, filename=""):
     open_code_block_pattern = r"{"
     close_code_block_pattern = r"}"
     lines = copy.deepcopy(file_lines)
+
+    if function_name == FILE_CODE:
+        return create_file_patch(file_lines, new_lines, filename=filename)
+
     function_name_pattern = r"\b" + function_name + r"\(.*\)\s*{?$"
 
     start_index = -1
