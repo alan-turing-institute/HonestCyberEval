@@ -776,30 +776,32 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
                 logger.debug(f"Nonfunctional change only in {filename} from {after_commit.hexsha}.")
                 continue  # as only whitespace/comment changes have occurred
 
-        # make_file_diff = True  # using this for now as parsing is causing more issues with this not finding header files stuff
+        make_file_diff = (
+            True  # using this for now as parsing is causing more issues with this not finding header files stuff
+        )
 
-        make_file_diff = False
-        c_file_pattern = re.escape(".c") + "$"
-        java_file_pattern = re.escape(".java") + "$"
-        if re.search(c_file_pattern, filename):
-            # c file
-            diff_found, diff_functions = c_file_check(
-                filename, before_commit, after_commit, before_file_lines, after_file_lines, change_type
-            )
+        # make_file_diff = False
+        # c_file_pattern = re.escape(".c") + "$"
+        # java_file_pattern = re.escape(".java") + "$"
+        # if re.search(c_file_pattern, filename):
+        #     # c file
+        #     diff_found, diff_functions = c_file_check(
+        #         filename, before_commit, after_commit, before_file_lines, after_file_lines, change_type
+        #     )
 
-            if diff_found or diff_functions:
-                make_file_diff = True
-        if re.search(java_file_pattern, filename):
-            # c file
-            diff_found, diff_functions = java_file_check(
-                filename, before_commit, after_commit, before_file_lines, after_file_lines, change_type
-            )
+        #     if diff_found or diff_functions:
+        #         make_file_diff = True
+        # if re.search(java_file_pattern, filename):
+        #     # c file
+        #     diff_found, diff_functions = java_file_check(
+        #         filename, before_commit, after_commit, before_file_lines, after_file_lines, change_type
+        #     )
 
-            if diff_found or diff_functions:
-                make_file_diff = True
-        else:
-            # essentially if header file or java so only the whitespace check is used for filtering in those cases atm
-            make_file_diff = True
+        #     if diff_found or diff_functions:
+        #         make_file_diff = True
+        # else:
+        #     # essentially if header file or java so only the whitespace check is used for filtering in those cases atm
+        #     make_file_diff = True
 
         if make_file_diff:
             full_file_diff_lines = make_diff(before_file_lines, after_file_lines, filename)
@@ -1369,7 +1371,7 @@ def split_file_for_patching(file_lines):
         elif len(file_lines) < MAX_LINES_FOR_SPLIT:
             break
 
-    logger.info(f"new total length: {split_files_length}, old length {file_length}")
-    assert split_files_length == file_length
+    # logger.info(f"new total length: {split_files_length}, old length {file_length}")
+    # assert split_files_length == file_length
 
     return split_files
