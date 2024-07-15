@@ -192,14 +192,21 @@ class VulnDiscovery:
                 for doc in docs:
                     logger.debug(f"Using document:\n{pprint.pformat(doc)}")
                     logger.info(f"Using document: {doc.metadata}")
-                    vuln = await self.harness_input_langgraph(
-                        harness_id=harness_id,
-                        sanitizer_id=sanitizer_id,
-                        code_snippet=doc.page_content,
-                        max_trials=max_trials,
-                    )
 
-                    if vuln:
+                    vulns = await asyncio.gather(*[
+                        self.harness_input_langgraph(
+                            model_name=model_name,
+                            harness_id=harness_id,
+                            sanitizer_id=sanitizer_id,
+                            code_snippet=doc.page_content,
+                            max_trials=max_trials,
+                        )
+                        for model_name in VD_MODEL_LIST
+                    ])
+                    vulns = [vuln for vuln in vulns if vuln]
+                    if not vulns:
+                        logger.warning(f"Failed to trigger sanitizer {sanitizer_id} using {harness_id}!")
+                    for vuln in vulns:
                         vulnerabilities.append(vuln)
         return vulnerabilities
 
