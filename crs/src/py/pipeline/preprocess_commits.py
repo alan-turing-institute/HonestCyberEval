@@ -768,7 +768,7 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
 
         if change_type in {ChangeType.FUNCTIONAL_CHANGE, ChangeType.FILE_ADDED} and after_file is not None:
             after_file_lines = clean_up_snippet(after_file)
-            logger.info(split_file_for_patching(after_file_lines))
+            # logger.info(split_file_for_patching(after_file_lines))
 
         # basic check for whitespace changes only:
         if before_file_lines and after_file_lines:
@@ -1305,7 +1305,7 @@ def split_file_for_patching(file_lines):
             if re.search(close_code_block_pattern, line):
                 open_brackets -= len(re.findall(close_code_block_pattern, line))
                 if open_brackets == 0:
-                    last_convenient_cut_off = i
+                    last_convenient_cut_off = i + 1
 
             if len(new_split_lines) > potential_cut_off and len(new_split_lines) < MAX_LINES_FOR_SPLIT:
                 # cut off reached:
@@ -1313,18 +1313,18 @@ def split_file_for_patching(file_lines):
                     new_split_lines = new_split_lines[:last_convenient_cut_off]
                 break
 
-            # if len(new_split_lines) == MAX_LINES_FOR_SPLIT
-
         if last_convenient_cut_off > 0:
             file_lines = file_lines[last_convenient_cut_off:]
         else:
             file_lines = file_lines[len(new_split_lines) :]
 
         split_files_length += len(new_split_lines)
-        logger.info(len(new_split_lines))
+        logger.info(f"new length: {len(new_split_lines)}")
+        # logger.info("\n".join(new_split_lines))
 
         split_files.append("\n".join(new_split_lines))
 
+    logger.info(f"new total length: {split_files_length}, old length {file_length}")
     assert split_files_length == file_length
 
     return split_files
