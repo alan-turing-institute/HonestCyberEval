@@ -6,7 +6,7 @@ from logger import logger
 from pipeline.patch_gen import patch_generation
 from pipeline.preprocess_commits import find_functional_changes
 from pipeline.setup_project import setup_project
-from pipeline.vuln_discovery import vuln_discovery, remove_duplicate_vulns
+from pipeline.vuln_discovery import remove_duplicate_vulns, vuln_discovery
 
 vulnerabilities = []
 
@@ -24,11 +24,19 @@ async def run():
                 project_read_only=project_read_only, cp_source=cp_source
             )
             # logger.debug(f"Preprocessed Commits:\n {pprint.pformat(preprocessed_commits)}\n")
+            solved_commits = [
+                vuln.commit for vuln in vulnerabilities if vuln.cp_source == cp_source and vuln.status == "accepted"
+            ]
+
+            commits_to_investigate = {
+                commit: diff for commit, diff in preprocessed_commits[cp_source].items() if commit not in solved_commits
+            }
+
             vulnerabilities.extend(
                 await vuln_discovery.run(
                     project_read_only=project_read_only,
                     cp_source=cp_source,
-                    preprocessed_commits=preprocessed_commits[cp_source],
+                    preprocessed_commits=commits_to_investigate,
                 )
             )
 
@@ -64,4 +72,5 @@ if __name__ == "__main__":
         except Exception as err:
             logger.exception(err)
         else:
+            # todo: when else should we try to re-run?
             retry = False

@@ -9,13 +9,7 @@ from params import VD_CHOSEN_DETAIL_LEVEL, VD_MAX_LLM_TRIALS, VD_MODEL_LIST, VD_
 from api.cp import ChallengeProjectReadOnly
 from api.data_types import Vulnerability, VulnerabilityWithSha
 from api.fs import write_harness_input_to_disk
-from api.llm import (
-    LLMmodel,
-    add_docs_to_vectorstore,
-    create_rag_docs,
-    create_vector_store,
-    format_chat_history,
-)
+from api.llm import LLMmodel, add_docs_to_vectorstore, create_rag_docs, create_vector_store, format_chat_history
 from logger import logger
 
 from .langgraph_vuln import run_vuln_langraph
