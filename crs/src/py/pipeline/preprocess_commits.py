@@ -1258,7 +1258,7 @@ def create_file_patch(file_lines, new_lines, filename=""):
 
     for i, line in enumerate(file_lines[::-1]):
         if re.search(close_code_block_pattern, line):
-            end_of_functions_index = i 
+            end_of_functions_index = len(file_lines) - i 
 
     old_trailing_lines = file_lines[end_of_functions_index:]
 
