@@ -1,6 +1,10 @@
 from enum import auto
+from typing import TYPE_CHECKING
 
 from strenum import StrEnum
+
+if TYPE_CHECKING:
+    from api.llm import LLMmodel
 
 # Submit
 RETRY_SUBMISSIONS = 2
@@ -30,7 +34,7 @@ class VDDetailLevel(StrEnum):
     FUNC_DIFFS = auto()
 
 
-VD_MODEL_LIST: list = ["oai-gpt-4o", "gemini-1.5-pro", "claude-3.5-sonnet"]
+VD_MODEL_LIST: list["LLMmodel"] = ["oai-gpt-4o", "gemini-1.5-pro", "claude-3.5-sonnet"]
 VD_MAX_LLM_TRIALS = 2
 VD_TOP_RAG_DOCS = 10
 VD_CHOSEN_DETAIL_LEVEL = VDDetailLevel.LATEST_FILES

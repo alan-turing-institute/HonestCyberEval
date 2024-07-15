@@ -1,3 +1,4 @@
+import asyncio
 import pprint
 from dataclasses import asdict
 from itertools import product
@@ -70,50 +71,46 @@ class VulnDiscovery:
     cp_source: str
 
     async def harness_input_langgraph(
-        self, harness_id, sanitizer_id, code_snippet, max_trials, diff=""
+        self, model_name, harness_id, sanitizer_id, code_snippet, max_trials, diff=""
     ) -> Optional[Vulnerability]:
-
         sanitizer, error_code = self.project_read_only.sanitizers[sanitizer_id]
-        models: list[LLMmodel] = VD_MODEL_LIST
 
-        for model_name in models:
-            try:
-                project = await self.project_read_only.writeable_copy_async
-                output = await run_vuln_langraph(
-                    model_name=model_name,
-                    project=project,
-                    harness_id=harness_id,
-                    sanitizer_id=sanitizer_id,
-                    code_snippet=code_snippet,
-                    diff=diff,
-                    max_iterations=max_trials,
-                )
-            except Exception as error:
-                logger.error(f"LangGraph vulnerability detection failed for {model_name} with\n{repr(error)}")
-            else:
-                logger.debug(f"LangGraph Message History\n\n{format_chat_history(output['chat_history'])}\n\n")
+        try:
+            project = await self.project_read_only.writeable_copy_async
+            output = await run_vuln_langraph(
+                model_name=model_name,
+                project=project,
+                harness_id=harness_id,
+                sanitizer_id=sanitizer_id,
+                code_snippet=code_snippet,
+                diff=diff,
+                max_iterations=max_trials,
+            )
+        except Exception as error:
+            logger.error(f"LangGraph vulnerability detection failed for {model_name} with\n{repr(error)}")
+        else:
+            logger.debug(f"LangGraph Message History\n\n{format_chat_history(output['chat_history'])}\n\n")
 
-                if not output["continue_after_probe"]:
-                    logger.info(f"Aborting: {model_name} did not think this document is suspicious")
-                    continue
+            if not output["continue_after_probe"]:
+                logger.info(f"Aborting: {model_name} did not think this document is suspicious")
+                return
 
-                if not output["error"]:
-                    logger.info(f"Found vulnerability using harness {harness_id}: {sanitizer}: {error_code}")
-                    harness_input = output["solution"]
-                    harness_input_file = write_harness_input_to_disk(
-                        project, harness_input, "work", harness_id, sanitizer_id, model_name
-                    )
-
-                    return Vulnerability(harness_id, sanitizer_id, harness_input, harness_input_file, self.cp_source)
-
-                logger.info(f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id}")
-                logger.debug(
-                    f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id} with error: \n"
-                    f" {output['error']}"
+            if not output["error"]:
+                logger.info(f"Found vulnerability using harness {harness_id}: {sanitizer}: {error_code}")
+                harness_input = output["solution"]
+                harness_input_file = write_harness_input_to_disk(
+                    project, harness_input, "work", harness_id, sanitizer_id, model_name
                 )
 
-        logger.warning(f"Failed to trigger sanitizer {sanitizer_id} using {harness_id}!")
-        return None
+                return Vulnerability(harness_id, sanitizer_id, harness_input, harness_input_file, self.cp_source)
+
+            logger.info(f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id}")
+            logger.debug(
+                f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id} with error: \n"
+                f" {output['error']}"
+            )
+
+        return
 
     async def identify_bad_commits(self, vulnerabilities: list[Vulnerability]) -> list[VulnerabilityWithSha]:
         """
@@ -199,14 +196,21 @@ class VulnDiscovery:
                 for doc in retrieved_docs:
                     logger.debug(f"Using document:\n{pprint.pformat(doc)}")
                     logger.info(f"Using document: {doc.metadata}")
-                    vuln = await self.harness_input_langgraph(
-                        harness_id=harness_id,
-                        sanitizer_id=sanitizer_id,
-                        code_snippet=doc.page_content,
-                        max_trials=max_trials,
-                    )
 
-                    if vuln:
+                    vulns = await asyncio.gather(*[
+                        self.harness_input_langgraph(
+                            model_name=model_name,
+                            harness_id=harness_id,
+                            sanitizer_id=sanitizer_id,
+                            code_snippet=doc.page_content,
+                            max_trials=max_trials,
+                        )
+                        for model_name in VD_MODEL_LIST
+                    ])
+                    vulns = [vuln for vuln in vulns if vuln]
+                    if not vulns:
+                        logger.warning(f"Failed to trigger sanitizer {sanitizer_id} using {harness_id}!")
+                    for vuln in vulns:
                         vulnerabilities.append(vuln)
         return vulnerabilities
 
