@@ -1,3 +1,6 @@
-from . import javadoc as javadoc, parse as parse, parser as parser, tokenizer as tokenizer
+from . import javadoc as javadoc
+from . import parse as parse
+from . import parser as parser
+from . import tokenizer as tokenizer
 
 __version__: str
