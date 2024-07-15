@@ -111,7 +111,6 @@ def write_harness_input_to_disk(
 
 def write_patch_to_disk(
     project: "ChallengeProject",
-    cpv_uuid: str,
     patch_text: str,
     i: int | str,
     vulnerability: VulnerabilityWithSha,
@@ -119,6 +118,6 @@ def write_patch_to_disk(
 ):
     return write_file_to_scratch(
         project.patch_path
-        / f"{cpv_uuid}_{i}_harness_{vulnerability.harness_id}_sanitizer_{vulnerability.sanitizer_id}_{model_name}.diff",
+        / f"{vulnerability.cpv_uuid}_{i}_harness_{vulnerability.harness_id}_sanitizer_{vulnerability.sanitizer_id}_{model_name}.diff",
         patch_text,
     )

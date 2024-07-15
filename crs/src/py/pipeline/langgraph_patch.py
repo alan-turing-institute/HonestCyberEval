@@ -23,7 +23,6 @@ from api.llm import (
     fix_anthropic_weirdness,
     placeholder_fix_anthropic_weirdness,
 )
-from api.submit import CPVuuid
 from logger import add_prefix_to_logger, logger
 
 logger = add_prefix_to_logger(logger, "Patching Graph")
@@ -89,7 +88,6 @@ class GraphState(TypedDict):
     model: ChatOpenAI
     project: ChallengeProject
     chat_history: ChatMessageHistory
-    cpv_uuid: CPVuuid
     vulnerability: VulnerabilityWithSha
     vuln_code: str
     bad_file: str
@@ -236,10 +234,8 @@ async def check_patch(state: GraphState) -> GraphState:
 
     patch_text = patched_file_to_diff(state["vuln_code"], state["patched_file"], state["bad_file"])
 
-    patch_path = write_patch_to_disk(
-        state["project"], state["cpv_uuid"], patch_text, state["iterations"], vulnerability, model_name
-    )
-    patch = Patch(diff=patch_text, diff_file=patch_path)
+    patch_path = write_patch_to_disk(state["project"], patch_text, state["iterations"], vulnerability, model_name)
+    patch = Patch(diff=patch_text, diff_file=patch_path, vulnerability=vulnerability)
 
     try:
         await apply_patch_and_check(state["project"], vulnerability, patch)
@@ -323,7 +319,6 @@ async def run_patch_langraph(
     *,
     model_name: LLMmodel,
     project: ChallengeProject,
-    cpv_uuid: CPVuuid,
     vulnerability: VulnerabilityWithSha,
     vuln_code: str,
     bad_file: str,
@@ -342,7 +337,6 @@ async def run_patch_langraph(
             "model": model,
             "project": project,
             "chat_history": chat_history,
-            "cpv_uuid": cpv_uuid,
             "vulnerability": vulnerability,
             "vuln_code": vuln_code,
             "bad_file": bad_file,

@@ -6,7 +6,9 @@ from logger import logger
 from pipeline.patch_gen import patch_generation
 from pipeline.preprocess_commits import find_functional_changes
 from pipeline.setup_project import setup_project
-from pipeline.vuln_discovery import vuln_discovery
+from pipeline.vuln_discovery import vuln_discovery, remove_duplicate_vulns
+
+vulnerabilities = []
 
 
 async def run():
@@ -16,7 +18,6 @@ async def run():
     for project_path in projects:
         project_read_only = await setup_project(project_path)
 
-        vulnerabilities = []
         preprocessed_commits = {}
         for cp_source in project_read_only.sources:
             preprocessed_commits[cp_source] = find_functional_changes(
@@ -31,35 +32,36 @@ async def run():
                 )
             )
 
+        deduped_vulnerabilities = remove_duplicate_vulns(vulnerabilities)
         project_writeable = await project_read_only.writeable_copy_async
-        for vulnerability in vulnerabilities:
+        for vulnerability in deduped_vulnerabilities:
             # todo: we can now submit vulnerabilities async, make use of that?
-            # todo: save input to persistent storage and check it to avoid double submissions
-            status, cpv_uuid = await submit_vulnerability(
-                cp_name=project_read_only.name,
-                vulnerability=vulnerability,
-            )
-            # todo: update input in persistent storage and mark as accepted
-            logger.info(f"Vulnerability: {status} {cpv_uuid}")
-            # todo: if vulnerability is rejected and we haven't triggered all sanitisers, look some more?
-            if status != "rejected":
-                patch = await patch_generation.run(
-                    project=project_writeable,
-                    preprocessed_commits=preprocessed_commits[vulnerability.cp_source],
-                    cpv_uuid=cpv_uuid,
+            if vulnerability.status == "pending":
+                await submit_vulnerability(
+                    cp_name=project_read_only.name,
                     vulnerability=vulnerability,
                 )
-                if patch:
-                    # todo: save patch to persistent storage and check it to avoid double submissions
+            logger.info(f"Vulnerability: {vulnerability.status} {vulnerability.cpv_uuid}")
+            # todo: if vulnerability is rejected and we haven't triggered all sanitisers, look some more?
+            if vulnerability.status != "rejected":
+                if vulnerability.patch is None or vulnerability.patch.status == "rejected":
+                    await patch_generation.run(
+                        project=project_writeable,
+                        preprocessed_commits=preprocessed_commits[vulnerability.cp_source],
+                        vulnerability=vulnerability,
+                    )
+                if vulnerability.patch and vulnerability.patch.status == "pending":
                     logger.info("Submitting patch")
-                    status, gp_uuid = await submit_patch(cpv_uuid, patch)
-                    logger.info(f"Patch: {status} {gp_uuid}")
-                    # todo: update patch in persistent storage and mark as accepted
+                    await submit_patch(vulnerability.patch)
+                    logger.info(f"Patch: {vulnerability.patch.status} {vulnerability.patch.gp_uuid}")
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(run())
-    except Exception as err:
-        logger.exception(err)
-        raise
+    retry = True
+    while retry:
+        try:
+            asyncio.run(run())
+        except Exception as err:
+            logger.exception(err)
+        else:
+            retry = False

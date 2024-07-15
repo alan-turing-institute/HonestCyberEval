@@ -1,4 +1,3 @@
-import pprint
 from pathlib import Path
 from typing import Optional
 
@@ -7,16 +6,13 @@ from params import PATCH_MAX_LLM_TRIALS, PATCH_MODEL_LIST
 from api.cp import ChallengeProject
 from api.data_types import Patch, VulnerabilityWithSha
 from api.fs import write_patch_to_disk
-from api.llm import LLMmodel, create_rag_docs, format_chat_history, get_retriever
+from api.llm import LLMmodel, format_chat_history
 from logger import logger
 from pipeline.langgraph_patch import (
-    HarnessTriggeredAfterPatchException,
-    apply_patch_and_check,
     patched_file_to_diff,
     run_patch_langraph,
 )
 
-from .langgraph_patch import TestFailedException
 from .preprocess_commits import ProcessedCommits
 
 mock_patches = {
@@ -67,7 +63,6 @@ class PatchGen:
 
     async def gen_patch_langgraph(
         self,
-        cpv_uuid,
         vulnerability: VulnerabilityWithSha,
         vuln_code: str,
         bad_file: str,
@@ -79,7 +74,6 @@ class PatchGen:
                 output = await run_patch_langraph(
                     model_name=model_name,
                     project=self.project,
-                    cpv_uuid=cpv_uuid,
                     vulnerability=vulnerability,
                     bad_file=bad_file,
                     vuln_code=vuln_code,
@@ -93,10 +87,9 @@ class PatchGen:
                     logger.info(f"Patching succeeded using {model_name}")
                     patched_file = output["patched_file"]
                     patch_text = patched_file_to_diff(vuln_code, patched_file, bad_file)
-                    patch_path = write_patch_to_disk(
-                        self.project, cpv_uuid, patch_text, "work", vulnerability, model_name
-                    )
-                    patch = Patch(diff=patch_text, diff_file=patch_path)
+                    patch_path = write_patch_to_disk(self.project, patch_text, "work", vulnerability, model_name)
+                    patch = Patch(diff=patch_text, diff_file=patch_path, vulnerability=vulnerability)
+                    vulnerability.patch = patch
                     return patch
                 logger.info(f"{model_name} failed to find good patch")
                 logger.debug(f"{model_name} failed to find good patch with error: \n {output['error']}")
@@ -107,10 +100,9 @@ class PatchGen:
         self,
         project: ChallengeProject,
         preprocessed_commits: ProcessedCommits,
-        cpv_uuid,
         vulnerability: VulnerabilityWithSha,
         use_funcdiffs: bool = False,
-    ) -> Optional[Patch]:
+    ) -> None:
         self.project = project
 
         if vulnerability.commit in preprocessed_commits:
@@ -135,16 +127,16 @@ class PatchGen:
 
                     vuln_code = "".join(f + "\n" for f in funcs) if use_funcdiffs else file_text
 
-                    patch = await self.gen_patch_langgraph(
-                        cpv_uuid=cpv_uuid, vulnerability=vulnerability, vuln_code=vuln_code, bad_file=file_path
-                    )
+                patch = await self.gen_patch_langgraph(
+                    vulnerability=vulnerability, vuln_code=vuln_code, bad_file=filename
+                )
 
-                    if patch:
-                        return patch
+                if patch:
+                    return
 
         else:
             logger.warning(f"NO FUNCTIONAL COMMIT MATCHES VULN COMMIT")
-            return None
+            return
 
 
 patch_generation = PatchGen()
