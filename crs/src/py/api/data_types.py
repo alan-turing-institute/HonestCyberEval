@@ -1,22 +1,37 @@
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, TypeAlias, Optional, Literal
 
-Vulnerability = NamedTuple(
-    "Vulnerability",
-    (("harness_id", str), ("sanitizer_id", str), ("input_data", str), ("input_file", Path), ("cp_source", str)),
-)
-VulnerabilityWithSha = NamedTuple(
-    "VulnerabilityWithSha",
-    (
-        ("harness_id", str),
-        ("sanitizer_id", str),
-        ("input_data", str),
-        ("input_file", Path),
-        ("cp_source", str),
-        ("commit", str),
-    ),
-)
-# TODO: ConfirmedVulnerability
+from pydantic.dataclasses import dataclass
 
-Patch = NamedTuple("Patch", (("diff", str), ("diff_file", Path)))
-# TODO: ConfirmedPatch
+CAPIStatus: TypeAlias = Literal["accepted", "pending", "rejected"]
+
+VDuuid: TypeAlias = str
+CPVuuid: TypeAlias = str
+GPuuid: TypeAlias = str
+
+
+@dataclass(order=True)
+class Vulnerability:
+    harness_id: str
+    sanitizer_id: str
+    input_data: str
+    input_file: Path
+    cp_source: str
+
+
+@dataclass(order=True)
+class VulnerabilityWithSha(Vulnerability):
+    commit: str
+    status: CAPIStatus = "pending"
+    vd_uuid: Optional[VDuuid] = None
+    cpv_uuid: Optional[CPVuuid] = None
+    patch: Optional["Patch"] = None
+
+
+@dataclass
+class Patch:
+    diff: str
+    diff_file: Path
+    vulnerability: VulnerabilityWithSha
+    status: CAPIStatus = "pending"
+    gp_uuid: Optional[GPuuid] = None

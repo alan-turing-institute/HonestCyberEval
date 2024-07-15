@@ -2,6 +2,9 @@ from enum import auto
 
 from strenum import StrEnum
 
+# Submit
+RETRY_SUBMISSIONS = 2
+
 # LLM
 MAX_ALLOWED_HISTORY_CHARS = 100_000  # divide by 4 to get approx. number of tokens tokens
 MAX_CHAT_CLIENT_RETRIES = 1

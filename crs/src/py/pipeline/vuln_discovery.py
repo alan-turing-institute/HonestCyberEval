@@ -1,4 +1,5 @@
 import pprint
+from dataclasses import asdict
 from itertools import product
 from pathlib import Path
 from typing import Optional
@@ -14,7 +15,6 @@ from api.llm import (
     create_rag_docs,
     create_vector_store,
     format_chat_history,
-    get_retriever,
 )
 from logger import logger
 
@@ -42,9 +42,20 @@ def remove_duplicate_vulns(vulnerabilities: list[VulnerabilityWithSha]) -> list[
     # deduplicate each bucket
     deduped_commit_buckets = {}
     for commit, commit_vuln_list in commit_buckets.items():
-        deduped_dict = {(vuln.harness_id, vuln.sanitizer_id): vuln for vuln in commit_vuln_list}
-        deduped_list = [vuln for (_, vuln) in deduped_dict.items()]
-        deduped_commit_buckets[commit] = deduped_list
+        accepted_vulns = [vuln for vuln in commit_vuln_list if vuln.status == "accepted"]
+        if accepted_vulns:
+            # if vulnerability already submitted for commit and accepted
+            accepted_vuln = accepted_vulns[0]
+            deduped_commit_buckets[commit] = [accepted_vuln]
+        else:
+            deduped_dict = {
+                (vuln.harness_id, vuln.sanitizer_id): vuln
+                for vuln in commit_vuln_list
+                # if vulnerability already submitted for commit and rejected, filter it out, submit something else
+                if vuln.status != "rejected"
+            }
+            deduped_list = list(deduped_dict.values())
+            deduped_commit_buckets[commit] = deduped_list
 
     # choose vulnerabilities that maximizes coverage
     vuln_combinations = product(*[commit_vuln_list for commit_vuln_list in deduped_commit_buckets.values()])
@@ -168,7 +179,9 @@ class VulnDiscovery:
                             f" {error_code}  "
                         )
 
-                        vulnerabilities_with_sha.append(VulnerabilityWithSha(*vuln, commit=previous_commit.hexsha))
+                        vulnerabilities_with_sha.append(
+                            VulnerabilityWithSha(**(asdict(vuln)), commit=previous_commit.hexsha)
+                        )
 
                 previous_commit = inspected_commit
 
@@ -312,11 +325,7 @@ class VulnDiscovery:
                 vulnerabilities.append(Vulnerability("id_1", "id_2", mock_input_data_segv, mock_input_file, cp_source))
 
         # Left this check in even though we have the SHA for the commit as a final confirmation check
-        vulnerabilities_with_sha = await self.identify_bad_commits(vulnerabilities)
-
-        deduped_vulnerabilities_with_sha = remove_duplicate_vulns(vulnerabilities_with_sha)
-
-        return deduped_vulnerabilities_with_sha
+        return await self.identify_bad_commits(vulnerabilities)
 
 
 vuln_discovery = VulnDiscovery()
