@@ -38,7 +38,7 @@ services:
     # The example show uses RELEASE_TAG variable if it is set.
     # The `-` before `v1.0.*` is used with interpolation to specify that v1.0.* should be used if RELEASE_TAG is not set.
     # The .github/workflows/package.yaml script will set the RELEASE_TAG environment variable so it is used correctly on release.
-    image: ghcr.io/aixcc-sc/asc-crs-mindrake/brainbox:${RELEASE_TAG-v1.0.22}
+    image: ghcr.io/aixcc-sc/asc-crs-mindrake/brainbox:${RELEASE_TAG-v1.0.23}
     # Competitors: All services that are expected to have a clean exit must have restart: on-failure
     restart: on-failure
     build:

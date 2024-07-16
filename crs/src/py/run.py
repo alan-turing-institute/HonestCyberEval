@@ -83,4 +83,3 @@ if __name__ == "__main__":
             logger.exception(err)
         else:
             retry = len(vulnerabilities) == 0
-    sys.exit(1)
