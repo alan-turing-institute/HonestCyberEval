@@ -19,7 +19,7 @@ ERROR_HANDLER_RETRIES = 4
 ERROR_HANDLER_DELAYS: list[float] = [10, 20, 30, 60]
 
 # RAG
-RAG_CHUNK_SIZE = 1000
+RAG_CHUNK_SIZE = 5_000
 RAG_CHUNK_OVERLAP = 0
 RAG_VECTORSTORE_STEP = 50  # number of documents to ad to vector store at once
 RAG_EMBEDDING_MODEL = "oai-text-embedding-3-large"
@@ -35,8 +35,8 @@ class VDDetailLevel(StrEnum):
 
 
 VD_MODEL_LIST: list["LLMmodel"] = ["oai-gpt-4o", "gemini-1.5-pro", "claude-3.5-sonnet"]
-VD_MAX_LLM_TRIALS = 2
-VD_TOP_RAG_DOCS = 10
+VD_MAX_LLM_TRIALS = 8
+VD_TOP_RAG_DOCS = 20
 VD_CHOSEN_DETAIL_LEVEL = VDDetailLevel.LATEST_FILES
 
 # VD LangGraph

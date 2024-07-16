@@ -1,4 +1,5 @@
 import asyncio
+import sys
 
 from api.fs import empty_scratch, get_projects
 from api.submit import submit_patch, submit_vulnerability
@@ -81,5 +82,5 @@ if __name__ == "__main__":
         except Exception as err:
             logger.exception(err)
         else:
-            # todo: when else should we try to re-run?
-            retry = False
+            retry = len(vulnerabilities) == 0
+    sys.exit(1)

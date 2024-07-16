@@ -346,14 +346,14 @@ class VulnDiscovery:
 
             project = await project_read_only.writeable_copy_async
 
-            if both or vulnerabilities[0].sanitizer_id == "id_2":
-                mock_input_file = write_harness_input_to_disk(project, mock_input_data, 0, "id_1", "id_1", "mock")
-                vulnerabilities.append(Vulnerability("id_1", "id_1", mock_input_data, mock_input_file, cp_source))
+            # if both or vulnerabilities[0].sanitizer_id == "id_2":
+            #     mock_input_file = write_harness_input_to_disk(project, mock_input_data, 0, "id_1", "id_1", "mock")
+            #     vulnerabilities.append(Vulnerability("id_1", "id_1", mock_input_data, mock_input_file, cp_source))
 
-            if both or vulnerabilities[0].sanitizer_id == "id_1":
-                mock_input_file = write_harness_input_to_disk(project, mock_input_data_segv, 0, "id_1", "id_2", "mock")
+            # if both or vulnerabilities[0].sanitizer_id == "id_1":
+            #     mock_input_file = write_harness_input_to_disk(project, mock_input_data_segv, 0, "id_1", "id_2", "mock")
 
-                vulnerabilities.append(Vulnerability("id_1", "id_2", mock_input_data_segv, mock_input_file, cp_source))
+            #     vulnerabilities.append(Vulnerability("id_1", "id_2", mock_input_data_segv, mock_input_file, cp_source))
 
         # Left this check in even though we have the SHA for the commit as a final confirmation check
         return await self.identify_bad_commits(vulnerabilities)
