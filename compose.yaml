@@ -71,9 +71,6 @@ services:
       - AIXCC_CP_ROOT=/cp_root
       - AIXCC_CRS_SCRATCH_SPACE=/crs_scratch
       - LITELLM_KEY=sk-1234
-    depends_on:
-      iapi:
-        condition: service_healthy
 
 #############
 ### CUSTOMIZE
