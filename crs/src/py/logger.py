@@ -56,7 +56,7 @@ def make_logger():
 
 
 logger = make_logger()
-logging.disable(logging.CRITICAL)
+logging.disable(logging.INFO)
 
 
 class PrefixAdapter(logging.LoggerAdapter):
