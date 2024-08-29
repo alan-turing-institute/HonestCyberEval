@@ -6,7 +6,6 @@ WORKDIR /app
 # Copy your k6 test script to the container
 COPY script.js script.js
 COPY litellm litellm
-COPY iapi iapi
 COPY index.js index.js
 # Run the k6 test using the copied script
 CMD ["run", "script.js"]

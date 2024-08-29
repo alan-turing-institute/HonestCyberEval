@@ -131,15 +131,6 @@ logs-crs-nofollow: ## Show logs for crs container
 logs-litellm: ## Show logs for litellm container
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) logs --tail=100 -f litellm
 
-logs-capi: ## Show logs for capi container
-	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) logs --tail=100 -f capi
-
-logs-iapi: ## Show logs for iapi container
-	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) logs --tail=100 -f iapi
-
-logs-capi-audit: ## Watch the cAPI's audit log
-	@tail -f $(HOST_CAPI_LOGS)/audit.log
-
 ps: ## List containers
 	@docker compose $(DOCKER_COMPOSE_LOCAL_ARGS) ps
 
