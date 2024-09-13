@@ -19,4 +19,4 @@ cp_targets:
   #   ref: v3.1.2
   # nginx-cp:
   #   url: git@github.com:AICD-Research-Centre/aicc_nginx_cp.git
-  #   ref: v1.0.3
+  #   ref: v1.0.4
