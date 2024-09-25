@@ -48,29 +48,6 @@ services:
     env_file:
       - path: ./crs/src/env
         required: false
-  iapi:
-    ports:
-      - '127.0.0.1:8080:8080'
-    configs:
-      - source: nginx_local_config
-        target: /etc/nginx/templates/default.conf.template
-    depends_on:
-      capi:
-        condition: service_healthy
-  capi:
-    # ports:
-    #   - "127.0.0.1:8082:8080"
-    volumes:
-      - type: bind
-        source: ${PWD}/capi_logs
-        target: /var/log/capi
-        bind:
-          propagation: rshared
-      - type: bind
-        source: ${PWD}/cp_root
-        target: /cp_root
-        bind:
-          propagation: rshared
   # db:
   #   ports:
   #     - "127.0.0.1:5432:5432"

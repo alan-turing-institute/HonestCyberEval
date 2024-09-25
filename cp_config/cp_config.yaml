@@ -9,14 +9,14 @@
 
 cp_targets:
   mock-cp:
-    url: git@github.com:aixcc-sc/mock-cp.git
-    ref: v3.0.2
+    url: git@github.com:AICD-Research-Centre/aicc_mock_cp.git
+    ref: v4.0.1
   # linux-cp:
-  #   url: git@github.com:aixcc-sc/challenge-001-linux-cp.git
-  #   ref: v3.0.0
+  #   url: git@github.com:AICD-Research-Centre/aicc_linux_kernel_cp.git
+  #   ref: v3.0.1
   # jenkins-cp:
-  #   url: git@github.com:aixcc-sc/challenge-002-jenkins-cp.git
-  #   ref: v3.1.0
+  #   url: git@github.com:AICD-Research-Centre/aicc_jenkins_cp.git
+  #   ref: v3.1.2
   # nginx-cp:
-  #   url: git@github.com:aixcc-sc/challenge-004-nginx-cp.git
-  #   ref: v1.0.3
+  #   url: git@github.com:AICD-Research-Centre/aicc_nginx_cp.git
+  #   ref: v1.0.4

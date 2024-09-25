@@ -41,7 +41,7 @@ headers = {
     "Content-Type": "application/json",
 }
 
-__capi_up = False
+__capi_up = True
 __lock = asyncio.Lock()
 
 
@@ -72,46 +72,50 @@ async def submit_vulnerability(cp_name: str, vulnerability: VulnerabilityWithSha
         logger.warn(f"Attempted re-submission of vulnerability {vulnerability}")
         return
 
-    vds: VDSubmission = {
-        "cp_name": cp_name,
-        "pou": {
-            "commit_sha1": vulnerability.commit,
-            "sanitizer": vulnerability.sanitizer_id,
-        },
-        "pov": {
-            "harness": vulnerability.harness_id,
-            "data": base64.b64encode(vulnerability.input_data.encode()).decode("ascii"),
-        },
-    }
-    await healthcheck()
-    async with ClientSession(auth=AUTH, headers=headers) as session:
-        for _ in range(RETRY_SUBMISSIONS):
-            response = await session.post(
-                AIXCC_VDS_URL,
-                json=vds,
-            )
-            if not response.ok:
-                logger.warn(response.reason, response.status, cp_name, vulnerability)
-                await asyncio.sleep(2)
-            else:
-                content = await response.json()
-                vulnerability.status = content.get("status")
-                vulnerability.vd_uuid = content.get("vd_uuid")
+    vulnerability.status = "accepted"
+    vulnerability.vd_uuid = "foo"
+    return
 
-                while True:  # do-while loop; need to hit endpoint at least once to get cpv_uuid (or rejection)
-                    if vulnerability.status == "pending":
-                        await asyncio.sleep(5)
-                    response = await session.get(
-                        f"{AIXCC_VDS_URL}{vulnerability.vd_uuid}",
-                    )
-                    if not response.ok:
-                        logger.warn(response.reason, response.status, cp_name, vulnerability)
-                    else:
-                        content = await response.json()
-                        vulnerability.status = content.get("status")
-                        vulnerability.cpv_uuid = content.get("cpv_uuid")
-                        if not vulnerability.status == "pending":
-                            return
+    # vds: VDSubmission = {
+    #     "cp_name": cp_name,
+    #     "pou": {
+    #         "commit_sha1": vulnerability.commit,
+    #         "sanitizer": vulnerability.sanitizer_id,
+    #     },
+    #     "pov": {
+    #         "harness": vulnerability.harness_id,
+    #         "data": base64.b64encode(vulnerability.input_data.encode()).decode("ascii"),
+    #     },
+    # }
+    # await healthcheck()
+    # async with ClientSession(auth=AUTH, headers=headers) as session:
+    #     for _ in range(RETRY_SUBMISSIONS):
+    #         response = await session.post(
+    #             AIXCC_VDS_URL,
+    #             json=vds,
+    #         )
+    #         if not response.ok:
+    #             logger.warn(response.reason, response.status, cp_name, vulnerability)
+    #             await asyncio.sleep(2)
+    #         else:
+    #             content = await response.json()
+    #             vulnerability.status = content.get("status")
+    #             vulnerability.vd_uuid = content.get("vd_uuid")
+    #
+    #             while True:  # do-while loop; need to hit endpoint at least once to get cpv_uuid (or rejection)
+    #                 if vulnerability.status == "pending":
+    #                     await asyncio.sleep(5)
+    #                 response = await session.get(
+    #                     f"{AIXCC_VDS_URL}{vulnerability.vd_uuid}",
+    #                 )
+    #                 if not response.ok:
+    #                     logger.warn(response.reason, response.status, cp_name, vulnerability)
+    #                 else:
+    #                     content = await response.json()
+    #                     vulnerability.status = content.get("status")
+    #                     vulnerability.cpv_uuid = content.get("cpv_uuid")
+    #                     if not vulnerability.status == "pending":
+    #                         return
 
 
 def _encode_patch(patch: Patch) -> GPSubmission:
@@ -127,30 +131,34 @@ async def submit_patch(patch: Patch) -> None:
     if patch.gp_uuid is not None:
         logger.warn(f"Attempted re-submission of patch {patch}")
         return
-    gp = _encode_patch(patch)
-    await healthcheck()
-    async with ClientSession(auth=AUTH, headers=headers) as session:
-        for _ in range(RETRY_SUBMISSIONS):
-            response = await session.post(
-                AIXCC_GP_URL,
-                json=gp,
-            )
-            if not response.ok:
-                logger.warn(response.reason, response.status)
-                await asyncio.sleep(2)
-            else:
-                content = await response.json()
-                patch.status = content.get("status")
-                patch.gp_uuid = content.get("gp_uuid")
-                while patch.status == "pending":
-                    await asyncio.sleep(5)  # sleep(10) from run.sh
-                    response = await session.get(
-                        f"{AIXCC_GP_URL}{patch.gp_uuid}",
-                    )
-                    if not response.ok:
-                        logger.warn(response.reason, response.status)
-                    else:
-                        content = await response.json()
-                        patch.status = content.get("status")
-                        patch.gp_uuid = content.get("gp_uuid")
-                return
+    patch.status = "accepted"
+    patch.gp_uuid = "foo"
+    return
+    #
+    # gp = _encode_patch(patch)
+    # await healthcheck()
+    # async with ClientSession(auth=AUTH, headers=headers) as session:
+    #     for _ in range(RETRY_SUBMISSIONS):
+    #         response = await session.post(
+    #             AIXCC_GP_URL,
+    #             json=gp,
+    #         )
+    #         if not response.ok:
+    #             logger.warn(response.reason, response.status)
+    #             await asyncio.sleep(2)
+    #         else:
+    #             content = await response.json()
+    #             patch.status = content.get("status")
+    #             patch.gp_uuid = content.get("gp_uuid")
+    #             while patch.status == "pending":
+    #                 await asyncio.sleep(5)  # sleep(10) from run.sh
+    #                 response = await session.get(
+    #                     f"{AIXCC_GP_URL}{patch.gp_uuid}",
+    #                 )
+    #                 if not response.ok:
+    #                     logger.warn(response.reason, response.status)
+    #                 else:
+    #                     content = await response.json()
+    #                     patch.status = content.get("status")
+    #                     patch.gp_uuid = content.get("gp_uuid")
+    #             return

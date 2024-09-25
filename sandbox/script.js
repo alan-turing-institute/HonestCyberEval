@@ -1,5 +1,4 @@
 import { default as litellm } from './litellm/script.js'
-import { default as iapi } from './iapi/script.js'
 import { textSummary } from './index.js'
 
 export const options = {
@@ -15,22 +14,11 @@ export const options = {
       iterations: 10,
       maxDuration: '10s'
     },
-    iapiScenario: {
-      exec: 'iapiRun',
-      executor: 'per-vu-iterations',
-      vus: 1,
-      iterations: 10,
-      maxDuration: '10s'
-    }
   }
 }
 
 export function litellmRun () {
   litellm()
-}
-
-export function iapiRun () {
-  iapi()
 }
 
 export function handleSummary (data) {
