@@ -20,3 +20,6 @@ cp_targets:
   # nginx-cp:
   #   url: git@github.com:AICD-Research-Centre/aicc_nginx_cp.git
   #   ref: v1.0.4
+  # nginx-cp-full:
+  #  url: git@github.com:aixcc-public/challenge-004-nginx-cp.git
+  #  ref: v1.0.3
