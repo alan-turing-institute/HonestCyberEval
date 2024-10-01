@@ -4,6 +4,7 @@ from typing import TypedDict
 
 from aiohttp import BasicAuth, ClientSession
 from params import RETRY_SUBMISSIONS
+from pprint import pprint
 
 from config import AIXCC_GP_URL, AIXCC_HEALTHCHECK_URL, AIXCC_VDS_URL
 from logger import logger
@@ -71,7 +72,6 @@ async def submit_vulnerability(cp_name: str, vulnerability: VulnerabilityWithSha
     if vulnerability.vd_uuid is not None or vulnerability.cpv_uuid is not None:
         logger.warn(f"Attempted re-submission of vulnerability {vulnerability}")
         return
-
     vulnerability.status = "accepted"
     vulnerability.vd_uuid = "foo"
     return

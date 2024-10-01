@@ -34,7 +34,13 @@ class VDDetailLevel(StrEnum):
     FUNC_DIFFS = auto()
 
 
-VD_MODEL_LIST: list["LLMmodel"] = ["oai-gpt-4o", "gemini-1.5-pro", "claude-3.5-sonnet"]
+VD_MODEL_LIST: list["LLMmodel"] = [
+    # "oai-gpt-4o",
+    "o1-preview",
+    # "o1-mini",
+    # "gemini-1.5-pro",
+    # "claude-3.5-sonnet",
+]
 VD_MAX_LLM_TRIALS = 8
 VD_TOP_RAG_DOCS = 20
 VD_CHOSEN_DETAIL_LEVEL = VDDetailLevel.LATEST_FILES
@@ -44,5 +50,9 @@ BACKUP_MODEL_GEMINI = "oai-gpt-4o"
 NUM_MESSAGES_PER_ROUND = 4  # this is not an actual parameter. Change only if you changed LangGraph logic
 
 # Patch Generation
-PATCH_MODEL_LIST: list = ["oai-gpt-4o", "claude-3.5-sonnet", "gemini-1.5-pro"]
+PATCH_MODEL_LIST: list = [
+    "oai-gpt-4o",
+    # "claude-3.5-sonnet",
+    # "gemini-1.5-pro",
+]
 PATCH_MAX_LLM_TRIALS = 3

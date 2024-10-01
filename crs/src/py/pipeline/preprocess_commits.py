@@ -829,7 +829,14 @@ def find_diff_between_commits(before_commit: Commit, after_commit: Commit) -> di
     return filename_diffs
 
 
-def c_file_check(filename, before_commit, after_commit, before_file_lines, after_file_lines, change_type):
+def c_file_check(
+    filename,
+    before_commit,
+    after_commit,
+    before_file_lines,
+    after_file_lines,
+    change_type,
+):
 
     before_function_lines: FunctionDictType = {}
     after_function_lines: FunctionDictType = {}
@@ -842,7 +849,8 @@ def c_file_check(filename, before_commit, after_commit, before_file_lines, after
         before_file_ast = parse_c_snippet("\n".join(before_file_lines), filename, before_commit)
         before_nodes = search_ast_for_node_types(before_file_ast, C_TYPES, filename)
         before_function_lines = get_full_function_snippets(
-            before_file_lines, set(before_nodes[CDeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL].keys())
+            before_file_lines,
+            set(before_nodes[CDeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL].keys()),
         )
         logger.info(set(before_nodes[CDeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL].keys()))
         for key in before_function_lines:
@@ -853,7 +861,8 @@ def c_file_check(filename, before_commit, after_commit, before_file_lines, after
         after_file_ast = parse_c_snippet("\n".join(after_file_lines), filename, after_commit)
         after_nodes = search_ast_for_node_types(after_file_ast, C_TYPES, filename)
         after_function_lines = get_full_function_snippets(
-            after_file_lines, set(after_nodes[CDeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL].keys())
+            after_file_lines,
+            set(after_nodes[CDeclType.FUNCTION_TYPE][VarSourceType.FILE_LOCAL].keys()),
         )
 
     diff_functions = get_function_diffs(before_function_lines, after_function_lines)
@@ -897,7 +906,9 @@ def c_file_check(filename, before_commit, after_commit, before_file_lines, after
                 if FILE_CODE in before_function_lines:
                     new_diff_functions[function_name].before_external_variable_decls = (
                         get_c_function_external_variables_decl(
-                            function_name, before_nodes, before_function_lines[FILE_CODE]
+                            function_name,
+                            before_nodes,
+                            before_function_lines[FILE_CODE],
                         )
                     )
 
@@ -910,7 +921,14 @@ def c_file_check(filename, before_commit, after_commit, before_file_lines, after
     return diff_found, diff_functions
 
 
-def java_file_check(filename, before_commit, after_commit, before_file_lines, after_file_lines, change_type):
+def java_file_check(
+    filename,
+    before_commit,
+    after_commit,
+    before_file_lines,
+    after_file_lines,
+    change_type,
+):
 
     before_function_lines: FunctionDictType = {}
     after_function_lines: FunctionDictType = {}

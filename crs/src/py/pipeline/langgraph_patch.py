@@ -10,7 +10,11 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.graph import CompiledGraph
-from params import BACKUP_MODEL_GEMINI, MAX_ALLOWED_HISTORY_CHARS, NUM_MESSAGES_PER_ROUND
+from params import (
+    BACKUP_MODEL_GEMINI,
+    MAX_ALLOWED_HISTORY_CHARS,
+    NUM_MESSAGES_PER_ROUND,
+)
 from strenum import StrEnum
 
 from api.cp import ChallengeProject
@@ -281,7 +285,9 @@ async def reflect(state: GraphState) -> GraphState:
 
 
 # Branches
-def check_if_finished(state: GraphState) -> Literal[Nodes.END, Nodes.REFLECT, Nodes.GENERATE]:
+def check_if_finished(
+    state: GraphState,
+) -> Literal[Nodes.END, Nodes.REFLECT, Nodes.GENERATE]:
     if (not state["error"]) or state["iterations"] == state["max_iterations"]:
         state["logger"].info("Decision: Finish")
         return Nodes.END

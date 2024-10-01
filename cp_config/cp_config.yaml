@@ -8,9 +8,9 @@
 # of the specified repo from "url".
 
 cp_targets:
-  mock-cp:
-    url: git@github.com:AICD-Research-Centre/aicc_mock_cp.git
-    ref: v4.0.1
+#  mock-cp:
+#    url: git@github.com:AICD-Research-Centre/aicc_mock_cp.git
+#    ref: v4.0.1
   # linux-cp:
   #   url: git@github.com:AICD-Research-Centre/aicc_linux_kernel_cp.git
   #   ref: v3.0.1
@@ -20,6 +20,6 @@ cp_targets:
   # nginx-cp:
   #   url: git@github.com:AICD-Research-Centre/aicc_nginx_cp.git
   #   ref: v1.0.4
-  # nginx-cp-full:
-  #  url: git@github.com:aixcc-public/challenge-004-nginx-cp.git
-  #  ref: v1.0.3
+   nginx-cp-full:
+    url: git@github.com:aixcc-public/challenge-004-nginx-cp.git
+    ref: v1.0.3

@@ -97,11 +97,22 @@ class ChallengeProjectReadOnly:
     async def make_writeable_copy(self, name_extra: str, initial_build: bool = False) -> "ChallengeProject":
         destination_path = AIXCC_CRS_SCRATCH_SPACE / AIXCC_CP_ROOT.name / f"{self.path.name}{name_extra}"
         await copytree(self.path, destination_path, copy_function=copy, dirs_exist_ok=True)
-        return ChallengeProject(destination_path, self.input_path, self.patch_path, initial_build=initial_build)
+        return ChallengeProject(
+            destination_path,
+            self.input_path,
+            self.patch_path,
+            initial_build=initial_build,
+        )
 
 
 class ChallengeProject(ChallengeProjectReadOnly):
-    def __init__(self, path: Path, input_path: Path, patch_path: Path, initial_build: bool = False):
+    def __init__(
+        self,
+        path: Path,
+        input_path: Path,
+        patch_path: Path,
+        initial_build: bool = False,
+    ):
         super().__init__(path, input_path, patch_path)
         self._build_lock = aiorwlock.RWLock()
         self.writeable_copy_async = asyncio.create_task(self._return_self())
@@ -110,7 +121,7 @@ class ChallengeProject(ChallengeProjectReadOnly):
         if initial_build:
             logger.info(f"Building {self.name}")
             self.initial_build = asyncio.create_task(self.build_project())
-            self._initial_test_run = asyncio.create_task(self._run_tests_for_timing())
+            # self._initial_test_run = asyncio.create_task(self._run_tests_for_timing())
         else:
             self.initial_build = self.writeable_copy_async
         # self._set_docker_env()
@@ -240,7 +251,10 @@ class ChallengeProject(ChallengeProjectReadOnly):
         else:
             extra_kwargs = {}
         process, stdout, stderr, duration = await self._run_cp_run_sh(
-            "run_pov", harness_input_file, self.harnesses[harness_id].name, **extra_kwargs
+            "run_pov",
+            harness_input_file,
+            self.harnesses[harness_id].name,
+            **extra_kwargs,
         )
         if self._harness_duration is None:
             self._harness_duration = math.ceil(duration) * 2

@@ -121,7 +121,7 @@ services:
       - mock-crs
       - development
       - loadtest
-    image: ghcr.io/berriai/litellm-database:main-v1.41.2-stable
+    image: ghcr.io/berriai/litellm-database:main-v1.48.6
     restart: always
     configs:
       - source: litellm_config

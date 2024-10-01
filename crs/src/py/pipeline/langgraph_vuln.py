@@ -9,7 +9,11 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.graph import CompiledGraph
-from params import BACKUP_MODEL_GEMINI, MAX_ALLOWED_HISTORY_CHARS, NUM_MESSAGES_PER_ROUND
+from params import (
+    BACKUP_MODEL_GEMINI,
+    MAX_ALLOWED_HISTORY_CHARS,
+    NUM_MESSAGES_PER_ROUND,
+)
 from strenum import StrEnum
 
 from api.cp import ChallengeProject
@@ -112,7 +116,6 @@ class GraphState(TypedDict):
     chat_history: ChatMessageHistory
     solution: str
     error: Optional[Exception]
-    continue_after_probe: bool
     iterations: int
     max_iterations: int
     harness_id: str
@@ -135,58 +138,6 @@ class Nodes(StrEnum):
 
 
 # Nodes
-async def probe(state: GraphState) -> GraphState:
-    state["logger"].info("Probing for the code snippet")
-
-    question = state["code_snippet"] + ("\n" + state["diff"] if state["diff"] else "")
-    model = state["model"]
-
-    # probing_chain = probing_prompt | add_structured_output(model, ProbeResult, "oai-gpt-4o")
-    probing_chain = RunnableWithMessageHistory(
-        probing_prompt
-        | add_structured_output(  # type: ignore  # types around with_structured_output are a mess
-            model,
-            ProbeResult,
-            BACKUP_MODEL_GEMINI,
-        ),
-        # | model.with_structured_output(ProbeResult),
-        lambda _: state["chat_history"],
-        output_messages_key="ai_message",
-        input_messages_key="question",
-        history_messages_key="messages",
-    )
-
-    e_handler = ErrorHandler()
-    while e_handler.ok_to_retry():
-        try:
-            output = await probing_chain.ainvoke(
-                {
-                    "language": state["project"].language,
-                    "sanitizer": state["sanitizer_str"],
-                    "question": question,
-                    **fix_anthropic_weirdness(model),
-                },
-                {"configurable": {"session_id": "other"}},
-            )
-        except Exception as e:
-            await e_handler.exception_caught(e)
-        else:
-            probe_solution = output["parsed"]
-
-            try:
-                assert type(probe_solution) is ProbeResult
-            except AssertionError:
-                error = output["parsing_error"]
-                ai_message = output["raw"]
-                raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
-            else:
-                is_vuln = probe_solution.is_vuln
-                return GraphState(**{
-                    **state,
-                    "continue_after_probe": is_vuln,
-                })
-    else:
-        e_handler.raise_exception()
 
 
 async def generate(state: GraphState) -> GraphState:
@@ -201,6 +152,7 @@ async def generate(state: GraphState) -> GraphState:
         if state["should_reflect"]:
             question = """Try again using the information from your messages and your previous inputs.
              Generate another harness input that triggers the sanitizer in the code.
+             Do NOT offer an explanation, only provide the input.
              """
         else:
             question = f"""The previous solution produced: \n {error}
@@ -253,7 +205,7 @@ async def generate(state: GraphState) -> GraphState:
                 raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
             else:
                 solution = harness_input_solution.input
-
+                state["logger"].warning("solution:\n" + solution)
                 return GraphState(**{
                     **state,
                     "solution": solution,
@@ -273,7 +225,12 @@ async def run_harness(state: GraphState) -> GraphState:
     model_name: LLMmodel = state["model"].model_name  # type: ignore  # we know it's one of the models...
 
     harness_input_file = write_harness_input_to_disk(
-        project, state["solution"], state["iterations"], harness_id, sanitizer_id, model_name
+        project,
+        state["solution"],
+        state["iterations"],
+        harness_id,
+        sanitizer_id,
+        model_name,
     )
 
     try:
@@ -327,7 +284,9 @@ async def reflect(state: GraphState) -> GraphState:
 
 
 # Branches
-def check_if_finished(state: GraphState) -> Literal[Nodes.END, Nodes.REFLECT, Nodes.GENERATE]:
+def check_if_finished(
+    state: GraphState,
+) -> Literal[Nodes.END, Nodes.REFLECT, Nodes.GENERATE]:
     if (not state["error"]) or state["iterations"] == state["max_iterations"]:
         state["logger"].info("Decision: Finish")
         return Nodes.END
@@ -337,16 +296,6 @@ def check_if_finished(state: GraphState) -> Literal[Nodes.END, Nodes.REFLECT, No
         return Nodes.REFLECT
     else:
         return Nodes.GENERATE
-
-
-def check_if_probe_finished(state: GraphState) -> Literal[Nodes.END, Nodes.REFLECT, Nodes.GENERATE]:
-    if not state["continue_after_probe"]:
-        state["logger"].info("Decision: Early finish")
-        return Nodes.END
-
-    state["logger"].info("Decision: Code snippet worth investigation")
-    state["chat_history"].clear()
-    return Nodes.GENERATE
 
 
 # Setup
@@ -360,13 +309,10 @@ def make_workflow(key: str = "default") -> CompiledGraph:
         match key:
             case "default":
                 workflow = StateGraph(GraphState)
-                workflow.add_node(Nodes.PROBE, probe)
                 workflow.add_node(Nodes.GENERATE, generate)
                 workflow.add_node(Nodes.RUN_HARNESS, run_harness)
                 workflow.add_node(Nodes.REFLECT, reflect)
-                workflow.add_edge(START, Nodes.PROBE)
-                workflow.add_conditional_edges(Nodes.PROBE, check_if_probe_finished)
-                # workflow.add_edge(START, Nodes.GENERATE)
+                workflow.add_edge(START, Nodes.GENERATE)
                 workflow.add_edge(Nodes.GENERATE, Nodes.RUN_HARNESS)
                 workflow.add_conditional_edges(Nodes.RUN_HARNESS, check_if_finished)
                 workflow.add_edge(Nodes.REFLECT, Nodes.GENERATE)
@@ -414,7 +360,6 @@ async def run_vuln_langraph(
             "sanitizer_str": sanitizer_str,
             "code_snippet": code_snippet,
             "diff": diff,
-            "continue_after_probe": True,
             "logger": logger,
         })
     )

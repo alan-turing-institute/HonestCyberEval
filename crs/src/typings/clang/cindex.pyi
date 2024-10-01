@@ -395,7 +395,11 @@ class Index(ClangObject):
     def __del__(self) -> None: ...
     def read(self, path): ...
     def parse(
-        self, path, args: Incomplete | None = None, unsaved_files: Incomplete | None = None, options: int = 0
+        self,
+        path,
+        args: Incomplete | None = None,
+        unsaved_files: Incomplete | None = None,
+        options: int = 0,
     ): ...
 
 class TranslationUnit(ClangObject):

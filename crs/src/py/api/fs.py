@@ -90,7 +90,7 @@ def empty_scratch():
 def write_file_to_scratch(filename, content):
     OUTPUT_PATH.mkdir(exist_ok=True)
     file_path = OUTPUT_PATH / filename
-    file_path.write_text(content)
+    file_path.write_text(content+"\n\n\n")
     return file_path
 
 

@@ -25,6 +25,18 @@ model_list:
       api_key: "os.environ/OPENAI_API_KEY"
       tpm: 60000
       rpm: 400
+  - model_name: o1-preview
+    litellm_params:
+      model: openai/o1-preview
+      api_key: "os.environ/OPENAI_API_KEY"
+      tpm: 60000
+      rpm: 400
+  - model_name: o1-mini
+    litellm_params:
+      model: openai/o1-mini
+      api_key: "os.environ/OPENAI_API_KEY"
+      tpm: 60000
+      rpm: 400
   - model_name: oai-text-embedding-3-large
     litellm_params:
       model: openai/text-embedding-3-large
@@ -150,11 +162,11 @@ general_settings:
   database_url: "os.environ/DATABASE_URL"
 router_settings:
   model_group_alias:
-    - azure-gpt-3.5-turbo: azure-gpt-3.5-turbo
-    - azure-gpt-3.5-turbo-16k: azure-gpt-3.5-turbo-16k
-    - azure-gpt-4o: azure-gpt-4o
-    - oai-gpt-3.5-turbo: oai-gpt-3.5-turbo-0125
-    - oai-gpt-3.5-turbo-16k: oai-gpt-3.5-turbo-16k
-    - oai-gpt-4: oai-gpt-4
-    - oai-gpt-4-turbo: oai-gpt-4-turbo
+    azure-gpt-3.5-turbo: azure-gpt-3.5-turbo
+    azure-gpt-3.5-turbo-16k: azure-gpt-3.5-turbo-16k
+    azure-gpt-4o: azure-gpt-4o
+    oai-gpt-3.5-turbo: oai-gpt-3.5-turbo-0125
+    oai-gpt-3.5-turbo-16k: oai-gpt-3.5-turbo-16k
+    oai-gpt-4: oai-gpt-4
+    oai-gpt-4-turbo: oai-gpt-4-turbo
   routing_strategy: "usage-based-routing-v2"

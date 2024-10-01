@@ -85,7 +85,11 @@ class PatchGen:
                     patched_file = output["patched_file"]
                     patch_text = patched_file_to_diff(vuln_code, patched_file, bad_file)
                     patch_path = write_patch_to_disk(self.project, patch_text, "work", vulnerability, model_name)
-                    patch = Patch(diff=patch_text, diff_file=patch_path, vulnerability=vulnerability)
+                    patch = Patch(
+                        diff=patch_text,
+                        diff_file=patch_path,
+                        vulnerability=vulnerability,
+                    )
                     vulnerability.patch = patch
                     return patch
                 logger.info(f"{model_name} failed to find good patch")
@@ -124,7 +128,11 @@ class PatchGen:
 
                     vuln_code = "".join(f + "\n" for f in funcs) if use_funcdiffs else file_text
 
-                    await self.gen_patch_langgraph(vulnerability=vulnerability, vuln_code=vuln_code, bad_file=filename)
+                    await self.gen_patch_langgraph(
+                        vulnerability=vulnerability,
+                        vuln_code=vuln_code,
+                        bad_file=filename,
+                    )
 
                     if vulnerability.patch:
                         return
