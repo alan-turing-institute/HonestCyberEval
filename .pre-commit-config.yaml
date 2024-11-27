@@ -1,11 +1,8 @@
 ---
 exclude: >
   (?x)(
-      dind_cache|
       dind_cache/*|
-      crs_scratch|
       crs_scratch/*|
-      cp_root|
       cp_root/*
   )
 
@@ -50,7 +47,6 @@ repos:
     rev: v1.6.27
     hooks:
       - id: actionlint
-        args: ['-config-file', '.github/linters/actionlint.yaml']
   - repo: https://github.com/psf/black
     rev: 24.4.2
     hooks:

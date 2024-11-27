@@ -1,11 +1,6 @@
 ## Localized environment variables
-**/.env
+**/crs.env
 **/env
-
-## Generated Kubernetes Resources
-sandbox/kustomize/base/resources.yaml
-sandbox/kustomize/base/cp_config.yaml
-.k8s
 
 ## Cloned exemplar repositories
 cp_root/
@@ -33,3 +28,9 @@ devenv.lock
 # direnv
 .direnv
 .idea
+.venv
+
+__pycache__
+*.pyo
+*.pyc
+*.egg-info

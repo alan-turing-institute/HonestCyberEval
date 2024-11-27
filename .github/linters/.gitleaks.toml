@@ -1,5 +1,0 @@
-[allowlist]
-description = "global allow lists"
-paths = [
-    '''sandbox/litellm/script.js'''
-]

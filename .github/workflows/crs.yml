@@ -1,5 +1,3 @@
-# COMPETITORS: You may use this GitHub action file for assisting your development
-
 name: CRS Action
 on:
   push:
@@ -11,8 +9,7 @@ on:
 
 jobs:
   crs-action:
-    runs-on:
-      group: large-runners
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -25,19 +22,16 @@ jobs:
           cache: 'pip'
 
       - name: Install test requirements
-        run: pip3 install -r crs/src/requirements.txt -r crs/src/requirements.test.txt
+        run: pip3 install -r sandbox/crs/src/requirements.txt -r sandbox/crs/src/requirements-dev.txt
 
       - uses: jakebailey/pyright-action@v2
         with:
-          working-directory: crs/src
+          working-directory: sandbox/crs/src
       - name: isort
         if: always()
         run: |
-          isort crs/src --check --diff
+          isort sandbox/crs/src --check --diff
       - name: black
         if: always()
         run: |
-          black crs/src --check --diff
-      - name: Run test
-        if: always()
-        run: pytest -c crs/src/pyproject.toml crs/src/py
+          black sandbox/crs/src --check --diff

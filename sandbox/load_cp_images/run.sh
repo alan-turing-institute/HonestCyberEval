@@ -26,11 +26,6 @@ fi
 if [ "$LOAD_CP_IMAGES" = "true" ]; then
 	echo "Starting CP image loader"
 
-	until docker version >/dev/null 2>/dev/null; do
-		echo "Waiting for Docker daemon to start"
-		sleep 5
-	done
-
 	echo "Logging in to GHCR"
 	echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_USER}" --password-stdin
 
@@ -54,11 +49,4 @@ if [ "$LOAD_CP_IMAGES" = "true" ]; then
 		make docker-pull
 	done
 	echo "CP image loading complete"
-fi
-
-if [ "$ENABLE_HEALTH_ENDPOINT" = "true" ]; then
-	echo "Starting health endpoint"
-	while true; do
-		printf "HTTP/1.1 200 OK\n\n %s" "$(date)" | nc -l -p "${HEALTH_ENDPOINT_PORT}"
-	done
 fi

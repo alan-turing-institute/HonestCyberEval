@@ -1,76 +1,134 @@
----
-######################################################################################################
-# DO NOT MODIFY THIS FILE ANYWHERE OTHER THAN WITHIN THE CUSTOMIZE BLOCKS
-#
-#
-# New services are acceptable
-#
-# Profiles
-# We use the profiles "development" and "competition"
-# All containers added by competitors must include the appropriate profiles
-# At competition time only the `--profile competition` will be used
-# This will cause the LiteLLM proxy to disappear.
-# Competitors should be using the AIXCC_LITELLM_HOSTNAME environment variable
-# for accessing LiteLLM, so we can swap the URL at competition time.
-#
-######################################################################################################
-
-include:
-  - path:
-      - sandbox/compose.yaml
-
-#############
-### CUSTOMIZE
-#############
-
-
-### Additional services are welcomed, just make sure to use the supplied variables and profile names
 services:
-  crs:
-    labels:
-      kompose.serviceaccount-name: "crs"  # make sure to use this label if you want your CRS to have K8S API access
-    networks:
-      - crs-internal  # Competitors: You MUST use this network only for any containers you add to your CRS.
-    profiles:
-      - development
-      - competition
-    # Competitors: You MUST change crs-sandbox to your repo name, change replace-me-crs to your image name, and be versioned pinned to the release intended for competition.
-    # The example show uses RELEASE_TAG variable if it is set.
-    # The `-` before `v1.0.*` is used with interpolation to specify that v1.0.* should be used if RELEASE_TAG is not set.
-    # The .github/workflows/package.yaml script will set the RELEASE_TAG environment variable so it is used correctly on release.
-    image: ghcr.io/aixcc-sc/asc-crs-mindrake/brainbox:${RELEASE_TAG-v1.0.23}
-    # Competitors: All services that are expected to have a clean exit must have restart: on-failure
-    restart: on-failure
+  load-cp-images:
+    restart: "no"
+    expose:
+      - "8080"
     build:
-      context: .  # Note that this uses the base folder for context, you may not need this for your CRS
-      # Competitors: You MUST change to your Dockerfile location for your CRS.
-      # This points to the mock_crs by default.
-      dockerfile: crs/src/Dockerfile
-      # Competitors: You will need to change this command to trigger your CRS.
-      # If you have multiple containers for your CRS you must design your own
-      # orchestration and synchronisation mechanisms.
-    command: ["python3", "py/run.py"]
+      context: ./sandbox/load_cp_images
+    networks:
+      - crs-internal
+      - internet
+    env_file: ./config/env
+    environment:
+      - DOCKER_HOST=tcp://dind:2375
+      - AIXCC_CP_ROOT=/cp_root
+      - "LOAD_CPS=false"
+      - "LOAD_CP_IMAGES=true"
     volumes:
-      #################################################################################
-      ### THESE VOLUMES MUST BE INCLUDED WITHOUT MODIFICATION TO ALL CRS CONTAINERS ###
-      # A CRS MUST copy CP repositories from `AIXCC_CP_ROOT` to a writable location such as
-      # `AIXCC_CRS_SCRATCH_SPACE` for building and testing CPs.
-      # A CRS MUST not modify settings within this section.
+      - type: bind
+        source: ${PWD}/cp_root
+        target: /cp_root
+        bind:
+          propagation: rshared
+    depends_on:
+      - dind
+  dind:
+    networks:
+      - crs-internal
+      - internet
+    expose:
+      - "2375"
+    image: docker:24-dind
+    command: ["dockerd", "-H", "tcp://0.0.0.0:2375", "--tls=false", "--storage-driver=overlay2"]
+    restart: always
+    privileged: true  # This must run with privilege to support nested virtualization within the public Linux CP for `virtme-ng`
+    environment:
+      - DOCKER_TLS_CERTDIR  # intentionally blank to optimize runtime
+    volumes:
       - type: bind
         source: ${PWD}/crs_scratch
         target: /crs_scratch
         bind:
           propagation: rshared
-      - ./cp_root:/cp_root
-      #################################################################################
+      - dind_cache:/var/lib/docker
+  db:
+    networks:
+      - crs-internal
+    expose:
+      - "5432"
+    image: postgres:16.2-alpine3.19
+    restart: always
+    shm_size: 128mb
     environment:
-      # These values will be modified automatically at competition time
+      - POSTGRES_PASSWORD=aixcc
+      - POSTGRES_USER=aixcc
+      - POSTGRES_DB=litellm
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 3s
+      retries: 15
+  litellm:
+    networks:
+      - crs-internal
+      - internet
+    expose:
+      - "80"
+    ports:
+      - '127.0.0.1:8081:80'
+    image: ghcr.io/berriai/litellm-database:main-v1.48.6
+    restart: always
+    configs:
+      - source: litellm_config
+        target: /app/config.yaml
+      - source: litellm_vertex_config
+        target: /vertex_key.json
+    command: ["--config", "/app/config.yaml", "--port", "80", "--num_workers", "8"]
+    env_file: ./config/env
+    environment:
+      - DATABASE_URL=postgresql://aixcc:aixcc@db:5432/litellm
+    healthcheck:
+      test: ["CMD-SHELL", "python3", "--version"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 1s
+    depends_on:
+      db:
+        condition: service_healthy
+  crs:
+    restart: "no"
+    build:
+      context: ./sandbox/crs/
+      dockerfile: Dockerfile
+    volumes:
+      - type: bind
+        source: ${PWD}/crs_scratch
+        target: /crs_scratch
+        bind:
+          propagation: rshared
+      - type: bind
+        source: ${PWD}/sandbox/crs/src/
+        target: /app/
+        bind:
+          propagation: rshared
+      - ./cp_root:/cp_root
+    environment:
       - DOCKER_HOST=tcp://dind:2375
       - AIXCC_LITELLM_HOSTNAME=http://litellm
       - AIXCC_CP_ROOT=/cp_root
       - AIXCC_CRS_SCRATCH_SPACE=/crs_scratch
       - LITELLM_KEY=sk-1234
-
-#############
-### CUSTOMIZE
-#############
+    depends_on:
+      litellm:
+        condition: service_healthy
+      load-cp-images:
+        condition: service_completed_successfully
+    # command: ["tail", "-f", "run.py"]  # useful to keep CRS container alive in conjunction with `make crs-shell`
+    networks:
+      - crs-internal
+      - internet  # only to be used for langsmith
+    env_file:
+      - path: ./config/crs.env
+        required: false
+volumes:
+  dind_cache:
+configs:
+  litellm_config:
+    file: ./config/local_litellm_config.yaml
+  litellm_vertex_config:
+    file: ./config/vertex_key.json
+networks:
+  internet: {}
+  crs-internal:
+    internal: true

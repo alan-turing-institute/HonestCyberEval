@@ -7,5 +7,3 @@ do
     git -C "${HOME}/aicc_crs/cp_root/nginx-cp-full/src/nginx" apply "$patch"
   fi
 done
-
-#git -C "cp_root/nginx-cp-full/src/nginx"
