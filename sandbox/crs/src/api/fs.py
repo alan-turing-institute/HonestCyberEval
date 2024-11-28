@@ -63,8 +63,8 @@ def empty_scratch():
     if PROJECT_PATH.exists():
         rmtree(PROJECT_PATH)
 
-    if OUTPUT_PATH.exists():
-        rmtree(OUTPUT_PATH)
+    # if OUTPUT_PATH.exists():
+        # rmtree(OUTPUT_PATH)
 
 
 def write_file_to_scratch(filename, content):

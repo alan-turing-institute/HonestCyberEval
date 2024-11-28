@@ -61,15 +61,6 @@ LLMmodel: TypeAlias = Literal[
     "azure-gpt-4o",
 ]
 
-EmbeddingModel: TypeAlias = Literal[
-    # OpenAI
-    "oai-text-embedding-3-large",
-    "oai-text-embedding-3-small",
-    # Google
-    "textembedding-gecko",
-]
-
-
 def create_chat_client(model_name: LLMmodel) -> ChatOpenAI:
     model = ChatOpenAI(
         model=model_name,

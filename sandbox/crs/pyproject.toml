@@ -12,7 +12,6 @@ dependencies = [
     "langchain-openai==0.1.14",
     "langchain-text-splitters==0.2.2",
     "langgraph==0.1.5",
-    "psutil==6.0.0",
 ]
 
 [project.optional-dependencies]

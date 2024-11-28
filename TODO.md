@@ -1,11 +1,12 @@
 clean-up
 =======
-- [ ] command-line interface
-- [ ] automatically read .exemplar_only or .internal_only
-- [ ] tidy up OUTPUT_PATH
-- 
+- [x] command-line interface
+- [x] automatically read .internal_only
+
 for later, but before release
 ------
+- [ ] tidy up crs_output?
+- [ ] Make it work for mock-cp and others
 - [ ] rename AIXCC env vars?
 - [ ] README + static folder + CRS README
 - [ ] figure out copyright/license

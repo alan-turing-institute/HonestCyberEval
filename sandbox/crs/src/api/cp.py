@@ -1,5 +1,6 @@
 import asyncio
 import math
+import re
 from copy import deepcopy
 from pathlib import Path
 from shutil import copy
@@ -64,7 +65,7 @@ class ChallengeProjectReadOnly:
         return deepcopy(self.__config)
 
     @property
-    def sanitizer_str(self) -> str:
+    def sanitizer_str(self):
         return deepcopy(self.__config["sanitizers"])
 
     def _make_main_writeable_copy(self):
@@ -91,6 +92,35 @@ class ChallengeProjectReadOnly:
             initial_build=initial_build,
         )
 
+    def get_cpv_info(self, cpv: str, cp_source: str):
+        cpv_dir = self.path/".internal_only"
+        if not cpv_dir.exists():
+            cpv_dir = self.path/"exemplar_only"
+        if not cpv_dir.exists():
+            raise Exception("Vulnerabilities not defined")
+        info_file = cpv_dir/cpv/"pov_pou_info"
+        if info_file.exists():
+            pov_harness, sanitizer = info_file.read_text().strip().split(",")
+            sanitizer_id = list(self.sanitizer_str.keys())[list(self.sanitizer_str.values()).index(sanitizer.strip())]
+
+            harness_index = [harness["name"] for harness in self.config["harnesses"].values()].index(pov_harness.strip())
+            harness_id = list(self.config["harnesses"].keys())[harness_index]
+
+            patch_path = cpv_dir/cpv/"patches"/cp_source/"good_patch.diff"
+            patch = patch_path.read_text()
+            files = re.findall("(?<=\+\+\+ b/).*(?=\n)", patch)
+        else:
+            # todo: make this work when no pov_pou_info file
+            sanitizer_id = None
+            harness_id = None
+            files = []
+        other_patches = []
+        for cpv_path in cpv_dir.iterdir():
+            if cpv_path.name == cpv:
+                continue
+            patch_path = cpv_path/"patches"/cp_source/"good_patch.diff"
+            other_patches.append((cp_source, str(patch_path.resolve())))
+        return harness_id, sanitizer_id, files, other_patches
 
 class ChallengeProject(ChallengeProjectReadOnly):
     def __init__(
@@ -102,8 +132,6 @@ class ChallengeProject(ChallengeProjectReadOnly):
         super().__init__(path, input_path)
         self._build_lock = aiorwlock.RWLock()
         self.writeable_copy_async = asyncio.create_task(self._return_self())
-        self._test_duration = None
-        self._harness_duration = None
         if initial_build:
             logger.info(f"Building {self.name}")
             self.initial_build = asyncio.create_task(self.build_project())
@@ -141,11 +169,6 @@ class ChallengeProject(ChallengeProjectReadOnly):
         async with self.run_lock:
             return await run_command(self.path / "run.sh", *command, **kwargs)
 
-    async def _run_tests_for_timing(self):
-        await self.initial_build
-        _, _, _, duration = await self._run_cp_run_sh("run_tests", timed=True)
-        self._test_duration = math.ceil(duration) * 2  # double it just to be sure
-
     def reset_source_repo(self, source):
         git_repo, ref = self.repos[source]
         git_repo.git.restore(".")
@@ -154,7 +177,7 @@ class ChallengeProject(ChallengeProjectReadOnly):
     async def _build(self, *args):
         async with self.build_lock:
             try:
-                process, _, stderr, _ = await self._run_cp_run_sh("build", *args)
+                process, _, stderr = await self._run_cp_run_sh("build", *args)
                 if stderr:
                     raise ProjectBuildException(stderr=stderr)
                 return process
@@ -167,6 +190,12 @@ class ChallengeProject(ChallengeProjectReadOnly):
         """
         return await self._build()
 
+    def apply_patches(self, patches: list[tuple[str,Path]]):
+        logger.info("Applying patches")
+        for cp_source, patch_path in patches:
+            git_repo, _ = self.repos[cp_source]
+            git_repo.git.execute(['git','apply', patch_path])
+
     async def run_harness(self, harness_input_file, harness_id, timeout=False):
         """Runs a specified project test harness and returns the output of the process.
         Check result.stderr for sanitizer output if it exists.
@@ -174,20 +203,11 @@ class ChallengeProject(ChallengeProjectReadOnly):
         Raises:
             asyncio.TimeoutError: if harness does not finish in set time
         """
-        if timeout:
-            extra_kwargs = {"timeout": max(5, self._harness_duration or 0)}
-        elif not self._harness_duration:
-            extra_kwargs = {"timed": True}
-        else:
-            extra_kwargs = {}
-        process, stdout, stderr, duration = await self._run_cp_run_sh(
+        process, stdout, stderr = await self._run_cp_run_sh(
             "run_pov",
             harness_input_file,
             self.harnesses[harness_id].name,
-            **extra_kwargs,
         )
-        if self._harness_duration is None:
-            self._harness_duration = math.ceil(duration) * 2
         return process, stdout, stderr
 
     async def run_harness_and_check_sanitizer(
@@ -206,7 +226,7 @@ class ChallengeProject(ChallengeProjectReadOnly):
         """Runs a specified project test suite and returns the output of the process.
         Check stderr for failed test output if it exists.
         """
-        _, _, stderr, _ = await self._run_cp_run_sh("run_tests", timeout=self._test_duration)
+        _, _, stderr = await self._run_cp_run_sh("run_tests")
 
         return stderr
 

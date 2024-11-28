@@ -6,32 +6,29 @@ from logger import logger
 from pipeline.setup_project import setup_project
 from pipeline.vuln_discovery import vuln_discovery
 
-vulnerabilities = []
-
-
-async def run(challenge_project: str, cpv: str, llm: list[str]):
+async def run(challenge_project: str, cpv: str, llms: list[str]):
+    if not challenge_project == "nginx-cp-full":
+        raise Exception("Only nginx-cp-full is supported currently")
     logger.info("Starting CRS")
     empty_scratch()
     project_path = get_project(challenge_project)
     project_read_only = await setup_project(project_path)
 
-    print(project_path)
-    quit()
-
-    # does project have exemplar_only or .internal_only folder?
-    # - .internal_only
-    #     is cpv folder there? no=>error
-    #     read pov_pou_info -- map back to config_id
-    #     apply all patches but the current
-
-    for cp_source in project_read_only.sources:
-        vulnerabilities.extend(
-            await vuln_discovery.run(
-                project_read_only=project_read_only,
-                cp_source=cp_source,
-                preprocessed_commits=[],
-            )
-        )
+    # todo: use better logic for cp_source path
+    cp_source = "nginx"
+    harness_id, sanitizer_id, files, other_patches = project_read_only.get_cpv_info(cpv, cp_source)
+    project = await project_read_only.writeable_copy_async
+    project.apply_patches(other_patches)
+    await project.build_project()
+    await vuln_discovery.run(
+        project=project,
+        cp_source=cp_source,
+        cpv=cpv,
+        llms=llms,
+        harness_id = harness_id,
+        sanitizer_id=sanitizer_id,
+        files=files,
+    )
 
 
 if __name__ == "__main__":

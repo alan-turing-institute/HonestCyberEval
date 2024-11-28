@@ -1,3 +1,8 @@
+Run `docker compose run --rm crs <project_folder> <cpv_folder> <llm1> <llm2>`
+e.g. `docker compose run --rm crs nginx-cp-full cpv2 o1-preview`
+
+
+# OLD
 # CRS Sandbox
 
 This repository, the `CRS Sandbox` includes a [./compose.yaml](./compose.yaml) file.
