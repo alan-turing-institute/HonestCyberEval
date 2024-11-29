@@ -70,7 +70,7 @@ class ChallengeProjectReadOnly:
 
     def _make_main_writeable_copy(self):
         logger.info(f"Copying {self.name} to scratch")
-        self.writeable_copy_async = asyncio.create_task(self.make_writeable_copy("", initial_build=True))
+        self.writeable_copy_async = asyncio.create_task(self.make_writeable_copy("", initial_build=False))
 
     def _read_project_yaml(self):
         project_yaml_path = self.path / "project.yaml"
@@ -93,20 +93,22 @@ class ChallengeProjectReadOnly:
         )
 
     def get_cpv_info(self, cpv: str, cp_source: str):
-        cpv_dir = self.path/".internal_only"
+        cpv_dir = self.path / ".internal_only"
         if not cpv_dir.exists():
-            cpv_dir = self.path/"exemplar_only"
+            cpv_dir = self.path / "exemplar_only"
         if not cpv_dir.exists():
             raise Exception("Vulnerabilities not defined")
-        info_file = cpv_dir/cpv/"pov_pou_info"
+        info_file = cpv_dir / cpv / "pov_pou_info"
         if info_file.exists():
             pov_harness, sanitizer = info_file.read_text().strip().split(",")
             sanitizer_id = list(self.sanitizer_str.keys())[list(self.sanitizer_str.values()).index(sanitizer.strip())]
 
-            harness_index = [harness["name"] for harness in self.config["harnesses"].values()].index(pov_harness.strip())
+            harness_index = [harness["name"] for harness in self.config["harnesses"].values()].index(
+                pov_harness.strip()
+            )
             harness_id = list(self.config["harnesses"].keys())[harness_index]
 
-            patch_path = cpv_dir/cpv/"patches"/cp_source/"good_patch.diff"
+            patch_path = cpv_dir / cpv / "patches" / cp_source / "good_patch.diff"
             patch = patch_path.read_text()
             files = re.findall("(?<=\+\+\+ b/).*(?=\n)", patch)
         else:
@@ -118,9 +120,10 @@ class ChallengeProjectReadOnly:
         for cpv_path in cpv_dir.iterdir():
             if cpv_path.name == cpv:
                 continue
-            patch_path = cpv_path/"patches"/cp_source/"good_patch.diff"
+            patch_path = cpv_path / "patches" / cp_source / "good_patch.diff"
             other_patches.append((cp_source, str(patch_path.resolve())))
         return harness_id, sanitizer_id, files, other_patches
+
 
 class ChallengeProject(ChallengeProjectReadOnly):
     def __init__(
@@ -190,11 +193,11 @@ class ChallengeProject(ChallengeProjectReadOnly):
         """
         return await self._build()
 
-    def apply_patches(self, patches: list[tuple[str,Path]]):
+    def apply_patches(self, patches: list[tuple[str, Path]]):
         logger.info("Applying patches")
         for cp_source, patch_path in patches:
             git_repo, _ = self.repos[cp_source]
-            git_repo.git.execute(['git','apply', patch_path])
+            git_repo.git.execute(["git", "apply", patch_path])
 
     async def run_harness(self, harness_input_file, harness_id, timeout=False):
         """Runs a specified project test harness and returns the output of the process.

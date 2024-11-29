@@ -6,6 +6,7 @@ from logger import logger
 from pipeline.setup_project import setup_project
 from pipeline.vuln_discovery import vuln_discovery
 
+
 async def run(challenge_project: str, cpv: str, llms: list[str]):
     if not challenge_project == "nginx-cp-full":
         raise Exception("Only nginx-cp-full is supported currently")
@@ -19,13 +20,13 @@ async def run(challenge_project: str, cpv: str, llms: list[str]):
     harness_id, sanitizer_id, files, other_patches = project_read_only.get_cpv_info(cpv, cp_source)
     project = await project_read_only.writeable_copy_async
     project.apply_patches(other_patches)
-    await project.build_project()
+    # await project.build_project()
     await vuln_discovery.run(
         project=project,
         cp_source=cp_source,
         cpv=cpv,
         llms=llms,
-        harness_id = harness_id,
+        harness_id=harness_id,
         sanitizer_id=sanitizer_id,
         files=files,
     )

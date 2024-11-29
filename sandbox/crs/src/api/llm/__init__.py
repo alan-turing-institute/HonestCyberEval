@@ -61,6 +61,7 @@ LLMmodel: TypeAlias = Literal[
     "azure-gpt-4o",
 ]
 
+
 def create_chat_client(model_name: LLMmodel) -> ChatOpenAI:
     model = ChatOpenAI(
         model=model_name,
@@ -154,7 +155,6 @@ def add_structured_output(
             output = output.lstrip("plaintext").encode().decode("unicode_escape")
             return schema(input=output)
 
-        # field = schema.schema()['required'][0]
         model_with_tools = model
         output_parser = (
             StrOutputParser()

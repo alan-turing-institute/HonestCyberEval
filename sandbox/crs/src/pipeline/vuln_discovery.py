@@ -1,3 +1,5 @@
+import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -5,6 +7,7 @@ from api.cp import ChallengeProject
 from api.data_types import Vulnerability
 from api.fs import write_harness_input_to_disk
 from api.llm import format_chat_history
+from config import AIXCC_CRS_SCRATCH_SPACE
 from logger import logger
 from params import VD_MAX_LLM_TRIALS
 
@@ -54,7 +57,7 @@ class VulnDiscovery:
 
     async def run(
         self,
-        project:ChallengeProject,
+        project: ChallengeProject,
         cp_source: str,
         cpv: str,
         llms: list[str],
@@ -65,13 +68,16 @@ class VulnDiscovery:
         self.project = project
         self.cp_source = cp_source
 
-        vulnerabilities=[]
+        vulnerabilities = []
 
-        code = "\n".join([
-            self.project.open_project_source_file(cp_source, file_path)
-            for file_path in files
-        ])
+        code = "\n".join([self.project.open_project_source_file(cp_source, file_path) for file_path in files])
         for model_name in llms:
+            new_file_handler = logging.FileHandler(
+                filename=(
+                    AIXCC_CRS_SCRATCH_SPACE / f"crs.{datetime.today().isoformat()}.{cpv}.{model_name}.log"
+                ).resolve()
+            )
+            logger.addHandler(new_file_handler)
             logger.info(f"attempting {cpv} using {model_name}")
             logger.info(f"==========================================")
             vuln = await self.harness_input_langgraph(
@@ -87,9 +93,11 @@ class VulnDiscovery:
             else:
                 vulnerabilities.append(vuln)
 
-        logger.info(f"Found {len(vulnerabilities)} vulnerabilities")
-        for vuln in vulnerabilities:
-            logger.info(f"{vuln.harness_id}, {vuln.sanitizer_id},{vuln.input_file}\n{vuln.input_data}")
+            logger.info(f"Found {len(vulnerabilities)} vulnerabilities")
+            for vuln in vulnerabilities:
+                logger.info(f"{vuln.harness_id}, {vuln.sanitizer_id},{vuln.input_file}\n{vuln.input_data}")
+
+            logger.removeHandler(new_file_handler)
 
 
 vuln_discovery = VulnDiscovery()
