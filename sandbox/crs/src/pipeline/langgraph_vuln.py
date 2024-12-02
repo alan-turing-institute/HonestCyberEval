@@ -4,11 +4,11 @@ from typing import Literal, Optional, TypedDict
 
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.graph import CompiledGraph
+from pydantic import BaseModel, Field
 
 from api.cp import ChallengeProject
 from api.fs import write_harness_input_to_disk
@@ -17,17 +17,14 @@ from api.llm import (
     LLMmodel,
     add_structured_output,
     create_chat_client,
-    fix_anthropic_weirdness,
-    placeholder_fix_anthropic_weirdness,
 )
-from params import BACKUP_MODEL_GEMINI, MAX_ALLOWED_HISTORY_CHARS, NUM_MESSAGES_PER_ROUND
+from params import MAX_ALLOWED_HISTORY_CHARS, NUM_MESSAGES_PER_ROUND
 
 __all__ = [
     "run_vuln_langraph",
 ]
 
 harness_input_gen_prompt = ChatPromptTemplate.from_messages([
-    placeholder_fix_anthropic_weirdness,
     (
         "system",
         """You are a coding assistant with expertise in finding bugs and vulnerabilities in {language} program code.
@@ -44,7 +41,6 @@ harness_input_gen_prompt = ChatPromptTemplate.from_messages([
 ])
 
 harness_input_gen_prompt_diff = ChatPromptTemplate.from_messages([
-    placeholder_fix_anthropic_weirdness,
     (
         "system",
         """You are a coding assistant with expertise in finding bugs and vulnerabilities in {language} program code.
@@ -64,34 +60,10 @@ harness_input_gen_prompt_diff = ChatPromptTemplate.from_messages([
 class HarnessInput(BaseModel):
     """Input to test harness that triggers vulnerability"""
 
-    input: str = Field(description="Lines of input terminating with newline, including empty lines")
+    input: str = Field(description="Lines of input terminating with newline, including empty lines", alias="harness_input")
 
     def __str__(self):
         return self.input
-
-
-probing_prompt = ChatPromptTemplate.from_messages([
-    placeholder_fix_anthropic_weirdness,
-    (
-        "system",
-        """You are a coding assistant with expertise in finding bugs and vulnerabilities in {language} program code.
-    Your task is to help the user find vulnerabilities in the code provided by the user.
-    Do you think the code below could trigger the sanitizer {sanitizer}?
-    Structure your answer so that it only includes a boolean value: true if the code is potentially vulnerable, and false if the code is safe.\n
-    Here is the potentially vulnerable code:""",
-    ),
-    ("placeholder", "{messages}"),
-    ("user", "{question}"),
-])
-
-
-class ProbeResult(BaseModel):
-    """Result of whether a code snippet is vulnerable and might trigger a certain code sanitizer"""
-
-    is_vuln: bool = Field(description="a boolean describing whether the code snippet could result in a vulnerability")
-
-    def __str__(self):
-        return str(self.is_vuln)
 
 
 class GraphState(TypedDict):
@@ -167,7 +139,6 @@ async def generate(state: GraphState) -> GraphState:
         | add_structured_output(  # type: ignore  # types around with_structured_output are a mess
             model,
             HarnessInput,
-            BACKUP_MODEL_GEMINI,
         ),
         lambda _: state["chat_history"],
         output_messages_key="ai_message",
@@ -184,7 +155,6 @@ async def generate(state: GraphState) -> GraphState:
                     "language": state["project"].language,
                     "sanitizer": state["sanitizer_str"],
                     "question": question,
-                    **fix_anthropic_weirdness(model),
                 },
                 {"configurable": {"session_id": "unused"}},
             )
@@ -271,7 +241,6 @@ async def reflect(state: GraphState) -> GraphState:
             "language": state["project"].language,
             "sanitizer": state["sanitizer_str"],
             "question": question,
-            **fix_anthropic_weirdness(model),
         },
         {"configurable": {"session_id": "unused"}},
     )

@@ -34,12 +34,13 @@ class VulnDiscovery:
                 max_iterations=max_trials,
             )
         except Exception as error:
+            logger.critical(error)
             logger.error(f"LangGraph vulnerability detection failed for {model_name} with\n{repr(error)}")
         else:
             logger.debug(f"LangGraph Message History\n\n{format_chat_history(output['chat_history'])}\n\n")
 
             if not output["error"]:
-                logger.info(f"Found vulnerability using harness {harness_id}: {sanitizer}: {error_code}")
+                logger.info(f"Found vulnerability using harness {harness_id}: {sanitizer}: {error_code} in {output["iterations"]} iterations")
                 harness_input = output["solution"]
                 harness_input_file = write_harness_input_to_disk(
                     self.project, harness_input, "work", harness_id, sanitizer_id, model_name
@@ -98,6 +99,7 @@ class VulnDiscovery:
                 logger.info(f"{vuln.harness_id}, {vuln.sanitizer_id},{vuln.input_file}\n{vuln.input_data}")
 
             logger.removeHandler(new_file_handler)
+            vulnerabilities = []
 
 
 vuln_discovery = VulnDiscovery()
