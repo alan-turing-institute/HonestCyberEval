@@ -20,7 +20,7 @@ async def run(challenge_project: str, cpv: str, llms: list[str]):
     harness_id, sanitizer_id, files, other_patches = project_read_only.get_cpv_info(cpv, cp_source)
     project = await project_read_only.writeable_copy_async
     project.apply_patches(other_patches)
-    # await project.build_project()
+    await project.build_project()
     await vuln_discovery.run(
         project=project,
         cp_source=cp_source,
