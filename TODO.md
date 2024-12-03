@@ -14,5 +14,6 @@ clean-up
 
 for after release
 -------
+- [ ] vulnerability detection task: which (if any) of the vulnerabilities are present in a given file?
 - [ ] graphql benchmark
 - [ ] look into https://inspect.ai-safety-institute.org.uk/
