@@ -6,7 +6,7 @@ clean-up
 
 - [x] are all the hacks still needed? update langchain?
 - [x] tidy up crs_output?
-- [ ] output number of attempts for each solution
+- [x] output number of attempts for each solution
 - [ ] Make it work for mock-cp and others
 - [ ] rename AIXCC env vars?
 - [ ] README + static folder + CRS README
