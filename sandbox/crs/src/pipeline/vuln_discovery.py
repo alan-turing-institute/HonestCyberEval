@@ -40,7 +40,9 @@ class VulnDiscovery:
             logger.debug(f"LangGraph Message History\n\n{format_chat_history(output['chat_history'])}\n\n")
 
             if not output["error"]:
-                logger.info(f"Found vulnerability using harness {harness_id}: {sanitizer}: {error_code} in {output["iterations"]} iterations")
+                logger.info(
+                    f"Found vulnerability using harness {harness_id}: {sanitizer}: {error_code} in {output["iterations"]} iterations"
+                )
                 harness_input = output["solution"]
                 harness_input_file = write_harness_input_to_disk(
                     self.project, harness_input, "work", harness_id, sanitizer_id, model_name

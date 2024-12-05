@@ -3,11 +3,8 @@ from operator import itemgetter
 from typing import Literal, Type, TypeAlias, TypeVar
 
 from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.messages import AIMessage
-from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
-from langchain_core.output_parsers.openai_tools import PydanticToolsParser
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableLambda, RunnableMap, RunnablePassthrough
-from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
@@ -60,6 +57,7 @@ def add_structured_output(
     schema: Type[OutputType],
 ):
     if is_o1(model):
+
         def parse_output(output):
             output = output.split("```")
             if len(output) > 1:
@@ -67,33 +65,23 @@ def add_structured_output(
             else:
                 output = output[0]
             output = output.lstrip("plaintext").encode().decode("unicode_escape")
-            return schema(input=output)
+            return schema(harness_input=output)
 
         model_with_tools = model
-        output_parser = (
-            StrOutputParser()
-            | RunnableLambda(parse_output)
+        output_parser = StrOutputParser() | RunnableLambda(parse_output)
+        parser_assign = RunnablePassthrough.assign(
+            parsed=itemgetter("raw") | output_parser,
+            parsing_error=lambda _: None,
         )
+        parser_assign = parser_assign.assign(
+            ai_message=itemgetter("raw"),
+        )
+        parser_none = RunnablePassthrough.assign(parsed=lambda _: None)
+        parser_with_fallback = parser_assign.with_fallbacks([parser_none], exception_key="parsing_error")
+        return RunnableMap(raw=model_with_tools) | parser_with_fallback
     elif is_gemini(model):
-        model_with_tools = model.bind(response_format={"type": "json_object"})
-        output_parser = PydanticOutputParser(pydantic_object=schema).bind(partial=True)
-    else:
-        if is_anthropic(model):
-            model_with_tools = model.bind_tools([schema], tool_choice=True)
-        else:
-            tool_name = convert_to_openai_tool(schema)["function"]["name"]
-            model_with_tools = model.bind_tools([schema], tool_choice=tool_name, parallel_tool_calls=False)
-        output_parser = PydanticToolsParser(tools=[schema], first_tool_only=True).bind(partial=True)
-    parser_assign = RunnablePassthrough.assign(
-        parsed=itemgetter("raw") | output_parser,
-        parsing_error=lambda _: None,
-    )
-    parser_assign = parser_assign.assign(
-        ai_message=(itemgetter("raw") if is_gemini(model) else lambda x: AIMessage(content=str(x["parsed"]))),
-    )
-    parser_none = RunnablePassthrough.assign(parsed=lambda _: None)
-    parser_with_fallback = parser_assign.with_fallbacks([parser_none], exception_key="parsing_error")
-    return RunnableMap(raw=model_with_tools) | parser_with_fallback
+        return model.with_structured_output(schema=schema, method="json_mode", include_raw=True)
+    return model.with_structured_output(schema=schema, include_raw=True)
 
 
 def format_chat_history(chat_history: ChatMessageHistory) -> str:

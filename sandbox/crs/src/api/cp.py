@@ -191,6 +191,7 @@ class ChallengeProject(ChallengeProjectReadOnly):
         """Build a project.
         Raises ProjectBuildException, check ProjectBuildException.stderr for output
         """
+        logger.info("Building project")
         return await self._build()
 
     def apply_patches(self, patches: list[tuple[str, Path]]):

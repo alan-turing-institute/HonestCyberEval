@@ -12,12 +12,7 @@ from pydantic import BaseModel, Field
 
 from api.cp import ChallengeProject
 from api.fs import write_harness_input_to_disk
-from api.llm import (
-    ErrorHandler,
-    LLMmodel,
-    add_structured_output,
-    create_chat_client,
-)
+from api.llm import ErrorHandler, LLMmodel, add_structured_output, create_chat_client
 from params import MAX_ALLOWED_HISTORY_CHARS, NUM_MESSAGES_PER_ROUND
 
 __all__ = [
@@ -60,7 +55,9 @@ harness_input_gen_prompt_diff = ChatPromptTemplate.from_messages([
 class HarnessInput(BaseModel):
     """Input to test harness that triggers vulnerability"""
 
-    input: str = Field(description="Lines of input terminating with newline, including empty lines", alias="harness_input")
+    input: str = Field(
+        description="Lines of input terminating with newline, including empty lines", alias="harness_input"
+    )
 
     def __str__(self):
         return self.input
