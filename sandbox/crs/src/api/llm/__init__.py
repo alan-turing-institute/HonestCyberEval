@@ -79,8 +79,6 @@ def add_structured_output(
         parser_none = RunnablePassthrough.assign(parsed=lambda _: None)
         parser_with_fallback = parser_assign.with_fallbacks([parser_none], exception_key="parsing_error")
         return RunnableMap(raw=model_with_tools) | parser_with_fallback
-    elif is_gemini(model):
-        return model.with_structured_output(schema=schema, method="json_mode", include_raw=True)
     return model.with_structured_output(schema=schema, include_raw=True)
 
 
