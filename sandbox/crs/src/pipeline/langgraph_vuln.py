@@ -8,7 +8,7 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.graph import CompiledGraph
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, AliasChoices
 
 from api.cp import ChallengeProject
 from api.fs import write_harness_input_to_disk
@@ -56,7 +56,8 @@ class HarnessInput(BaseModel):
     """Input to test harness that triggers vulnerability"""
 
     input: str = Field(
-        description="Lines of input terminating with newline, including empty lines", alias="harness_input"
+        description="Lines of input terminating with newline, including empty lines",
+        validation_alias=AliasChoices("harness_input", "input"),
     )
 
     def __str__(self):
