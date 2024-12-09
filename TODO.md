@@ -12,6 +12,7 @@ clean-up
 - [ ] rename AIXCC env vars?
 - [ ] README + static folder + CRS README
 - [ ] figure out copyright/license
+- [ ] remove mentions of `diff`
 
 for after release
 -------
