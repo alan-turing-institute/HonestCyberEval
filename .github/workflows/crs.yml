@@ -22,7 +22,7 @@ jobs:
           cache: 'pip'
 
       - name: Install test requirements
-        run: pip3 install -r sandbox/crs/src/requirements.txt -r sandbox/crs/src/requirements-dev.txt
+        run: pip3 install -r sandbox/crs/requirements.txt -r sandbox/crs/requirements-dev.txt
 
       - uses: jakebailey/pyright-action@v2
         with:
