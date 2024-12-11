@@ -8,7 +8,7 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.graph import CompiledGraph
-from pydantic import BaseModel, Field, AliasChoices
+from pydantic import AliasChoices, BaseModel, Field
 
 from api.cp import ChallengeProject
 from api.fs import write_harness_input_to_disk

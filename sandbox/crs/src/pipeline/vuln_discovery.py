@@ -75,9 +75,7 @@ class VulnDiscovery:
         code = "\n".join([self.project.open_project_source_file(cp_source, file_path) for file_path in files])
         for model_name in llms:
             new_file_handler = logging.FileHandler(
-                filename=(
-                        CRS_SCRATCH_SPACE / f"crs.{datetime.today().isoformat()}.{cpv}.{model_name}.log"
-                ).resolve()
+                filename=(CRS_SCRATCH_SPACE / f"crs.{datetime.today().isoformat()}.{cpv}.{model_name}.log").resolve()
             )
             logger.addHandler(new_file_handler)
             logger.info(f"attempting {cpv} using {model_name}")
