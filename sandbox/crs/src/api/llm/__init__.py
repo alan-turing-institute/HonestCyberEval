@@ -8,7 +8,7 @@ from langchain_core.runnables import RunnableLambda, RunnableMap, RunnablePassth
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
-from config import AIXCC_LITELLM_HOSTNAME, LITELLM_KEY
+from config import LITELLM_HOSTNAME, LITELLM_KEY
 from params import MAX_CHAT_CLIENT_RETRIES
 
 from .error_handler import ErrorHandler as ErrorHandler
@@ -41,7 +41,7 @@ def create_chat_client(model_name: LLMmodel) -> ChatOpenAI:
     model = ChatOpenAI(
         model=model_name,
         api_key=LITELLM_KEY,
-        base_url=AIXCC_LITELLM_HOSTNAME,
+        base_url=LITELLM_HOSTNAME,
         max_retries=MAX_CHAT_CLIENT_RETRIES,
     )
     return model

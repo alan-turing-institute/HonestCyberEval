@@ -35,22 +35,6 @@ harness_input_gen_prompt = ChatPromptTemplate.from_messages([
     ("user", "{question}"),
 ])
 
-harness_input_gen_prompt_diff = ChatPromptTemplate.from_messages([
-    (
-        "system",
-        """You are a coding assistant with expertise in finding bugs and vulnerabilities in {language} program code.
-    Your task is to help the user find vulnerabilities in the code provided by the user.
-    The vulnerability would have been introduced through changes in the code which is provided as a diff by the user.
-    Here is the harness: \n ------- \n {harness_code} \n ------- \n
-    Provide the user with an input to the above harness that would trigger the sanitizer {sanitizer}.
-    Ensure any harness input you generate is not too long and that it will result in a valid run. \n
-    Structure your answer so that it only includes the harness input. \n
-    Here is the potentially vulnerable code followed by the diff which may have introduced the vulnerability:""",
-    ),
-    ("placeholder", "{messages}"),
-    ("user", "{question}"),
-])
-
 
 class HarnessInput(BaseModel):
     """Input to test harness that triggers vulnerability"""
@@ -88,7 +72,6 @@ class GraphState(TypedDict):
     sanitizer_id: str
     sanitizer_str: str
     code_snippet: str
-    diff: str
     should_reflect: bool
     model: ChatOpenAI
     logger: Logger
@@ -109,7 +92,7 @@ async def generate(state: GraphState) -> GraphState:
     state["logger"].info("Generating harness solution")
 
     error = state["error"]
-    question = state["code_snippet"] + ("\n" + state["diff"] if state["diff"] else "")
+    question = state["code_snippet"]
     model = state["model"]
 
     # We have been routed back to generation with an error
@@ -122,7 +105,6 @@ async def generate(state: GraphState) -> GraphState:
         else:
             question = f"""The previous solution produced: \n {error}
                         Generate another harness input that triggers the sanitizer in the code."""
-    prompt = harness_input_gen_prompt_diff if state["diff"] else harness_input_gen_prompt
 
     # prune chat history
     state["logger"].debug(f"Chat history length [chars]: {len(state['chat_history'].__str__())}")
@@ -133,7 +115,7 @@ async def generate(state: GraphState) -> GraphState:
         state["chat_history"].add_messages([old_messages[0]] + old_messages[-NUM_MESSAGES_PER_ROUND:])
 
     harness_input_gen_chain = RunnableWithMessageHistory(
-        prompt
+        harness_input_gen_prompt
         | add_structured_output(  # type: ignore  # types around with_structured_output are a mess
             model,
             HarnessInput,
@@ -291,7 +273,6 @@ async def run_vuln_langraph(
     harness_id: str,
     sanitizer_id: str,
     code_snippet: str,
-    diff: str,
 ):
     from logger import add_prefix_to_logger, logger
 
@@ -321,7 +302,6 @@ async def run_vuln_langraph(
             "sanitizer_id": sanitizer_id,
             "sanitizer_str": sanitizer_str,
             "code_snippet": code_snippet,
-            "diff": diff,
             "logger": logger,
         })
     )

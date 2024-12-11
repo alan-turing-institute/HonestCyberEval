@@ -7,7 +7,7 @@ from api.cp import ChallengeProject
 from api.data_types import Vulnerability
 from api.fs import write_harness_input_to_disk
 from api.llm import format_chat_history
-from config import AIXCC_CRS_SCRATCH_SPACE
+from config import CRS_SCRATCH_SPACE
 from logger import logger
 from params import VD_MAX_LLM_TRIALS
 
@@ -19,7 +19,7 @@ class VulnDiscovery:
     cp_source: str
 
     async def harness_input_langgraph(
-        self, model_name, harness_id, sanitizer_id, code_snippet, max_trials, diff=""
+        self, model_name, harness_id, sanitizer_id, code_snippet, max_trials
     ) -> Optional[Vulnerability]:
         sanitizer, error_code = self.project.sanitizers[sanitizer_id]
 
@@ -30,7 +30,6 @@ class VulnDiscovery:
                 harness_id=harness_id,
                 sanitizer_id=sanitizer_id,
                 code_snippet=code_snippet,
-                diff=diff,
                 max_iterations=max_trials,
             )
         except Exception as error:
@@ -77,7 +76,7 @@ class VulnDiscovery:
         for model_name in llms:
             new_file_handler = logging.FileHandler(
                 filename=(
-                    AIXCC_CRS_SCRATCH_SPACE / f"crs.{datetime.today().isoformat()}.{cpv}.{model_name}.log"
+                        CRS_SCRATCH_SPACE / f"crs.{datetime.today().isoformat()}.{cpv}.{model_name}.log"
                 ).resolve()
             )
             logger.addHandler(new_file_handler)

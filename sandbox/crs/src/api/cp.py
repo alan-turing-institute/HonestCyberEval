@@ -12,7 +12,7 @@ import yaml
 from aioshutil import copytree
 from git import Reference, Repo
 
-from config import AIXCC_CP_ROOT, AIXCC_CRS_SCRATCH_SPACE
+from config import CP_ROOT, CRS_SCRATCH_SPACE
 from logger import logger
 
 from .fs import RunException, run_command
@@ -84,7 +84,7 @@ class ChallengeProjectReadOnly:
         return (self.path / "src" / source / file_path).read_text()
 
     async def make_writeable_copy(self, name_extra: str, initial_build: bool = False) -> "ChallengeProject":
-        destination_path = AIXCC_CRS_SCRATCH_SPACE / AIXCC_CP_ROOT.name / f"{self.path.name}{name_extra}"
+        destination_path = CRS_SCRATCH_SPACE / CP_ROOT.name / f"{self.path.name}{name_extra}"
         await copytree(self.path, destination_path, copy_function=copy, dirs_exist_ok=True)
         return ChallengeProject(
             destination_path,

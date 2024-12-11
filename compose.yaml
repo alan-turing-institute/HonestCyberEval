@@ -11,7 +11,7 @@ services:
     env_file: ./config/env
     environment:
       - DOCKER_HOST=tcp://dind:2375
-      - AIXCC_CP_ROOT=/cp_root
+      - CP_ROOT=/cp_root
       - "LOAD_CPS=false"
       - "LOAD_CP_IMAGES=true"
     volumes:
@@ -105,9 +105,9 @@ services:
       - ./cp_root:/cp_root
     environment:
       - DOCKER_HOST=tcp://dind:2375
-      - AIXCC_LITELLM_HOSTNAME=http://litellm
-      - AIXCC_CP_ROOT=/cp_root
-      - AIXCC_CRS_SCRATCH_SPACE=/crs_scratch
+      - LITELLM_HOSTNAME=http://litellm
+      - CP_ROOT=/cp_root
+      - CRS_SCRATCH_SPACE=/crs_scratch
       - LITELLM_KEY=sk-1234
     depends_on:
       litellm:

@@ -8,7 +8,7 @@ e.g. `docker compose run --rm crs nginx-cp-full cpv2 o1-preview`
 This repository, the `CRS Sandbox` includes a [./compose.yaml](./compose.yaml) file.
 This file is the only resource competitors will have for infrastructure automation at competition time.
 Environment variables and secrets will be injected into [./compose.yaml](./compose.yaml)
-from each competitors private copy of the `CRS Sandbox`.
+from each competitor private copy of the `CRS Sandbox`.
 
 Competitor SSO accounts to GitHub will be limited to a basic set of actions for making modifications and merging PRs within the GitHub repository.
 
@@ -18,7 +18,7 @@ Competitors should use GitHub issues to report bugs on the respective repositori
 
 Competitors are also welcome to comment in tickets assisting others.
 
-We encourae all competitors to read through issues (open & closed) within the following repos.
+We encourage all competitors to read through issues (open & closed) within the following repos.
 
 - [CRS Sandbox](https://github.com/aixcc-sc/crs-sandbox/issues)
 - [CP Sandbox](https://github.com/aixcc-sc/cp-sandbox/issues)
@@ -288,12 +288,6 @@ Most dependencies in this repository can be automatically managed by `mise`, but
 - docker-compose >= 2.26.1
 - GNU make >= 4.3
 
-(optional for local kubernetes testing)
-
-- k3s >= v1.29.5
-- nfs-common >= 1:2.6.3ubuntu1
-- open-iscsi >= 2.1.8-1ubuntu2
-
 We've added a Makefile target `make install` which will setup the required dependencies.
 This is the exact same target used by the GitHub workflow evaluator.
 
@@ -317,114 +311,20 @@ export DOCKER_HOST=tcp://127.0.0.1:2375
 docker logs <container name>
 ```
 
-### Working with K3S Kubernetes
-
-We now use [K3S](https://docs.k3s.io/) for our local Kubernetes w/ the [Longhorn](https://longhorn.io/docs/1.6.2/) storage driver.
-We use a Kubernetes context named `crs` for all `kubectl` targets in the Makefile to prevent modification to other Kubernetes environments.
-
-You MUST set your GitHub [PAT](#github-personal-access-token) in the `env` file so that Kubernetes can use this to pull images.
-
 #### Install dependencies
 
 `make install`
 
-#### Merge the k3s kubeconfig into your main kubeconfig
-
-```bash
-sudo cp /etc/rancher/k3s/k3s.yaml /tmp/k3s.yaml
-sudo chown $USER /tmp/k3s.yaml
-KUBECONFIG=/tmp/k3s.yaml:~/.kube/config kubectl config view --flatten > ~/.kube/config
-```
-
-#### Rename k3s context
-
-`kubectl config rename-context default k3s`
-
-#### Set the current context to k3s
-
-`kubectl config use-context k3s`
-
-#### Remove k3s
-
-`make k8s/k3s/clean`
-
-### Working with Kubernetes API
-
-Several teams inquired about the ability of their CRS to work directly with the Kubernetes API in a few tickets.
-
-- [#197](https://github.com/aixcc-sc/crs-sandbox/issues/197)
-- [#203](https://github.com/aixcc-sc/crs-sandbox/issues/203)
-
-This functionality has now been added to the CRS Sandbox.
-
-This is approach is purely optional and should be considered an `unsupported expert mode` so teams can perform dynamic orchestraion of their CRS.
-
-Unsupported means that issues in GitHub related to the Kubernetes API access will receive a lower priorty.
-
-Teams using the Kubernetes API MUST manage their own dynamic resources, and their CRS approach MUST have the ability to recover from memory exhaustion, etc.
-
-To enable this feature the `compose.yaml` file must contain the following for each service that needs Kubernetes API access.
-
-```yaml
-labels:
-  kompose.serviceaccount-name: crs
-```
-
-#### Dependencies managed using mise
-
-This repository defines its dependencies in a [`.tool-versions`](./.tool-versions) file.
-[`mise`](https://mise.jdx.dev/getting-started.html#quickstart) can read this file and automatically install the tools at the required versions.
-Install `mise`, set it up in your shell, and then run `mise install`.
-`mise` will then manage your `PATH` variable to make the tools available whenever you `cd` into this repository.
-
-We've included a Makefile with helpful targets to make working with the CRS Sandbox easier.
-However, you can copy any commands and run them on your own.
-Please note the use of `--profile` with all `docker compose` commands.
-This is so we can easily swap `--profile development` with `--profile competition` at competition time, but competitors can use the `--profile development` to run the local copy of emulated resources.
-
 ### Data Sharing & Volumes
 
 A CRS will find the CPs under evaluation in the volume indicated by the environment variable
-`${AIXCC_CP_ROOT}`. At competition time and likely during some part of the evaluation
-window, this volume will be configured as read-only. As such, a CRS **MUST** copy a CP
-from `${AIXCC_CP_ROOT}` to a writable location in order to build or test it.
-
-The volume indicated by the environment variable `${AIXCC_CRS_SCRATCH_SPACE}` will be writable
+`${CP_ROOT}`. 
+The volume indicated by the environment variable `${CRS_SCRATCH_SPACE}` will be writable
 by the CRS and CPs. Moreover, this volume can be shared among the CRS services as a
 shared file system. It is the responsibility of the CRS developers to ensure that
 use of this shared volume is coordinated between its services to prevent data corruption
 via collisions or race conditions. No other folders or volumes will be shared between
 containers for competitor use during competition.
-
-### No internet Access
-
-As stated previously, a CRS will NOT have internet access except for via the LiteLLM proxy to the configured LLM providers.
-
-Because of this competitors MUST provide all artifacts within their Docker container images.
-
-All images needed to execute a CRS MUST be included under `.github/workflows/package.yml` under the `jobs.build-and-push-image.strategy.matrix.include` section.
-
-The Game Architecture team will migrate these images to the competition environment prior to starting your CRS.
-
-### Release Process
-
-We've modified our original guidance on the tagging process.
-
-All teams should be using [SemVer 2.0.0](https://semver.org/) to tag releases.
-
-A team MUST have a tag of `v1.0.0` OR greater within their private CRS repository at competition.
-
-Teams MUST use a `v` prefix in their tags.
-
-All releases MUST be from the `main` branch ONLY. Failure to create release tags from `main` will lead to a failed release.
-
-Teams can create these tags by following the GitHub Release process with <https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository>
-
-This will automatically tag any Docker images you've specified under `.github/workflows/package.yml` outlined above.
-
-This will also tag the Helm chart of your CRS automatically.
-
-At competition the AIxCC Game Architecture team will use the latest SemVer tag available on your repository that was present at the end of the submission window.
 
 ### Using Make
 
@@ -438,7 +338,7 @@ Copy `sandbox/example.env` to `sandbox/env` and replace the variables with your 
 cp sandbox/example.env sandbox/env
 ```
 
-`make cps` - clones the exemplar challenges into local `./cp_root` folder (the source folder for `${AIXCC_CP_ROOT}`)
+`make cps` - clones the exemplar challenges into local `./cp_root` folder (the source folder for `${CP_ROOT}`)
 `make up` - brings up the development CRS Sandbox, you can visit <http://127.0.0.1:8080/docs> to see the iAPI OpenAPI spec.
 `make down` - tears down the development CRS Sandbox
 
@@ -446,98 +346,6 @@ See [Makefile](./Makefile) for more commands
 
 `make force-reset` - performs a full Docker system prune of all local docker containers, images, networks, and volumes. This can be useful if you accidentally orphaned some docker process or other resources.
 
-### Kubernetes
-
-The Makefile includes endpoints for `make k8s`, `make k8s/development` and `make k8s/competition`
-
-This will generate a resources chart in a `.k8s/` folder.
-The `make k8s` command uses K3S to run Kubernetes locally and will also apply the generated Kubernetes resources onto your cluster.
-This process uses a component called [Kompose](https://kompose.io/conversion/) for translating the Docker Compose file into resources.
-The CRS Sandbox will include a CI/CD action which the private repos must also use.
-This will generate and push the container images to the respective per-competitor private GitHub.
-This will also push the generated manifest file as an OCI compliant manifest to the private GitHub repos.
-The `evaluator.yml` action runs `make k8s` in every pull request to `main`.
-This is to ensure all resources can be properly translated into a manifests and deployed into Kubernetes.
-
-#### Autoscaling
-
-One of Kubernetes' most useful features is autoscaling.  Kompose exposes horizontal pod autoscaling, among many other
-features, via labels set on services.  This example produces an HPA configuration that will scale from 3 replicas up to
-12, adding and removing replicas to target an average CPU utilization of 80% and memory utilization of 1024 megabytes.
-Please note these are probably not good default values for your application and you should customize them.
-
-```yaml
-services:
-  job-runner:
-    labels:
-      # Thresholds for automatic scale up
-      kompose.hpa.cpu: 80 # percentage
-      kompose.hpa.memory: 1024Mi
-      # High & low limits for number of replicas
-      kompose.hpa.replicas.max: 12
-      kompose.hpa.replicas.min: 3
-```
-
-#### Resource Requests & Limits
-
-Docker Compose and Kubernetes both support the concepts of requests and limits.
-
-We recommend that teams review [Docker Compose Deploy Specification](https://docs.docker.com/compose/compose-file/deploy/#resources).
-
-Kompose V3 will automatically convert these requests and limits into requests and limits within Kubernetes.
-
-Nodes will be labeled with node=node1, node=node2, node=node3 at competition time. Therefore in your kompose_competition_overrides.yaml, you will be able to do the following for a service to constrain its placement:
-
-```yaml
-deploy:
-  placement:
-    constraints:
-      - node.labels.node == node1
-```
-
-Teams may use the following files to add requests and limits onto any containers within a CRS.
-
-- [./compose_local_overrides.yaml](./compose_local_overrides.yaml)
-- [./kompose_development_overrides.yaml](./kompose_development_overrides.yaml)
-- [./kompose_competition_overrides.yaml](./kompose_competition_overrides.yaml)
-
-#### Deployments, Pods, and replica count
-
-Kompose has some limitations on resource creation.  Depending on what attributes you set on your services, you will get different Kubernetes resource
-types.  Here are some typical use cases.
-
-##### Run forever and never exit
-
-This type of service is never expected to exit cleanly.  If it exits, it will be due to an uncaught exception.  This might be a database or cache.
-
-Set `restart: always` on this service.  This produces a Deployment in Kubernetes.  If you want multiple, you can use the `deploy.replicas` key to
-scale horizontally.
-
-##### Run once and exit cleanly
-
-This type of service is intended to run once, typically when initialized, and not restart upon completion.
-
-Set `restart: on-failure` on this service.  This produces a Pod in Kubernetes.  If you want multiple, you will need to declare multiple services.
-
-### Architecture Diagram
-
-This diagram depicts the CRS Sandbox during the `development` phase with `--profile development` and during the `competition` phase with `--profile competition`.
-As you can see the iAPI remains as part of the CRS Sanbox but can communicate with the upstream API.
-However, the LiteLLM component moves to a centralized component that does NOT run within the CRS Sandbox at competition.
-
-![arch diagram](./.static/architecture.png)
-
-## Competition Details
-
-### Runtime
-
-The ASC will be organized into a series of rounds, and in each round a CRS will analyze a
-single CP (i.e., a single CP folder will be present in `${AIXCC_CP_ROOT}`). Each round will
-last four (4) hours.
-
-At the start of each round, the folders `${AIXCC_CP_ROOT}` and `${AIXCC_CRS_SCRATCH_SPACE}`
-will be reset with only the target CP for that round in `${AIXCC_CP_ROOT}`. The contents of
-`${AIXCC_CRS_SCRATCH_SPACE}` will not persist between rounds.
 
 # AICD
 

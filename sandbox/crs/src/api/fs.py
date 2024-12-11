@@ -5,7 +5,7 @@ from subprocess import CalledProcessError
 from typing import TYPE_CHECKING, Literal
 
 from api.llm import LLMmodel
-from config import AIXCC_CP_ROOT, OUTPUT_PATH, PROJECT_PATH
+from config import CP_ROOT, OUTPUT_PATH, PROJECT_PATH
 from logger import logger
 
 if TYPE_CHECKING:
@@ -53,7 +53,7 @@ async def run_command(*args, timeout=None, **kwargs):
 
 
 def get_project(challenge_project) -> Path:
-    for item in AIXCC_CP_ROOT.iterdir():
+    for item in CP_ROOT.iterdir():
         if item.is_dir() and item.name == challenge_project:
             return item
     raise Exception(f"Could not find project {challenge_project}")
