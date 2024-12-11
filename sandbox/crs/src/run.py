@@ -15,9 +15,7 @@ async def run(challenge_project: str, cpv: str, llms: list[str]):
     project_path = get_project(challenge_project)
     project_read_only = await setup_project(project_path)
 
-    # todo: use better logic for cp_source path
-    cp_source = "nginx"
-    harness_id, sanitizer_id, files, other_patches = project_read_only.get_cpv_info(cpv, cp_source)
+    cp_source, harness_id, sanitizer_id, files, other_patches = project_read_only.get_cpv_info(cpv)
     project = await project_read_only.writeable_copy_async
     project.apply_patches(other_patches)
     await project.build_project()

@@ -92,7 +92,7 @@ class ChallengeProjectReadOnly:
             initial_build=initial_build,
         )
 
-    def get_cpv_info(self, cpv: str, cp_source: str):
+    def get_cpv_info(self, cpv: str):
         cpv_dir = self.path / ".internal_only"
         if not cpv_dir.exists():
             cpv_dir = self.path / "exemplar_only"
@@ -107,22 +107,39 @@ class ChallengeProjectReadOnly:
                 pov_harness.strip()
             )
             harness_id = list(self.config["harnesses"].keys())[harness_index]
-
-            patch_path = cpv_dir / cpv / "patches" / cp_source / "good_patch.diff"
-            patch = patch_path.read_text()
-            files = re.findall("(?<=\\+\\+\\+ b/).*(?=\n)", patch)
         else:
-            # todo: make this work when no pov_pou_info file
-            sanitizer_id = ""
-            harness_id = ""
-            files = []
+            if len(self.sanitizers) == 1:
+                sanitizer_id = next(iter(self.sanitizers))
+            elif "1" in cpv:
+                sanitizer_id = "id_1"
+            elif "2" in cpv:
+                sanitizer_id = "id_2"
+            else:
+                raise Exception("sanitizer_id not determined")
+
+            if len(self.harnesses) == 1:
+                harness_id = next(iter(self.harnesses))
+            else:
+                raise Exception("harness_id not determined")
+
+        files = []
+        patches_dir = cpv_dir / cpv / "patches"
+        cp_source = ""
+        for source in patches_dir.iterdir():
+            patch_path = patches_dir / source / "good_patch.diff"
+            patch = patch_path.read_text()
+            files.append(re.findall("(?<=\\+\\+\\+ b/).*(?=\n)", patch))
+            cp_source = source.name
+
         other_patches = []
         for cpv_path in cpv_dir.iterdir():
             if cpv_path.name == cpv:
                 continue
-            patch_path = cpv_path / "patches" / cp_source / "good_patch.diff"
-            other_patches.append((cp_source, str(patch_path.resolve())))
-        return harness_id, sanitizer_id, files, other_patches
+            patches_dir = cpv_path / "patches"
+            for other_source in patches_dir.iterdir():
+                patch_path = patches_dir / other_source / "good_patch.diff"
+                other_patches.append((other_source, str(patch_path.resolve())))
+        return cp_source, harness_id, sanitizer_id, files, other_patches
 
 
 class ChallengeProject(ChallengeProjectReadOnly):
