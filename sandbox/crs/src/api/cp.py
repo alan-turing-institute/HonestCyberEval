@@ -110,11 +110,11 @@ class ChallengeProjectReadOnly:
 
             patch_path = cpv_dir / cpv / "patches" / cp_source / "good_patch.diff"
             patch = patch_path.read_text()
-            files = re.findall("(?<=\+\+\+ b/).*(?=\n)", patch)
+            files = re.findall("(?<=\\+\\+\\+ b/).*(?=\n)", patch)
         else:
             # todo: make this work when no pov_pou_info file
-            sanitizer_id = None
-            harness_id = None
+            sanitizer_id = ""
+            harness_id = ""
             files = []
         other_patches = []
         for cpv_path in cpv_dir.iterdir():

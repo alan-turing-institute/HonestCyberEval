@@ -6,7 +6,7 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableLambda, RunnableMap, RunnablePassthrough
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 
 from config import LITELLM_HOSTNAME, LITELLM_KEY
 from params import MAX_CHAT_CLIENT_RETRIES
@@ -40,7 +40,7 @@ LLMmodel: TypeAlias = Literal[
 def create_chat_client(model_name: LLMmodel) -> ChatOpenAI:
     model = ChatOpenAI(
         model=model_name,
-        api_key=LITELLM_KEY,
+        api_key=SecretStr(LITELLM_KEY),
         base_url=LITELLM_HOSTNAME,
         max_retries=MAX_CHAT_CLIENT_RETRIES,
     )

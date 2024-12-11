@@ -6,8 +6,7 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_openai import ChatOpenAI
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.graph import CompiledGraph
+from langgraph import graph
 from pydantic import AliasChoices, BaseModel, Field
 
 from api.cp import ChallengeProject
@@ -16,7 +15,7 @@ from api.llm import ErrorHandler, LLMmodel, add_structured_output, create_chat_c
 from params import MAX_ALLOWED_HISTORY_CHARS, NUM_MESSAGES_PER_ROUND
 
 __all__ = [
-    "run_vuln_langraph",
+    "run_vuln_graph",
 ]
 
 harness_input_gen_prompt = ChatPromptTemplate.from_messages([
@@ -72,17 +71,16 @@ class GraphState(TypedDict):
     sanitizer_id: str
     sanitizer_str: str
     code_snippet: str
-    should_reflect: bool
     model: ChatOpenAI
     logger: Logger
 
 
 class Nodes(StrEnum):
-    PROBE = auto()
     GENERATE = auto()
     RUN_HARNESS = auto()
     REFLECT = auto()
-    END = END
+    END = graph.END
+    START = graph.START
 
 
 # Nodes
@@ -97,14 +95,10 @@ async def generate(state: GraphState) -> GraphState:
 
     # We have been routed back to generation with an error
     if error:
-        if state["should_reflect"]:
-            question = """Try again using the information from your messages and your previous inputs.
-             Generate another harness input that triggers the sanitizer in the code.
-             Do NOT offer an explanation, only provide the input.
-             """
-        else:
-            question = f"""The previous solution produced: \n {error}
-                        Generate another harness input that triggers the sanitizer in the code."""
+        question = """Try again using the information from your messages and your previous inputs.
+         Generate another harness input that triggers the sanitizer in the code.
+         Do NOT offer an explanation, only provide the input.
+         """
 
     # prune chat history
     state["logger"].debug(f"Chat history length [chars]: {len(state['chat_history'].__str__())}")
@@ -236,40 +230,27 @@ def check_if_finished(
         return Nodes.END
 
     state["logger"].info("Decision: re-try solution")
-    if state["should_reflect"]:
-        return Nodes.REFLECT
-    else:
-        return Nodes.GENERATE
+    return Nodes.REFLECT
 
 
 # Setup
-__workflows: dict[str, CompiledGraph] = dict()
+def make_workflow():
+    workflow = graph.StateGraph(GraphState)
+    workflow.add_node(Nodes.GENERATE, generate)
+    workflow.add_node(Nodes.RUN_HARNESS, run_harness)
+    workflow.add_node(Nodes.REFLECT, reflect)
+    workflow.add_edge(Nodes.START, Nodes.GENERATE)
+    workflow.add_edge(Nodes.GENERATE, Nodes.RUN_HARNESS)
+    workflow.add_conditional_edges(Nodes.RUN_HARNESS, check_if_finished)
+    workflow.add_edge(Nodes.REFLECT, Nodes.GENERATE)
+    return workflow.compile()
 
 
-def make_workflow(key: str = "default") -> CompiledGraph:
-    try:
-        return __workflows[key]
-    except KeyError:
-        match key:
-            case "default":
-                workflow = StateGraph(GraphState)
-                workflow.add_node(Nodes.GENERATE, generate)
-                workflow.add_node(Nodes.RUN_HARNESS, run_harness)
-                workflow.add_node(Nodes.REFLECT, reflect)
-                workflow.add_edge(START, Nodes.GENERATE)
-                workflow.add_edge(Nodes.GENERATE, Nodes.RUN_HARNESS)
-                workflow.add_conditional_edges(Nodes.RUN_HARNESS, check_if_finished)
-                workflow.add_edge(Nodes.REFLECT, Nodes.GENERATE)
-                __workflows[key] = workflow.compile()
-        return __workflows[key]
-
-
-async def run_vuln_langraph(
+async def run_vuln_graph(
     *,
     project: ChallengeProject,
     max_iterations: int,
     model_name: LLMmodel,
-    should_reflect: bool = True,
     harness_id: str,
     sanitizer_id: str,
     code_snippet: str,
@@ -296,7 +277,6 @@ async def run_vuln_langraph(
             "iterations": 0,
             "error": None,
             "max_iterations": max_iterations,
-            "should_reflect": should_reflect,
             "harness_id": harness_id,
             "harness_code": harness_code,
             "sanitizer_id": sanitizer_id,

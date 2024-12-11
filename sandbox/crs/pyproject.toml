@@ -33,7 +33,6 @@ generate-hashes = true
 pythonVersion = "3.12"
 pythonPlatform = "Linux"
 reportMissingTypeStubs = true
-exclude = ["typings"]
 
 [tool.isort]
 profile = "black"

@@ -11,7 +11,7 @@ from config import CRS_SCRATCH_SPACE
 from logger import logger
 from params import VD_MAX_LLM_TRIALS
 
-from .langgraph_vuln import run_vuln_langraph
+from .vuln_graph import run_vuln_graph
 
 
 class VulnDiscovery:
@@ -24,7 +24,7 @@ class VulnDiscovery:
         sanitizer, error_code = self.project.sanitizers[sanitizer_id]
 
         try:
-            output = await run_vuln_langraph(
+            output = await run_vuln_graph(
                 model_name=model_name,
                 project=self.project,
                 harness_id=harness_id,

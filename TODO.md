@@ -2,6 +2,8 @@ clean-up
 =======
 - [ ] feed parsing error back? attempt to parse as string?
 - [ ] Make it work for mock-cp and others
+  - no pov_pou_info file
+  - read cp_source folders
 - [ ] README + static folder + CRS README
 - [ ] figure out copyright/license
 
