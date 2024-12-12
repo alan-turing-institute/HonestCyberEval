@@ -32,8 +32,5 @@ class ErrorHandler(Exception):
         elif isinstance(e, RateLimitError):
             logger.info(f"Error 429. Retrying in {self.DELAYS[self.attempts]} secs.")
             await asyncio.sleep(self.DELAYS[self.attempts])
-        elif isinstance(e, APIStatusError) and e.status_code == 400:
-            logger.info(f"Error 400. This is the anthropic weirdness; we throw.")
-            raise  # logger picks it up on the other side.
         else:
             raise  # logger picks it up on the other side.

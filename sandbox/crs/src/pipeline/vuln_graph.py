@@ -1,3 +1,6 @@
+import base64
+import ctypes
+import sys
 from enum import StrEnum, auto
 from logging import Logger
 from typing import Literal, Optional, TypedDict
@@ -7,7 +10,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_openai import ChatOpenAI
 from langgraph import graph
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, model_validator
 
 from api.cp import ChallengeProject
 from api.fs import write_harness_input_to_disk
@@ -83,9 +86,6 @@ class Nodes(StrEnum):
     START = graph.START
 
 
-# Nodes
-
-
 async def generate(state: GraphState) -> GraphState:
     state["logger"].info("Generating harness solution")
 
@@ -144,7 +144,7 @@ async def generate(state: GraphState) -> GraphState:
                 raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
             else:
                 solution = harness_input_solution.input
-                state["logger"].warning("solution:\n" + solution)
+                state["logger"].warning(f"solution:\n{solution}")
                 return GraphState(**{
                     **state,
                     "solution": solution,

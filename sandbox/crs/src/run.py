@@ -8,8 +8,6 @@ from pipeline.vuln_discovery import vuln_discovery
 
 
 async def run(challenge_project: str, cpv: str, llms: list[str]):
-    if not challenge_project == "nginx-cp-full":
-        raise Exception("Only nginx-cp-full is supported currently")
     logger.info("Starting CRS")
     empty_scratch()
     project_path = get_project(challenge_project)

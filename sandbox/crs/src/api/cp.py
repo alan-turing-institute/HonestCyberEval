@@ -1,5 +1,4 @@
 import asyncio
-import math
 import re
 from copy import deepcopy
 from pathlib import Path
@@ -125,20 +124,24 @@ class ChallengeProjectReadOnly:
         files = []
         patches_dir = cpv_dir / cpv / "patches"
         cp_source = ""
-        for source in patches_dir.iterdir():
+        for source in self.sources:
             patch_path = patches_dir / source / "good_patch.diff"
-            patch = patch_path.read_text()
-            files.append(re.findall("(?<=\\+\\+\\+ b/).*(?=\n)", patch))
-            cp_source = source.name
+            if patch_path.exists():
+                patch = patch_path.read_text()
+                files.extend(re.findall("(?<=\\+\\+\\+ b/).*(?=\n)", patch))
+                cp_source = source
+                break
 
         other_patches = []
         for cpv_path in cpv_dir.iterdir():
             if cpv_path.name == cpv:
                 continue
             patches_dir = cpv_path / "patches"
-            for other_source in patches_dir.iterdir():
+            for other_source in self.sources:
                 patch_path = patches_dir / other_source / "good_patch.diff"
-                other_patches.append((other_source, str(patch_path.resolve())))
+                if patch_path.exists():
+                    other_patches.append((other_source, str(patch_path.resolve())))
+                    break
         return cp_source, harness_id, sanitizer_id, files, other_patches
 
 

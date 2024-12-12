@@ -1,3 +1,7 @@
+`sudo apt install git-lfs`
+
+`make cps`
+
 Run `docker compose run --rm crs <project_folder> <cpv_folder> <llm1> <llm2>` e.g.
 `docker compose run --rm crs nginx-cp-full cpv2 o1-preview`
 
@@ -157,12 +161,6 @@ Also note: `GOOGLE_APPLICATION_CREDENTIALS` does not directly contain the Google
 [instructions to create a GCP Service Account](https://docs.litellm.ai/docs/providers/vertex#using-gcp-service-account)
 in combination with
 [this document about creating the credential file itself](https://cloud.google.com/docs/authentication/application-default-credentials#personal).
-
-_TBD_ - These variables and the LiteLLM configuration file are not yet complete. This will be released in a CRS sandbox
-update. We will continue iterating on the CRS sandbox as we grow closer to the competition in order to support newer
-versions of components.
-
-Please see the competition rules and technical release as the cut off dates for changes will be described there.
 
 ### Setting GitHub secrets and variables with competitor repository permissions
 
