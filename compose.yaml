@@ -21,7 +21,8 @@ services:
         bind:
           propagation: rshared
     depends_on:
-      - dind
+      dind:
+        condition: service_healthy
   dind:
     networks:
       - crs-internal
@@ -34,6 +35,11 @@ services:
     privileged: true  # This must run with privilege to support nested virtualization within the public Linux CP for `virtme-ng`
     environment:
       - DOCKER_TLS_CERTDIR  # intentionally blank to optimize runtime
+    healthcheck:
+      test: ["CMD", "docker", "-H", "tcp://0.0.0.0:2375", "version"]
+      start_period: 10s
+      start_interval: 5s
+      interval: 1m30s
     volumes:
       - type: bind
         source: ${PWD}/crs_scratch
