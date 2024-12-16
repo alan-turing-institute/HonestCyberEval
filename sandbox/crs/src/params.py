@@ -21,7 +21,7 @@ VD_MODEL_LIST: list["LLMmodel"] = [
     "gemini-1.5-pro",
     "claude-3.5-sonnet",
 ]
-VD_MAX_LLM_TRIALS = 3
+VD_MAX_LLM_TRIALS = 8
 
 # VD LangGraph
 NUM_MESSAGES_PER_ROUND = 4  # this is not an actual parameter. Change only if you changed LangGraph logic

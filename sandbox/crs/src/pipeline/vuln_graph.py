@@ -62,7 +62,7 @@ class HarnessInput(BaseModel):
 #     """Input to test harness that triggers vulnerability as hex encoded bytes"""
 #
 #     input_bytes: str = Field(
-#         description="Input as bytes encoded as hex",
+#         description="InputOutput not present as bytes encoded as hex",
 #         validation_alias=AliasChoices("harness_input_bytes", "input_bytes"),
 #         examples=['', 'deadbeef', '102059ef', "aabbccddeeff00112233445566778899"],
 #     )
@@ -165,16 +165,17 @@ async def generate(state: GraphState) -> GraphState:
                 },
                 {"configurable": {"session_id": "unused"}},
             )
+            print(output)
         except Exception as e:
             await e_handler.exception_caught(e)
         else:
-            harness_input_solution = output["parsed"]
             try:
+                harness_input_solution = output["parsed"]
                 solution = harness_input_solution.input
-            except AttributeError:
+            except AttributeError or KeyError as err:
                 error = output["parsing_error"]
                 ai_message = output["raw"]
-                raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
+                raise Exception(f"Output not present:{repr(err)}\n{repr(error)}\n{repr(ai_message)}")
             else:
                 state["logger"].warning(f"solution:\n{solution}")
                 return GraphState(**{

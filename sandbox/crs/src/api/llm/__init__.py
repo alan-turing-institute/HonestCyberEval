@@ -75,9 +75,12 @@ def add_structured_output(
             first_tool_only=True,
             strict=False,
         ).bind(partial=True)
-    parser_assign = RunnablePassthrough(parsed=itemgetter("raw") | output_parser, parsing_error=lambda _: None)
+    parser_assign = RunnablePassthrough.assign(
+        parsed=itemgetter("raw") | output_parser,
+        parsing_error=lambda _: None,
+    )
     parser_assign = parser_assign.assign(
-        ai_message=lambda out: AIMessage(content=out["parsed"].model_dump_json()),
+        ai_message=lambda x: AIMessage(content=x["parsed"].model_dump_json())
     )
     parser_none = RunnablePassthrough.assign(parsed=lambda _: None)
     parser_with_fallback = parser_assign.with_fallbacks([parser_none], exception_key="parsing_error")
