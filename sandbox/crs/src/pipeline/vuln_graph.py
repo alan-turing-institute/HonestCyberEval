@@ -1,6 +1,3 @@
-import base64
-import ctypes
-import sys
 from enum import StrEnum, auto
 from logging import Logger
 from typing import Literal, Optional, TypedDict
@@ -10,7 +7,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_openai import ChatOpenAI
 from langgraph import graph
-from pydantic import AliasChoices, BaseModel, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Field
 
 from api.cp import ChallengeProject
 from api.fs import write_harness_input_to_disk
@@ -21,7 +18,7 @@ __all__ = [
     "run_vuln_graph",
 ]
 
-harness_input_gen_prompt = ChatPromptTemplate.from_messages([
+harness_input_gen_prompt = ChatPromptTemplate([
     (
         "system",
         """You are a coding assistant with expertise in finding bugs and vulnerabilities in {language} program code.
@@ -38,16 +35,52 @@ harness_input_gen_prompt = ChatPromptTemplate.from_messages([
 ])
 
 
+def strip_fuzzing_not_performed(output):
+    return output.replace(
+        """***
+*** NOTE: fuzzing was not performed, you have only
+***       executed the target code on a fixed set of inputs.
+***""",
+        "",
+    )
+
+
+# class HarnessInputStr(BaseModel):
 class HarnessInput(BaseModel):
-    """Input to test harness that triggers vulnerability"""
+    """Input to test harness that triggers vulnerability as utf-8"""
 
     input: str = Field(
-        description="Lines of input terminating with newline, including empty lines",
+        description="Lines of input as utf-8 terminating with newline, including empty lines",
         validation_alias=AliasChoices("harness_input", "input"),
     )
 
     def __str__(self):
         return self.input
+
+
+# class HarnessInputBytes(BaseModel):
+#     """Input to test harness that triggers vulnerability as hex encoded bytes"""
+#
+#     input_bytes: str = Field(
+#         description="Input as bytes encoded as hex",
+#         validation_alias=AliasChoices("harness_input_bytes", "input_bytes"),
+#         examples=['', 'deadbeef', '102059ef', "aabbccddeeff00112233445566778899"],
+#     )
+#
+#     @property
+#     def input(self) -> bytes:
+#         return bytes.fromhex(self.input_bytes)
+#
+#     def __str__(self):
+#         return self.input_bytes
+#
+# class HarnessInput(BaseModel):
+#     """Input to test harness that triggers vulnerability. Pick between two formats: utf-8 string or hex-encoded bytes"""
+#     final_input: HarnessInputStr | HarnessInputBytes
+#
+#     @property
+#     def input(self) -> bytes|str:
+#         return self.final_input.input
 
 
 class GraphState(TypedDict):
@@ -95,10 +128,11 @@ async def generate(state: GraphState) -> GraphState:
 
     # We have been routed back to generation with an error
     if error:
-        question = """Try again using the information from your messages and your previous inputs.
-         Generate another harness input that triggers the sanitizer in the code.
-         Do NOT offer an explanation, only provide the input.
-         """
+        question = (
+            """Try again using the information from your messages and your previous inputs."""
+            """Generate another harness input that triggers the sanitizer in the code."""
+            """Do NOT offer an explanation, only provide the input."""
+        )
 
     # prune chat history
     state["logger"].debug(f"Chat history length [chars]: {len(state['chat_history'].__str__())}")
@@ -107,12 +141,11 @@ async def generate(state: GraphState) -> GraphState:
         old_messages = state["chat_history"].messages
         state["chat_history"].clear()
         state["chat_history"].add_messages([old_messages[0]] + old_messages[-NUM_MESSAGES_PER_ROUND:])
-
     harness_input_gen_chain = RunnableWithMessageHistory(
-        harness_input_gen_prompt
-        | add_structured_output(  # type: ignore  # types around with_structured_output are a mess
+        add_structured_output(  # type: ignore  # types around with_structured_output are a mess
             model,
             HarnessInput,
+            harness_input_gen_prompt,
         ),
         lambda _: state["chat_history"],
         output_messages_key="ai_message",
@@ -137,13 +170,12 @@ async def generate(state: GraphState) -> GraphState:
         else:
             harness_input_solution = output["parsed"]
             try:
-                assert type(harness_input_solution) is HarnessInput
-            except AssertionError:
+                solution = harness_input_solution.input
+            except AttributeError:
                 error = output["parsing_error"]
                 ai_message = output["raw"]
                 raise Exception(f"Output not present\n{error}\n{repr(ai_message)}")
             else:
-                solution = harness_input_solution.input
                 state["logger"].warning(f"solution:\n{solution}")
                 return GraphState(**{
                     **state,
@@ -181,7 +213,7 @@ async def run_harness(state: GraphState) -> GraphState:
         if not has_sanitizer_triggered:
             raise Exception(
                 f"The correct sanitizer {state['sanitizer_str']} was not triggered. Instead, this was the"
-                f" output: {stderr}"
+                f" output: {strip_fuzzing_not_performed(stderr)}"
             )
     except Exception as error:
         state["logger"].info("Harness input check: Failed")

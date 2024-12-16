@@ -2,6 +2,8 @@
 
 `make cps`
 
+`c=load-cp-images make up-attached`
+
 Run `docker compose run --rm crs <project_folder> <cpv_folder> <llm1> <llm2>` e.g.
 `docker compose run --rm crs nginx-cp-full cpv2 o1-preview`
 
