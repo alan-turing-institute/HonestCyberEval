@@ -1,6 +1,6 @@
 clean-up
 =======
-- [ ] feed parsing error back? attempt to parse as string?
+- [x] feed parsing error back? attempt to parse as string?
 - [x] make byte input work
 - [ ] allow LLMs to choose str or byte input
 - [ ] README + static folder + CRS README

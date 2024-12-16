@@ -129,8 +129,8 @@ async def generate(state: GraphState) -> GraphState:
     # We have been routed back to generation with an error
     if error:
         question = (
-            """Try again using the information from your messages and your previous inputs."""
-            """Generate another harness input that triggers the sanitizer in the code."""
+            """Try again using the information from your messages and your previous inputs. """
+            """Generate another harness input that triggers the sanitizer in the code. """
             """Do NOT offer an explanation, only provide the input."""
         )
 
@@ -165,7 +165,6 @@ async def generate(state: GraphState) -> GraphState:
                 },
                 {"configurable": {"session_id": "unused"}},
             )
-            print(output)
         except Exception as e:
             await e_handler.exception_caught(e)
         else:
@@ -175,7 +174,10 @@ async def generate(state: GraphState) -> GraphState:
             except AttributeError or KeyError as err:
                 error = output["parsing_error"]
                 ai_message = output["raw"]
-                raise Exception(f"Output not present:{repr(err)}\n{repr(error)}\n{repr(ai_message)}")
+                state["chat_history"].add_user_message(
+                    f"Your solution failed to parse correctly. Here is the output: {error}"
+                )
+                state["logger"].warning(f"Output not present:{repr(err)}\n{repr(error)}\n{repr(ai_message)}")
             else:
                 state["logger"].warning(f"solution:\n{solution}")
                 return GraphState(**{
@@ -186,6 +188,16 @@ async def generate(state: GraphState) -> GraphState:
                 })
     else:
         e_handler.raise_exception()
+
+
+async def check_if_solution_parsed(state: GraphState) -> Literal[Nodes.RUN_HARNESS, Nodes.REFLECT, Nodes.END]:
+    state["logger"].info("Checking if solution parsed correctly")
+    error = state["error"]
+    if error:
+        if state["iterations"] == state["max_iterations"]:
+            return Nodes.END
+        return Nodes.REFLECT
+    return Nodes.RUN_HARNESS
 
 
 async def run_harness(state: GraphState) -> GraphState:
@@ -269,11 +281,13 @@ def check_if_finished(
 # Setup
 def make_workflow():
     workflow = graph.StateGraph(GraphState)
+
     workflow.add_node(Nodes.GENERATE, generate)
     workflow.add_node(Nodes.RUN_HARNESS, run_harness)
     workflow.add_node(Nodes.REFLECT, reflect)
+
     workflow.add_edge(Nodes.START, Nodes.GENERATE)
-    workflow.add_edge(Nodes.GENERATE, Nodes.RUN_HARNESS)
+    workflow.add_conditional_edges(Nodes.GENERATE, check_if_solution_parsed)
     workflow.add_conditional_edges(Nodes.RUN_HARNESS, check_if_finished)
     workflow.add_edge(Nodes.REFLECT, Nodes.GENERATE)
     return workflow.compile()
