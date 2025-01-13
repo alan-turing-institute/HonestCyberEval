@@ -41,6 +41,8 @@ TODO: description
       git update-index --skip-worktree sandbox/litellm/vertex_key.json
       ```
 
+  - Generate an SSH key and upload the generated key to your GitHub account.
+
   - (Optional) Rename the `config/example.crs.env` file, which controls logging:
 
   ```shell
