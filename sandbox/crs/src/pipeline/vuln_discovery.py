@@ -1,4 +1,5 @@
 import logging
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -19,7 +20,7 @@ class VulnDiscovery:
     cp_source: str
 
     async def harness_input_langgraph(
-        self, model_name, harness_id, sanitizer_id, code_snippet, max_trials
+        self, model_name, harness_id, sanitizer_id, cpv, code_snippet, max_trials
     ) -> Optional[Vulnerability]:
         sanitizer, error_code = self.project.sanitizers[sanitizer_id]
 
@@ -29,6 +30,7 @@ class VulnDiscovery:
                 project=self.project,
                 harness_id=harness_id,
                 sanitizer_id=sanitizer_id,
+                cpv=cpv,
                 code_snippet=code_snippet,
                 max_iterations=max_trials,
             )
@@ -43,9 +45,7 @@ class VulnDiscovery:
                     f"Found vulnerability using harness {harness_id}: {sanitizer}: {error_code} in {output["iterations"]} iterations"
                 )
                 harness_input = output["solution"]
-                harness_input_file = write_harness_input_to_disk(
-                    self.project, harness_input, "work", harness_id, sanitizer_id, model_name
-                )
+                harness_input_file = write_harness_input_to_disk(self.project, harness_input, "work", cpv, model_name)
 
                 return Vulnerability(harness_id, sanitizer_id, harness_input, harness_input_file, self.cp_source)
 
@@ -54,8 +54,6 @@ class VulnDiscovery:
                 f"{model_name} failed to trigger sanitizer {sanitizer_id} using {harness_id} with error: \n"
                 f" {output['error']}"
             )
-
-        return
 
     async def run(
         self,
@@ -84,6 +82,7 @@ class VulnDiscovery:
                 model_name=model_name,
                 harness_id=harness_id,
                 sanitizer_id=sanitizer_id,
+                cpv=cpv,
                 code_snippet=code,
                 max_trials=VD_MAX_LLM_TRIALS,
             )

@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from pathlib import Path
 from shutil import rmtree
 from subprocess import CalledProcessError
@@ -81,12 +82,11 @@ def write_harness_input_to_disk(
     project: "ChallengeProject",
     harness_input: str,
     i: int | str,
-    harness_id: str,
-    sanitizer_id: str,
+    cpv: str,
     model_name: LLMmodel | Literal["mock"],
 ):
     return write_file_to_scratch(
         project.input_path
-        / f"harness_{harness_id}_sanitizer_{sanitizer_id}_{model_name}_{i}_hash{str(hash(harness_input))[:6]}.blob",
+        / f"input_{datetime.today().isoformat()}_{cpv}_{model_name}_{i}_hash{str(hash(harness_input))[:6]}.blob",
         harness_input,
     )

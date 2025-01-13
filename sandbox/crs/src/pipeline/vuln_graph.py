@@ -107,6 +107,7 @@ class GraphState(TypedDict):
     sanitizer_id: str
     sanitizer_str: str
     code_snippet: str
+    cpv: str
     model: ChatOpenAI
     logger: Logger
 
@@ -212,8 +213,7 @@ async def run_harness(state: GraphState) -> GraphState:
         project,
         state["solution"],
         state["iterations"],
-        harness_id,
-        sanitizer_id,
+        state["cpv"],
         model_name,
     )
 
@@ -300,6 +300,7 @@ async def run_vuln_graph(
     model_name: LLMmodel,
     harness_id: str,
     sanitizer_id: str,
+    cpv: str,
     code_snippet: str,
 ):
     from logger import add_prefix_to_logger, logger
@@ -328,6 +329,7 @@ async def run_vuln_graph(
             "harness_code": harness_code,
             "sanitizer_id": sanitizer_id,
             "sanitizer_str": sanitizer_str,
+            "cpv": cpv,
             "code_snippet": code_snippet,
             "logger": logger,
         })
