@@ -73,7 +73,7 @@ services:
       - "80"
     ports:
       - '127.0.0.1:8081:80'
-    image: ghcr.io/berriai/litellm-database:main-v1.57.8-stable
+    image: ghcr.io/berriai/litellm-database:litellm_stable_release_branch-v1.57.8-stable
     restart: always
     configs:
       - source: litellm_config
