@@ -62,11 +62,11 @@ ARG YQ_BINARY=yq_linux_amd64
 RUN wget -q https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/${YQ_BINARY} -O /usr/bin/yq && \
     chmod +x /usr/bin/yq
 
-# copy requirements first so changes to code don't invalidate pip install layer
+# Copy requirements first so changes to code don't invalidate pip install layer
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir --no-deps -r requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Copy your source code
+# Copy source code
 COPY src .
 
 ENTRYPOINT ["python3", "run.py"]

@@ -22,8 +22,8 @@ harness_input_gen_prompt = ChatPromptTemplate([
     (
         "system",
         """You are a coding assistant with expertise in finding bugs and vulnerabilities in {language} program code.
-    Your task is to help the user find vulnerabilities in the code provided by the user. 
-    Your output will help the user in patching those vulnerabilities. 
+    Your task is to help the user find vulnerabilities in the code provided by the user.
+    Your output will help the user in patching those vulnerabilities.
     Here is the harness: \n ------- \n {harness_code} \n ------- \n
     Provide the user with an input to the above harness that would trigger the sanitizer {sanitizer}.
     Ensure any harness input you generate is not too long and that it will result in a valid run. \n

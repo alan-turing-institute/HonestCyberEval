@@ -1,5 +1,5 @@
 [project]
-name = "benchmark"
+name = "crs"
 version = "0.1.0"
 dependencies = [
     "aioshutil==1.4",
@@ -28,22 +28,3 @@ requires = ["setuptools", "wheel"]
 
 [tool.pip-tools]
 generate-hashes = true
-
-[tool.pyright]
-pythonVersion = "3.12"
-pythonPlatform = "Linux"
-reportMissingTypeStubs = true
-
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-line_length = 120
-include_trailing_comma = true
-skip_gitignore = true
-known_first_party = ["api", "pipeline", "config", "logger"]
-
-[tool.black]
-target-version = ["py312"]
-line_length = 120
-preview = true
-enable-unstable-feature= ["hug_parens_with_braces_and_square_brackets"]

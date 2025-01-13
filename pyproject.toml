@@ -1,0 +1,44 @@
+[project]
+name = "crs"
+version = "0.1.0"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pip-tools",
+    "pyright",
+    "black==24.10.0",
+    "isort==5.13.2",
+    "pre-commit",
+    "types-PyYAML",
+    "types-requests",
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+
+[tool.setuptools.packages.find]
+include = ["sandbox/crs"]
+namespaces = false
+
+[tool.pyright]
+pythonVersion = "3.12"
+pythonPlatform = "Linux"
+include = ["sandbox/crs/src"]
+reportMissingTypeStubs = true
+deprecateTypingAliases = true
+executionEnvironments = [{ root = "sandbox/crs/src" }]
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 120
+include_trailing_comma = true
+skip_gitignore = true
+known_first_party = ["api", "pipeline", "config", "logger", "params"]
+
+[tool.black]
+target-version = ["py312"]
+line_length = 120
+preview = true
+enable-unstable-feature= ["hug_parens_with_braces_and_square_brackets"]
