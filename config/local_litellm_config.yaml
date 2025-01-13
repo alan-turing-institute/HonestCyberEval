@@ -82,6 +82,17 @@ model_list:
       model: azure/gpt-4o  # pinned in Azure deployment as 2024-05-13
       api_base: "os.environ/AZURE_API_BASE"
       api_key: "os.environ/AZURE_API_KEY"
+  # Microsoft/Azure AI
+  - model_name: "llama3.3"
+    litellm_params:
+      model: "azure_ai/Llama-3.3-70B-Instruct"
+      api_key: "os.environ/AZURE_AI_API_KEY"
+      api_base: "os.environ/AZURE_AI_API_BASE"
+  - model_name: "llama3.1"
+    litellm_params:
+      model: "azure_ai/Llama-3.1-405B-Instruct"
+      api_key: "os.environ/AZURE_AI_API_KEY"
+      api_base: "os.environ/AZURE_AI_API_BASE"
 
 litellm_settings:
   drop_params: true

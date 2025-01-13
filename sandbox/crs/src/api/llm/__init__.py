@@ -37,6 +37,9 @@ LLMmodel = Literal[
     "azure-gpt-3.5-turbo",
     "azure-gpt-3.5-turbo-16k",
     "azure-gpt-4o",
+    # Azure AI
+    "llama3.3",
+    "llama3.1",
 ]
 
 
@@ -61,7 +64,7 @@ def add_structured_output(
     prompt: ChatPromptTemplate,
 ):
 
-    if is_o1(model):
+    if is_o1(model) or is_llama(model):
         llm = model.bind(response_format={"type": "json_object"})
         output_parser = PydanticOutputParser(pydantic_object=schema)
         instructions = output_parser.get_format_instructions().replace("{", "{{").replace("}", "}}")
@@ -111,6 +114,13 @@ is_o1 = functools.partial(
     ],
 )
 
+is_llama = functools.partial(
+    is_kind,
+    [
+        "llama3.3",
+        "llama3.1",
+    ],
+)
 is_anthropic = functools.partial(
     is_kind,
     [
