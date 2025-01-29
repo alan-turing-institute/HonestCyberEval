@@ -59,40 +59,11 @@ services:
     environment:
       - POSTGRES_PASSWORD=aixcc
       - POSTGRES_USER=aixcc
-      - POSTGRES_DB=litellm
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
       interval: 10s
       timeout: 3s
       retries: 15
-  litellm:
-    networks:
-      - crs-internal
-      - internet
-    expose:
-      - "80"
-    ports:
-      - '127.0.0.1:8081:80'
-    image: ghcr.io/berriai/litellm-database:litellm_stable_release_branch-v1.57.8-stable
-    restart: always
-    configs:
-      - source: litellm_config
-        target: /app/config.yaml
-      - source: litellm_vertex_config
-        target: /vertex_key.json
-    command: ["--config", "/app/config.yaml", "--port", "80", "--num_workers", "8"]
-    env_file: ./config/env
-    environment:
-      - DATABASE_URL=postgresql://aixcc:aixcc@db:5432/litellm
-    healthcheck:
-      test: ["CMD-SHELL", "python3", "--version"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 1s
-    depends_on:
-      db:
-        condition: service_healthy
   crs:
     restart: "no"
     build:
@@ -109,16 +80,18 @@ services:
         target: /app/
         bind:
           propagation: rshared
+      - type: bind
+        source: ${PWD}/logs
+        target: /logs
+        bind:
+          propagation: rshared
       - ./cp_root:/cp_root
     environment:
       - DOCKER_HOST=tcp://dind:2375
-      - LITELLM_HOSTNAME=http://litellm
       - CP_ROOT=/cp_root
       - CRS_SCRATCH_SPACE=/crs_scratch
-      - LITELLM_KEY=sk-1234
+      - INSPECT_LOG_DIR=/logs
     depends_on:
-      litellm:
-        condition: service_healthy
       load-cp-images:
         condition: service_completed_successfully
     # command: ["tail", "-f", "run.py"]  # useful to keep CRS container alive in conjunction with `make crs-shell`
@@ -126,15 +99,9 @@ services:
       - crs-internal
       - internet  # only to be used for langsmith
     env_file:
-      - path: ./config/crs.env
-        required: false
+      - path: ./config/env
 volumes:
   dind_cache:
-configs:
-  litellm_config:
-    file: ./config/local_litellm_config.yaml
-  litellm_vertex_config:
-    file: ./config/vertex_key.json
 networks:
   internet: {}
   crs-internal:

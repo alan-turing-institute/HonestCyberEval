@@ -32,7 +32,6 @@ class ChallengeProjectReadOnly:
         self.__config = self._read_project_yaml()
         self.name = self.__config["cp_name"]
         self.language = self.__config["language"].title()
-        self._make_main_writeable_copy()
 
         self.sources = list(self.__config["cp_sources"].keys())
         self.repo = Repo(self.path)
@@ -67,10 +66,6 @@ class ChallengeProjectReadOnly:
     def sanitizer_str(self):
         return deepcopy(self.__config["sanitizers"])
 
-    def _make_main_writeable_copy(self):
-        logger.info(f"Copying {self.name} to scratch")
-        self.writeable_copy_async = asyncio.create_task(self.make_writeable_copy("", initial_build=False))
-
     def _read_project_yaml(self):
         project_yaml_path = self.path / "project.yaml"
         return yaml.safe_load(project_yaml_path.read_text())
@@ -82,67 +77,77 @@ class ChallengeProjectReadOnly:
         """
         return (self.path / "src" / source / file_path).read_text()
 
-    async def make_writeable_copy(self, name_extra: str, initial_build: bool = False) -> "ChallengeProject":
-        destination_path = CRS_SCRATCH_SPACE / CP_ROOT.name / f"{self.path.name}{name_extra}"
-        await copytree(self.path, destination_path, copy_function=copy, dirs_exist_ok=True)
+    async def make_writeable_copy(self, name_extra: str, other_patches: list[tuple[str, Path]]) -> "ChallengeProject":
+        destination_path = CRS_SCRATCH_SPACE / CP_ROOT.name / f"{self.path.name}_{name_extra}"
+        if not destination_path.exists():
+            await copytree(self.path, destination_path, copy_function=copy, dirs_exist_ok=True)
+            project = ChallengeProject(destination_path, self.input_path)
+            project.apply_patches(other_patches)
+            await project.build_project()
+            return project
         return ChallengeProject(
             destination_path,
             self.input_path,
-            initial_build=initial_build,
         )
 
-    def get_cpv_info(self, cpv: str):
+    def get_cpv_info(self):
         cpv_dir = self.path / ".internal_only"
         if not cpv_dir.exists():
             cpv_dir = self.path / "exemplar_only"
         if not cpv_dir.exists():
             raise Exception("Vulnerabilities not defined")
-        info_file = cpv_dir / cpv / "pov_pou_info"
-        if info_file.exists():
-            pov_harness, sanitizer = info_file.read_text().strip().split(",")
-            sanitizer_id = list(self.sanitizer_str.keys())[list(self.sanitizer_str.values()).index(sanitizer.strip())]
 
-            harness_index = [harness["name"] for harness in self.config["harnesses"].values()].index(
-                pov_harness.strip()
-            )
-            harness_id = list(self.config["harnesses"].keys())[harness_index]
-        else:
-            if len(self.sanitizers) == 1:
-                sanitizer_id = next(iter(self.sanitizers))
-            elif "1" in cpv:
-                sanitizer_id = "id_1"
-            elif "2" in cpv:
-                sanitizer_id = "id_2"
-            else:
-                raise Exception("sanitizer_id not determined")
-
-            if len(self.harnesses) == 1:
-                harness_id = next(iter(self.harnesses))
-            else:
-                raise Exception("harness_id not determined")
-
-        files = []
-        patches_dir = cpv_dir / cpv / "patches"
-        cp_source = ""
-        for source in self.sources:
-            patch_path = patches_dir / source / "good_patch.diff"
-            if patch_path.exists():
-                patch = patch_path.read_text()
-                files.extend(re.findall("(?<=\\+\\+\\+ b/).*(?=\n)", patch))
-                cp_source = source
-                break
-
-        other_patches = []
-        for cpv_path in cpv_dir.iterdir():
-            if cpv_path.name == cpv:
-                continue
-            patches_dir = cpv_path / "patches"
+        patches = []
+        for cpv in cpv_dir.iterdir():
+            patches_dir = cpv / "patches"
             for other_source in self.sources:
                 patch_path = patches_dir / other_source / "good_patch.diff"
                 if patch_path.exists():
-                    other_patches.append((other_source, str(patch_path.resolve())))
+                    patches.append((other_source, str(patch_path.resolve())))
                     break
-        return cp_source, harness_id, sanitizer_id, files, other_patches
+
+        cpv_info = []
+        for cpv in cpv_dir.iterdir():
+            info_file = cpv / "pov_pou_info"
+            if info_file.exists():
+                pov_harness, sanitizer = info_file.read_text().strip().split(",")
+                sanitizer_id = list(self.sanitizer_str.keys())[
+                    list(self.sanitizer_str.values()).index(sanitizer.strip())
+                ]
+
+                harness_index = [harness["name"] for harness in self.config["harnesses"].values()].index(
+                    pov_harness.strip()
+                )
+                harness_id = list(self.config["harnesses"].keys())[harness_index]
+            else:
+                if len(self.sanitizers) == 1:
+                    sanitizer_id = next(iter(self.sanitizers))
+                elif "1" in cpv.name:
+                    sanitizer_id = "id_1"
+                elif "2" in cpv.name:
+                    sanitizer_id = "id_2"
+                else:
+                    raise Exception("sanitizer_id not determined")
+
+                if len(self.harnesses) == 1:
+                    harness_id = next(iter(self.harnesses))
+                else:
+                    raise Exception("harness_id not determined")
+
+            files = []
+            patches_dir = cpv_dir / cpv / "patches"
+            cp_source = ""
+            for source in self.sources:
+                patch_path = patches_dir / source / "good_patch.diff"
+                if patch_path.exists():
+                    patch = patch_path.read_text()
+                    files.extend(re.findall("(?<=\\+\\+\\+ b/).*(?=\n)", patch))
+                    cp_source = source
+                    break
+
+            other_patches = [(cp_source, patch_path) for cp_source, patch_path in patches if cpv.name not in patch_path]
+            cpv_info.append((cpv.name, cp_source, harness_id, sanitizer_id, files, other_patches))
+        return cpv_info
 
 
 class ChallengeProject(ChallengeProjectReadOnly):
@@ -171,9 +176,6 @@ class ChallengeProject(ChallengeProjectReadOnly):
 
     async def _return_self(self) -> "ChallengeProject":
         return self
-
-    def _make_main_writeable_copy(self, build=True):
-        pass
 
     async def _run_cp_run_sh(self, *command, **kwargs):
         """
@@ -220,7 +222,7 @@ class ChallengeProject(ChallengeProjectReadOnly):
             git_repo, _ = self.repos[cp_source]
             git_repo.git.execute(["git", "apply", patch_path])
 
-    async def run_harness(self, harness_input_file, harness_id, timeout=False):
+    async def run_harness(self, harness_input_file, harness_id):
         """Runs a specified project test harness and returns the output of the process.
         Check result.stderr for sanitizer output if it exists.
         Can time out when input does not terminate programme.
@@ -242,7 +244,7 @@ class ChallengeProject(ChallengeProjectReadOnly):
         Raises:
             asyncio.TimeoutError: if harness does not finish in set time
         """
-        _, _, stderr = await self.run_harness(harness_input_file, harness_id, timeout=timeout)
+        _, _, stderr = await self.run_harness(harness_input_file, harness_id)
         sanitizer, error_code = self.sanitizers[sanitizer_id]
         return sanitizer in stderr and error_code in stderr, stderr
 

@@ -5,6 +5,7 @@ THIS_FILE := $(lastword $(MAKEFILE_LIST))
 export UID=$(shell id -u)
 export GID=$(shell id -g)
 HOST_CRS_SCRATCH = $(ROOT_DIR)/crs_scratch
+HOST_LOGS = $(ROOT_DIR)/logs
 
 # variables that control the CP repos
 HOST_CP_ROOT_DIR = $(ROOT_DIR)/cp_root
@@ -65,7 +66,7 @@ build: ## Build the project, pull images if available
 	@docker compose build --pull $(c)
 
 local-volumes:
-	mkdir -p $(HOST_CP_ROOT_DIR) $(HOST_CRS_SCRATCH)
+	mkdir -p $(HOST_CP_ROOT_DIR) $(HOST_CRS_SCRATCH) $(HOST_LOGS)
 
 up: github-creds-required local-volumes cps ## Start containers
 	@docker compose up -d $(c)
@@ -140,7 +141,7 @@ cps/clean: ## Clean up the cloned CP repos
 	@rm -rf $(HOST_CP_ROOT_DIR)
 
 clean-volumes:
-	rm -rf $(HOST_CP_ROOT_DIR) $(HOST_CRS_SCRATCH)
+	rm -rf $(HOST_CP_ROOT_DIR) $(HOST_CRS_SCRATCH) $(HOST_LOGS)
 
 clean: cps/clean down
 

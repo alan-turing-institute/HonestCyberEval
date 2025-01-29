@@ -49,9 +49,6 @@ TODO: description
   cp config/example.crs.env config/crs.env
   ```
 
-  - (Optional) To enable more verbose logging from the OpenAI client, set `OPENAI_LOG=debug`
-  - (Optional) For LangSmith integration, fill in the `LANGCHAIN_API_KEY` value and set `LANGCHAIN_TRACING_V2` to `true`.
-
 ### Docker
 
 The evaluation runs as a collection of Docker containers.
@@ -89,10 +86,10 @@ Load the images for the projects using:
 c=load-cp-images make up-attached
 ```
 
-Finally, run the evaluation using `docker compose run --rm crs <project_folder> <cpv_folder> <llm1> <llm2>` e.g.
+Finally, run the evaluation using `docker compose run --rm crs exploit.py --model=<model>` e.g.
 
 ```shell
-docker compose run --rm crs nginx-cp-full cpv2 o1-preview
+docker compose run --rm crs exploit.py --model=openai/o1
 ```
 
 ## Contributing

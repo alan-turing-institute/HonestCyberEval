@@ -11,8 +11,8 @@ crs_scratch/
 ## DIND cache space
 dind_cache/
 
-## CAPI Audit logs
-capi_logs/
+## Inspect logs
+logs/
 
 ## LLM creds
 **/vertex_key.json

@@ -69,4 +69,4 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 # Copy source code
 COPY src .
 
-ENTRYPOINT ["python3", "run.py"]
+ENTRYPOINT ["inspect", "eval"]

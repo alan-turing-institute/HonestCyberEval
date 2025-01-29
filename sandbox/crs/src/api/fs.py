@@ -3,9 +3,8 @@ from datetime import datetime
 from pathlib import Path
 from shutil import rmtree
 from subprocess import CalledProcessError
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
-from api.llm import LLMmodel
 from config import CP_ROOT, OUTPUT_PATH, PROJECT_PATH
 from logger import logger
 
@@ -64,9 +63,6 @@ def empty_scratch():
     if PROJECT_PATH.exists():
         rmtree(PROJECT_PATH)
 
-    # if OUTPUT_PATH.exists():
-    # rmtree(OUTPUT_PATH)
-
 
 def write_file_to_scratch(filename, content):
     OUTPUT_PATH.mkdir(exist_ok=True)
@@ -81,10 +77,11 @@ def write_file_to_scratch(filename, content):
 def write_harness_input_to_disk(
     project: "ChallengeProject",
     harness_input: str,
-    i: int | str,
-    cpv: str,
-    model_name: LLMmodel | Literal["mock"],
+    i: int,
+    cpv: int | str,
+    model_name: str,
 ):
+    model_name = model_name.replace("/", "_")
     return write_file_to_scratch(
         project.input_path
         / f"input_{datetime.today().isoformat()}_{cpv}_{model_name}_{i}_hash{str(hash(harness_input))[:6]}.blob",
