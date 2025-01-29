@@ -91,10 +91,10 @@ Finally, run the evaluation using `docker compose run --rm crs exploit.py --mode
 For example:
 
 ```shell
-docker compose run --rm crs exploit.py --model=openai/o1 cp=nginx-cp-full
+docker compose run --rm crs exploit.py --model=openai/o1 -T cp=nginx-cp-full
 ```
 
-will run the `mock-cp` project with 8 reflexion loops.
+will run the `mock-cp` project with 8 reflexion loops. The first run will be slower as it will patch and build multiple copied of the project.
 
 ## Contributing
 

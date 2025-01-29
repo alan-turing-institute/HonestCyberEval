@@ -103,7 +103,6 @@ def run_harness(state: TaskState, iterations: int):
 @solver(name="reflexion_vuln_detect")
 def reflexion_vuln_detect(max_iterations=8):
     system_message_solver = system_message(template=system_prompt)
-    code_message_solver = user_message(template="{code}")
     no_tool_solver = use_tools([], tool_choice="none")
 
     async def solve(state: TaskState, generate: Generate) -> TaskState:
@@ -114,13 +113,6 @@ def reflexion_vuln_detect(max_iterations=8):
         harness_code = project.harnesses[harness_id].file_path.read_text()
         state.store.set("harness_code", harness_code)
         state = await system_message_solver(state, generate)
-
-        # include vulnerable code in user message
-        cp_source = state.metadata["cp_source"]
-        files = state.metadata["files"]
-        code = "\n".join([project.open_project_source_file(cp_source, file_path) for file_path in files])
-        state.store.set("code", code)
-        state = await code_message_solver(state, generate)
 
         # reflexion loop
         for iterations in range(max_iterations):
