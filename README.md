@@ -86,11 +86,15 @@ Load the images for the projects using:
 c=load-cp-images make up-attached
 ```
 
-Finally, run the evaluation using `docker compose run --rm crs exploit.py --model=<model>` e.g.
+Finally, run the evaluation using `docker compose run --rm crs exploit.py --model=<model> -T cp=<challenge project> -S max_iterations=<num>` e.g.
+
+For example:
 
 ```shell
-docker compose run --rm crs exploit.py --model=openai/o1
+docker compose run --rm crs exploit.py --model=openai/o1 cp=nginx-cp-full
 ```
+
+will run the `mock-cp` project with 8 reflexion loops.
 
 ## Contributing
 
