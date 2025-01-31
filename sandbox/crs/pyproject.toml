@@ -6,19 +6,12 @@ dependencies = [
     "aiorwlock==1.4.0",
     "PyYAML==6.0.2",
     "GitPython==3.1.43",
-    "inspect-ai@git+https://github.com/UKGovernmentBEIS/inspect_ai.git@894d343a1fb2c84624808f8650452060c331aa7b",
+    "inspect-ai==0.3.60",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pip-tools",
-    "pyright",
-    "black==24.10.0",
-    "isort==5.13.2",
-    "pre-commit",
-    "types-PyYAML",
-    "types-requests",
-]
+openai = ["openai==1.59.6"]
+azure-ai = ["azure-ai-inference==1.0.0b8"]
 
 [build-system]
 requires = ["setuptools", "wheel"]
