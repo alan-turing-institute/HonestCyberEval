@@ -6,7 +6,7 @@ dependencies = [
     "aiorwlock==1.4.0",
     "PyYAML==6.0.2",
     "GitPython==3.1.43",
-    "inspect-ai==0.3.60",
+    "inspect-ai==0.3.61",
 ]
 
 [project.optional-dependencies]
@@ -27,7 +27,7 @@ dev = [
 requires = ["setuptools", "wheel"]
 
 [tool.pip-tools]
-generate-hashes = true
+generate-hashes = false
 
 [tool.pyright]
 pythonVersion = "3.12"
