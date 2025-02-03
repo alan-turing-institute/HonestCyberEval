@@ -8,7 +8,7 @@
     }
   },
   "python.analysis.typeCheckingMode": "basic",
-  "python.analysis.include": ["${workspaceFolder}/sandbox/crs/src"],
+  "python.analysis.include": ["${workspaceFolder}/src"],
   "black-formatter.args": ["--config", "${workspaceFolder}/pyproject.toml"],
   "black-formatter.cwd": "${workspaceFolder}",
   "isort.args": [

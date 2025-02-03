@@ -1,32 +1,9 @@
 ## Localized environment variables
-**/crs.env
-**/env
-
-## Cloned exemplar repositories
-cp_root/
-
-## CRS scratch space
-crs_scratch/
-
-## DIND cache space
-dind_cache/
-
-## Inspect logs
-logs/
+.env
 
 ## LLM creds
 **/vertex_key.json
 
-# Devenv
-# This is another solution for managing dev environments
-# And these entries are ment to prevent accidentally
-# committing stuff that others may not be utilizing.
-.devenv*
-devenv.local.nix
-devenv.lock
-
-# direnv
-.direnv
 .idea
 .venv
 

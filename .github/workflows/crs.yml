@@ -25,7 +25,7 @@ jobs:
         run: pip3 install .[dev]
 
       - name: Install test requirements
-        run: pip3 install -r sandbox/crs/requirements.txt
+        run: pip3 install -r requirements.txt
 
       - uses: jakebailey/pyright-action@v2
         with:

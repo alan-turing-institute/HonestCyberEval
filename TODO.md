@@ -1,7 +1,6 @@
 clean-up
 =======
 
-- [ ] simplify setup further
 - [ ] inspect subprocess
 - [ ] ollama
 - [ ] allow LLMs to choose str or byte input

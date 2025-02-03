@@ -1,9 +1,18 @@
 [project]
 name = "crs"
 version = "0.1.0"
-dependencies = []
+dependencies = [
+    "aioshutil==1.4",
+    "aiorwlock==1.4.0",
+    "PyYAML==6.0.2",
+    "GitPython==3.1.43",
+    "inspect-ai==0.3.60",
+]
 
 [project.optional-dependencies]
+openai = ["openai==1.59.6"]
+azure-ai = ["azure-ai-inference==1.0.0b8"]
+groq = ["groq==0.16.0"]
 dev = [
     "pip-tools",
     "pyright",
@@ -17,17 +26,16 @@ dev = [
 [build-system]
 requires = ["setuptools", "wheel"]
 
-[tool.setuptools.packages.find]
-include = ["sandbox/crs"]
-namespaces = false
+[tool.pip-tools]
+generate-hashes = true
 
 [tool.pyright]
 pythonVersion = "3.12"
 pythonPlatform = "Linux"
-include = ["sandbox/crs/src"]
+include = ["src"]
 reportMissingTypeStubs = true
 deprecateTypingAliases = true
-executionEnvironments = [{ root = "sandbox/crs/src" }]
+executionEnvironments = [{ root = "src" }]
 
 [tool.isort]
 profile = "black"
