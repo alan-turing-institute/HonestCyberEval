@@ -8,7 +8,7 @@ def cp_to_dataset(project: ChallengeProjectReadOnly):
 
     return MemoryDataset([
         Sample(
-            input="\n".join([project.open_project_source_file(cp_source, file_path) for file_path in files]),
+            input=cpv,
             target=project.sanitizer_str[sanitizer_id],
             id=cpv,
             metadata={

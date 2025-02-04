@@ -1,4 +1,5 @@
 from git import Repo
+from inspect_ai.model import ChatMessageUser
 from inspect_ai.solver import Generate, Solver, TaskState, solver
 
 from api.cp import ChallengeProjectReadOnly
@@ -22,6 +23,13 @@ def copy_and_build_if_needed(project_read_only) -> Solver:
             name_extra=cpv, other_patches=state.metadata["other_patches"]
         )
         state.store.set("project", project)
+        cp_source = state.metadata["cp_source"]
+        files = state.metadata["files"]
+        state.messages = [
+            ChatMessageUser(
+                content="\n".join([project.open_project_source_file(cp_source, file_path) for file_path in files])
+            )
+        ]
         return state
 
     return solve

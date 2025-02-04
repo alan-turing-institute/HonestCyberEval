@@ -1,9 +1,10 @@
-import asyncio
 from datetime import datetime
 from pathlib import Path
 from shutil import rmtree
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
+
+from inspect_ai.util import ExecResult, subprocess
 
 from config import CP_ROOT, OUTPUT_PATH, PROJECT_PATH
 from logger import logger
@@ -23,33 +24,20 @@ class RunException(Exception):
         return f"{super().__str__()}\n{self.stderr}"
 
 
-async def run_command(*args, timeout=None, **kwargs):
+async def run_command(args: str | list[str], **kwargs) -> ExecResult[str]:
     logger.debug(f"Running {' '.join((str(arg) for arg in args))}")
-    process = await asyncio.create_subprocess_exec(
-        *args,
-        **kwargs,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    logger.debug(
-        f"Running {' '.join((str(arg) for arg in args))} in process {process.pid} {f'with timeout{timeout}' if timeout else ''}"
-    )
-    stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-
-    stdout = stdout.decode()
-    stderr = stderr.decode()
+    result = await subprocess(args, **kwargs, capture_output=True)
 
     logger.debug(
         "\n".join([
             f"Output of running {' '.join((str(arg) for arg in args))}:",
-            stdout,
-            stderr,
+            result.stdout,
+            result.stderr,
         ])
     )
-    returncode = process.returncode
-    if returncode:
-        raise CalledProcessError(returncode, args, stdout, stderr)
-    return process, stdout, stderr
+    if result.returncode:
+        raise CalledProcessError(result.returncode, args, result.stdout, result.stderr)
+    return result
 
 
 def get_project(challenge_project) -> Path:

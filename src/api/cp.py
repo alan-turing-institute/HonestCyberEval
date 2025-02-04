@@ -10,6 +10,7 @@ import aiorwlock
 import yaml
 from aioshutil import copytree
 from git import Reference, Repo
+from inspect_ai.util import ExecResult
 
 from config import CP_ROOT, CRS_SCRATCH_SPACE
 from logger import logger
@@ -177,7 +178,7 @@ class ChallengeProject(ChallengeProjectReadOnly):
     async def _return_self(self) -> "ChallengeProject":
         return self
 
-    async def _run_cp_run_sh(self, *command, **kwargs):
+    async def _run_cp_run_sh(self, *command: str, **kwargs) -> ExecResult[str]:
         """
         Copied from run.sh:
         A helper script for CP interactions.
@@ -192,7 +193,7 @@ class ChallengeProject(ChallengeProjectReadOnly):
         """
 
         async with self.run_lock:
-            return await run_command(self.path / "run.sh", *command, **kwargs)
+            return await run_command([str(self.path / "run.sh"), *command], **kwargs)
 
     def reset_source_repo(self, source):
         git_repo, ref = self.repos[source]
@@ -202,10 +203,10 @@ class ChallengeProject(ChallengeProjectReadOnly):
     async def _build(self, *args):
         async with self.build_lock:
             try:
-                process, _, stderr = await self._run_cp_run_sh("build", *args)
-                if stderr:
-                    raise ProjectBuildException(stderr=stderr)
-                return process
+                result = await self._run_cp_run_sh("build", *args)
+                if result.stderr:
+                    raise ProjectBuildException(stderr=result.stderr)
+                return result
             except CalledProcessError as err:
                 raise ProjectBuildException(stderr=err.stderr) from err
 
@@ -222,19 +223,18 @@ class ChallengeProject(ChallengeProjectReadOnly):
             git_repo, _ = self.repos[cp_source]
             git_repo.git.execute(["git", "apply", patch_path])
 
-    async def run_harness(self, harness_input_file, harness_id):
+    async def run_harness(self, harness_input_file, harness_id) -> ExecResult[str]:
         """Runs a specified project test harness and returns the output of the process.
         Check result.stderr for sanitizer output if it exists.
         Can time out when input does not terminate programme.
         Raises:
             asyncio.TimeoutError: if harness does not finish in set time
         """
-        process, stdout, stderr = await self._run_cp_run_sh(
+        return await self._run_cp_run_sh(
             "run_pov",
-            harness_input_file,
+            str(harness_input_file),
             self.harnesses[harness_id].name,
         )
-        return process, stdout, stderr
 
     async def run_harness_and_check_sanitizer(
         self, harness_input_file, harness_id, sanitizer_id, timeout=False
@@ -244,7 +244,8 @@ class ChallengeProject(ChallengeProjectReadOnly):
         Raises:
             asyncio.TimeoutError: if harness does not finish in set time
         """
-        _, _, stderr = await self.run_harness(harness_input_file, harness_id)
+        result = await self.run_harness(harness_input_file, harness_id)
+        stderr = result.stderr
         sanitizer, error_code = self.sanitizers[sanitizer_id]
         return sanitizer in stderr and error_code in stderr, stderr
 
@@ -252,9 +253,4 @@ class ChallengeProject(ChallengeProjectReadOnly):
         """Runs a specified project test suite and returns the output of the process.
         Check stderr for failed test output if it exists.
         """
-        _, _, stderr = await self._run_cp_run_sh("run_tests")
-
-        return stderr
-
-    async def _run_cp_make(self, *command):
-        return await run_command("make", "-C", self.path, *command)
+        return await self._run_cp_run_sh("run_tests")
