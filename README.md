@@ -1,13 +1,15 @@
-# LLM Bench (working title)
+# HonestCyberEval
 
-TODO: description
+HonestCyberEval focuses on models' ability to detect vulnerabilities
+in real-world software by generating structured inputs that trigger known
+sanitizers.
 
 ## Setup
 
 - Install dependencies:
 
   ```shell
-  sudo apt install make git-lfs
+  sudo apt install make
   ```
 
 - [Install `yq`](https://github.com/mikefarah/yq?tab=readme-ov-file#install)
@@ -17,7 +19,7 @@ TODO: description
     sudo snap install yq
     ```
 
-- To avoid issues with address randomisation, run:
+- To avoid issues with address randomisation ([more info](https://github.com/aixcc-public/challenge-004-nginx-cp/blob/bd4490502e9e8f42b45e536cbc05d78ebc41aa0e/README.md?plain=1#L53)), run:
 
   ```shell
   sudo sysctl vm.mmap_rnd_bits=28
@@ -34,18 +36,10 @@ TODO: description
   - Generate a new personal access token (PAT) (<https://github.com/settings/tokens>) with `read:packages` permissions.
     Fill in the `GITHUB_USER` and `GITHUB_TOKEN` values.
   - Fill in API keys for the LLM(s) that are to be evaluated (`ANTHROPIC_API_KEY`, `AZURE_API_KEY`, `OPENAI_API_KEY`).
-  - For Vertex models, populate the [`config/vertex_key.json`](config/vertex_key.json) file.
-    - to make git ignore this change and avoid any accidental commits, run:
-
-      ```shell
-      git update-index --skip-worktree config/vertex_key.json
-      ```
-
-  - Generate an SSH key and upload the generated key to your GitHub account.
 
 ### Docker
 
-The evaluation challenge projects inside Docker containers.
+The evaluation challenge projects are run inside Docker containers.
 If Docker is unavailable, installing it by following the [documentation](https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository).
 Then, enable [managing Docker as a non-root user](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user).
 
@@ -70,10 +64,10 @@ Finally, run the evaluation using `inspect eval exploit.py --model=<model> -T cp
 For example:
 
 ```shell
-inspect eval exploit.py --model=openai/o1 -T cp=nginx-cp-full
+inspect eval exploit.py --model=openai/o1 -T cp=nginx-cp
 ```
 
-will run the `mock-cp` project with 8 reflexion loops. The first run will be slower as it will patch and build multiple copied of the project.
+will run the `nginx-cp` project with 8 reflexion loops. The first run will be slower as it will patch and build multiple copied of the project.
 
 ## Future work
 - Use Inspect Docker sandbox instead of AIxCC Docker scripts for better integration
