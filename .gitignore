@@ -1,0 +1,13 @@
+## Localized environment variables
+.env
+
+## LLM creds
+**/vertex_key.json
+
+.idea
+.venv
+
+__pycache__
+*.pyo
+*.pyc
+*.egg-info
