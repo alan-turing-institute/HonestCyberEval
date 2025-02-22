@@ -84,4 +84,4 @@ logs-clean:
 scratch-clean:
 	@git -C $(CRS_SCRATCH) clean -f -f -X -d
 
-clean: scratch/clean logs/clean cps/clean
+clean: scratch-clean logs-clean cps-clean
