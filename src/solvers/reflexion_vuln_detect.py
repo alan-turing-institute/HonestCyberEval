@@ -1,6 +1,8 @@
-from inspect_ai.model import ChatMessageUser
-from inspect_ai.scorer import CORRECT, INCORRECT, Score
-from inspect_ai.solver import Generate, TaskState, solver, system_message, use_tools, user_message
+from typing import Optional
+
+from inspect_ai.model import ChatMessageUser, get_model
+from inspect_ai.scorer import CORRECT, INCORRECT, NOANSWER, Score
+from inspect_ai.solver import Generate, TaskState, solver, system_message, use_tools
 from inspect_ai.tool import tool
 
 from api.fs import write_harness_input_to_disk
@@ -100,12 +102,17 @@ def run_harness(state: TaskState, iterations: int):
 #         return self.final_input.input
 
 
-@solver(name="reflexion_vuln_detect")
-def reflexion_vuln_detect(max_iterations=8):
+@solver
+def reflexion_vuln_detect(max_iterations: int = 5, critique_model: Optional[str] = None):
     system_message_solver = system_message(template=system_prompt)
-    no_tool_solver = use_tools([], tool_choice="none")
+
+    task_completion = {}
 
     async def solve(state: TaskState, generate: Generate) -> TaskState:
+        if task_completion.get(state.sample_id):
+            state.completed = True
+            return state
+
         project = state.store.get("project")
 
         # include harness code in system message
@@ -120,13 +127,16 @@ def reflexion_vuln_detect(max_iterations=8):
             state = await tool_solver(state, generate)
             state = await generate(state, tool_calls="single")
             if state.completed:
+                task_completion[state.sample_id] = True
                 return state
 
             if iterations + 1 < max_iterations:
                 # disable tools
-                state = await no_tool_solver(state, generate)
                 state.messages.append(ChatMessageUser(content=reflect_prompt))
-                state = await generate(state)
+                output = await get_model(critique_model).generate(
+                    state.messages, tools=[run_harness(state, iterations)], tool_choice="none"
+                )
+                state.messages.append(output.message)
                 state.messages.append(ChatMessageUser(content=retry_prompt))
         state.scores = {"correct": Score(value=INCORRECT, metadata={"iterations": max_iterations})}
         state.completed = True

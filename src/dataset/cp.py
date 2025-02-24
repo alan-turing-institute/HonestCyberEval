@@ -10,7 +10,7 @@ def cp_to_dataset(project: ChallengeProjectReadOnly):
         Sample(
             input=cpv,
             target=project.sanitizer_str[sanitizer_id],
-            id=cpv,
+            id=int(cpv.replace("cpv", "")),
             metadata={
                 "cpv": cpv,
                 "cp_source": cp_source,

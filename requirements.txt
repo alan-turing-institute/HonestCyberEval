@@ -72,7 +72,7 @@ idna==3.10
     #   yarl
 ijson==3.3.0
     # via inspect-ai
-inspect-ai==0.3.62
+inspect-ai==0.3.69
     # via crs (pyproject.toml)
 jmespath==1.0.1
     # via
