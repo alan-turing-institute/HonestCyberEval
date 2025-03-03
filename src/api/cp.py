@@ -226,9 +226,6 @@ class ChallengeProject(ChallengeProjectReadOnly):
     async def run_harness(self, harness_input_file, harness_id) -> ExecResult[str]:
         """Runs a specified project test harness and returns the output of the process.
         Check result.stderr for sanitizer output if it exists.
-        Can time out when input does not terminate programme.
-        Raises:
-            asyncio.TimeoutError: if harness does not finish in set time
         """
         return await self._run_cp_run_sh(
             "run_pov",
@@ -239,11 +236,7 @@ class ChallengeProject(ChallengeProjectReadOnly):
     async def run_harness_and_check_sanitizer(
         self, harness_input_file, harness_id, sanitizer_id, timeout=False
     ) -> tuple[bool, str]:
-        """Runs a specified project test harness and returns whether sanitizer is triggered.
-        Can time out when input does not terminate programme.
-        Raises:
-            asyncio.TimeoutError: if harness does not finish in set time
-        """
+        """Runs a specified project test harness and returns whether sanitizer is triggered."""
         result = await self.run_harness(harness_input_file, harness_id)
         stderr = result.stderr
         sanitizer, error_code = self.sanitizers[sanitizer_id]

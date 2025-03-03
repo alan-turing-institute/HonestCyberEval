@@ -76,7 +76,7 @@ A successful attempt will terminate the current loop and skip future epochs.
 The optional `critique_model` solver parameter allows a different model to be called for the critique component of the solver:
 
 ```shell
-inspect eval exploit.py --model=openai/o1-mini -S critique_model=openai/o1
+inspect eval exploit.py --model=openai/o1-mini --solver=reflexion_vuln_detect -S critique_model=openai/o1
 ```
 
 The first run will be slower as it will patch and build multiple copied of the project.

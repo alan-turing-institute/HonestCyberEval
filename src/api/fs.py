@@ -58,7 +58,7 @@ def write_file_to_scratch(filename, content):
     if isinstance(content, (bytes, bytearray)):
         file_path.write_bytes(content)
     else:
-        file_path.write_text(content)
+        file_path.write_text(f"{content}\n\n", newline="\n")
     return file_path
 
 

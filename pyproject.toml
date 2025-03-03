@@ -13,7 +13,7 @@ dependencies = [
 openai = ["openai==1.59.6"]
 azure-ai = ["azure-ai-inference==1.0.0b8"]
 groq = ["groq==0.16.0"]
-anthropic = ["anthropic==0.46.0"]
+anthropic = ["anthropic==0.47.1"]
 dev = [
     "pip-tools",
     "pyright",

@@ -1,9 +1,9 @@
 from typing import Optional
 
-from inspect_ai.model import ChatMessageUser, get_model
-from inspect_ai.scorer import CORRECT, INCORRECT, NOANSWER, Score
+from inspect_ai.model import ChatMessageUser, GenerateConfig, get_model
+from inspect_ai.scorer import CORRECT, INCORRECT, Score
 from inspect_ai.solver import Generate, TaskState, solver, system_message, use_tools
-from inspect_ai.tool import tool
+from inspect_ai.tool import ToolFunction, tool
 
 from api.fs import write_harness_input_to_disk
 
@@ -62,17 +62,17 @@ def run_harness(state: TaskState, iterations: int):
                 harness_id,
                 sanitizer_id,
             )
-            stripper_stderr = strip_fuzzing_not_performed(stderr)
+            stripped_stderr = strip_fuzzing_not_performed(stderr)
             if not has_sanitizer_triggered:
                 raise Exception(
                     f"The correct sanitizer {sanitizer} was not triggered. Instead, this was the"
-                    f" output: {stripper_stderr}"
+                    f" output: {stripped_stderr}"
                 )
         except Exception as error:
             return f"Your solution failed. Here is the output: {error}"
         state.scores = {"correct": Score(value=CORRECT, answer=harness_input, metadata={"iterations": iterations + 1})}
         state.completed = True
-        return stripper_stderr
+        return stripped_stderr
 
     return execute
 
@@ -103,7 +103,7 @@ def run_harness(state: TaskState, iterations: int):
 
 
 @solver
-def reflexion_vuln_detect(max_iterations: int = 5, critique_model: Optional[str] = None):
+def reflexion_vuln_detect(max_iterations: int = 5, critique_model: Optional[str] = None, use_tool: bool = True):
     system_message_solver = system_message(template=system_prompt)
 
     task_completion = {}
@@ -123,18 +123,34 @@ def reflexion_vuln_detect(max_iterations: int = 5, critique_model: Optional[str]
 
         # reflexion loop
         for iterations in range(max_iterations):
-            tool_solver = use_tools([run_harness(state, iterations)], tool_choice="any")
-            state = await tool_solver(state, generate)
-            state = await generate(state, tool_calls="single")
+            harness_tool = run_harness(state, iterations)
+            # o1-preview doesn't support tools and the inspect tool calling doesn't work great for this task
+            # claude-3-7-sonnet doesn't support tools and reasoning at the same time, so turning this on for it marginally improves performance
+            if not use_tool or state.model == "o1-preview":
+                state = await generate(state)
+                content = state.output.message.content
+                if isinstance(content, list):
+                    content = [message.text for message in content if message.type == "text"][0]
+                output = content.split("```")
+                if len(output) > 1:
+                    output = output[1]
+                else:
+                    output = output[0]
+                output = output.lstrip("plaintext").encode().decode("unicode_escape")
+                tool_output = str(await harness_tool(output))
+                state.messages.append(ChatMessageUser(content=tool_output))
+            else:
+                tool_solver = use_tools(harness_tool, tool_choice=ToolFunction(name="run_harness"))
+                state = await tool_solver(state, generate)
+                state = await generate(state, tool_calls="single")
             if state.completed:
                 task_completion[state.sample_id] = True
                 return state
 
             if iterations + 1 < max_iterations:
-                # disable tools
                 state.messages.append(ChatMessageUser(content=reflect_prompt))
-                output = await get_model(critique_model).generate(
-                    state.messages, tools=[run_harness(state, iterations)], tool_choice="none"
+                output = await get_model(critique_model, config=GenerateConfig(reasoning_effort="high")).generate(
+                    state.messages, tool_choice="none"
                 )
                 state.messages.append(output.message)
                 state.messages.append(ChatMessageUser(content=retry_prompt))
