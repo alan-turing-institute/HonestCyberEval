@@ -10,7 +10,7 @@ authors:
 - family-names: "Hicks"
   given-names: "Chris"
   affiliation: "The Alan Turing Institute"
-title: "LLM-benchmark"
+title: "HonestCyberEval"
 version: 1.0.0
 date-released: 2025-02-21
 url: "https://github.com/alan-turing-institute/HonestCyberEval"
