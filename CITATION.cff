@@ -1,14 +1,14 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 authors:
-- family-names: "Dan"
-  given-names: "Ristea"
+- family-names: "Ristea"
+  given-names: "Dan"
   affiliation: "The Alan Turing Institute, UCL"
-- family-names: "Vasilios"
-  given-names: "Mavroudis"
+- family-names: "Mavroudis"
+  given-names: "Vasilios"
   affiliation: "The Alan Turing Institute"
-- family-names: "Chris"
-  given-names: "Hicks"
+- family-names: "Hicks"
+  given-names: "Chris"
   affiliation: "The Alan Turing Institute"
 title: "LLM-benchmark"
 version: 1.0.0
