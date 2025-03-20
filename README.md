@@ -1,11 +1,9 @@
 # HonestCyberEval
 
-HonestCyberEval focuses on models' ability to detect vulnerabilities
-in real-world software by generating structured inputs that trigger known
-sanitizers.
+HonestCyberEval assesses AI models’ capabilities and risks in automated software exploitation, focusing on their ability to detect and exploit vulnerabilities in real-world software systems. 
+It models an end-to-end cyber real task and requires from the model to provide structured inputs so as to trigger known sanitizers (i.e., proof of exploitation). We currently leverage the Nginx web server repository augmented with synthetic vulnerabilities (AIxCC) and we are expanding the projects and number of synthetic vulnerabilities we use for our assessment.
 
-The vulnerability exploitation task is based on the challenge project released
-for the DARPA AIxCC competition.
+
 
 ## Setup
 
