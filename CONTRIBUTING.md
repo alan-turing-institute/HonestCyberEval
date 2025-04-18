@@ -43,6 +43,5 @@ save.
 ## Project structure
 
 The interfaces with the challenge projects can be found in [api](src/api).
-The components of the Inspect task (task definition, dataset construction, solvers) are separated into respective 
+The components of the Inspect task (task definition, dataset construction, solvers) are separated into respective
 directories.
-

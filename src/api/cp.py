@@ -21,6 +21,8 @@ Sanitizer = NamedTuple("Sanitizer", [("name", str), ("error_code", str)])
 Harness = NamedTuple("Harness", [("name", str), ("file_path", Path)])
 Source = NamedTuple("Source", [("repo", Repo), ("ref", Reference)])
 
+additional_files = {"nginx": {"cpv12": ["src/nginx/src/http/modules/ngx_http_range_filter_module.c"]}}
+
 
 class ProjectBuildException(RunException):
     message = "Build failed"
@@ -78,7 +80,19 @@ class ChallengeProjectReadOnly:
         """
         return (self.path / "src" / source / file_path).read_text()
 
-    async def make_writeable_copy(self, name_extra: str, other_patches: list[tuple[str, Path]]) -> "ChallengeProject":
+    async def make_writeable_copy(self, name_extra: str) -> "ChallengeProject":
+        destination_path = CRS_SCRATCH_SPACE / CP_ROOT.name / f"{self.path.name}_{name_extra}"
+        if not destination_path.exists():
+            await copytree(self.path, destination_path, copy_function=copy, dirs_exist_ok=True)
+            return ChallengeProject(destination_path, self.input_path)
+        return ChallengeProject(
+            destination_path,
+            self.input_path,
+        )
+
+    async def make_writeable_copy_and_patch(
+        self, name_extra: str, other_patches: list[tuple[str, Path]]
+    ) -> "ChallengeProject":
         destination_path = CRS_SCRATCH_SPACE / CP_ROOT.name / f"{self.path.name}_{name_extra}"
         if not destination_path.exists():
             await copytree(self.path, destination_path, copy_function=copy, dirs_exist_ok=True)
@@ -136,7 +150,7 @@ class ChallengeProjectReadOnly:
                     raise Exception("harness_id not determined")
 
             files = []
-            patches_dir = cpv_dir / cpv / "patches"
+            patches_dir = cpv_dir / cpv.name / "patches"
             cp_source = ""
             for source in self.sources:
                 patch_path = patches_dir / source / "good_patch.diff"
@@ -145,9 +159,11 @@ class ChallengeProjectReadOnly:
                     files.extend(re.findall("(?<=\\+\\+\\+ b/).*(?=\n)", patch))
                     cp_source = source
                     break
+            files.extend([self.path / f for f in additional_files.get(self.name, {}).get(cpv.name, [])])
 
+            this_patches = [(cp_source, patch_path) for cp_source, patch_path in patches if cpv.name in patch_path]
             other_patches = [(cp_source, patch_path) for cp_source, patch_path in patches if cpv.name not in patch_path]
-            cpv_info.append((cpv.name, cp_source, harness_id, sanitizer_id, files, other_patches))
+            cpv_info.append((cpv.name, cp_source, harness_id, sanitizer_id, files, this_patches, other_patches))
         return cpv_info
 
 
@@ -200,6 +216,10 @@ class ChallengeProject(ChallengeProjectReadOnly):
         git_repo.git.restore(".")
         git_repo.git.switch("--detach", ref)
 
+    def reset_all_sources(self):
+        for source in self.sources:
+            self.reset_source_repo(source)
+
     async def _build(self, *args):
         async with self.build_lock:
             try:
@@ -218,7 +238,6 @@ class ChallengeProject(ChallengeProjectReadOnly):
         return await self._build()
 
     def apply_patches(self, patches: list[tuple[str, Path]]):
-        logger.info("Applying patches")
         for cp_source, patch_path in patches:
             git_repo, _ = self.repos[cp_source]
             git_repo.git.execute(["git", "apply", patch_path])
