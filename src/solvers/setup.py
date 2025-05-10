@@ -16,20 +16,23 @@ def setup_project(project_path) -> ChallengeProjectReadOnly:
 
 
 @solver
-def copy_and_build_if_needed(project_read_only) -> Solver:
+def make_built_project_available_to_task(project_read_only) -> Solver:
     async def solve(state: TaskState, generate: Generate) -> TaskState:
         cpv = state.metadata["cpv"]
-        project = await project_read_only.make_writeable_copy(
+        project = await project_read_only.make_writeable_copy_and_patch(
             name_extra=cpv, other_patches=state.metadata["other_patches"]
         )
         state.store.set("project", project)
-        cp_source = state.metadata["cp_source"]
-        files = state.metadata["files"]
-        state.messages = [
-            ChatMessageUser(
-                content="\n".join([project.open_project_source_file(cp_source, file_path) for file_path in files])
-            )
-        ]
+        return state
+
+    return solve
+
+
+@solver
+def add_code_message() -> Solver:
+    async def solve(state: TaskState, generate: Generate) -> TaskState:
+        code = state.metadata["code"]
+        state.messages = [ChatMessageUser(content=code)]
         return state
 
     return solve

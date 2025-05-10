@@ -2,23 +2,24 @@
 name = "crs"
 version = "0.2.0"
 dependencies = [
-    "aioshutil==1.4",
-    "aiorwlock==1.4.0",
-    "PyYAML==6.0.2",
-    "GitPython==3.1.43",
-    "inspect-ai==0.3.69",
+    "aioshutil",
+    "aiorwlock",
+    "PyYAML",
+    "pydantic",
+    "GitPython",
+    "inspect-ai@git+https://github.com/UKGovernmentBEIS/inspect_ai@dd4835a",
 ]
 
 [project.optional-dependencies]
-openai = ["openai==1.59.6"]
-azure-ai = ["azure-ai-inference==1.0.0b8"]
-groq = ["groq==0.16.0"]
-anthropic = ["anthropic==0.47.1"]
+openai = ["openai"]
+azure-ai = ["azure-ai-inference"]
+groq = ["groq"]
+anthropic = ["anthropic"]
 dev = [
     "pip-tools",
     "pyright",
-    "black==24.10.0",
-    "isort==5.13.2",
+    "black",
+    "isort",
     "pre-commit",
     "types-PyYAML",
     "types-requests",
