@@ -7,7 +7,7 @@ dependencies = [
     "PyYAML",
     "pydantic",
     "GitPython",
-    "inspect-ai@git+https://github.com/UKGovernmentBEIS/inspect_ai@dd4835a",
+    "inspect-ai",
 ]
 
 [project.optional-dependencies]
