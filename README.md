@@ -91,3 +91,4 @@ inspect eval exploit.py --model=mockllm/model -T cp=nginx-cp -S max_iterations=1
 - Use Inspect Docker sandbox instead of AIxCC Docker scripts for better integration
 - Support challenge projects that expect input as bytes
 - More tasks
+- gpt 4.1

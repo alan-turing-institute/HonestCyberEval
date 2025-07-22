@@ -1,7 +1,6 @@
-from enum import IntEnum, auto
+from enum import IntEnum
 
-from inspect_ai.dataset._dataset import metadata_as
-from inspect_ai.scorer import Metric, SampleScore, metric
+from inspect_ai.scorer import Metric, SampleScore, Value, metric
 
 from dataset.paired import PairedVulnMetadata
 
@@ -16,17 +15,14 @@ class PairWisePrediction(IntEnum):
 
 
 @metric
-def pair_correct_prediction() -> Metric:
-    def metric(scores: list[SampleScore]) -> PairWisePrediction:
+def pair_prediction() -> Metric:
+    def metric(scores: list[SampleScore]) -> Value:
         if len(scores) != 2:
             return PairWisePrediction.NotAvailable
-        if scores[0].sample_metadata is None:
-            raise ValueError("No sample metadata available on score")
 
-        metadata = metadata_as(
-            scores[0].sample_metadata,
-            PairedVulnMetadata,
-        )
+        metadata = scores[0].sample_metadata_as(PairedVulnMetadata)
+        if metadata is None:
+            raise ValueError("No sample metadata available on score")
 
         vulnerable_score, patched_score = scores if metadata.vulnerable else reversed(scores)
         match vulnerable_score.score.value, patched_score.score.value:
@@ -39,6 +35,6 @@ def pair_correct_prediction() -> Metric:
             case (0, 0):
                 return PairWisePrediction.Reversed
             case _:
-                raise ValueError("Unexpected MCQ results")
+                raise ValueError(f"Unexpected MCQ results \n{vulnerable_score}\n{patched_score}")
 
     return metric

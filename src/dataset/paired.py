@@ -5,7 +5,8 @@ from pydantic import BaseModel
 
 
 class PairedVulnMetadata(BaseModel, frozen=True):
-    cpv: str
+    correct: str
+    predict: str
     files: list[str]
     code: str
     language: str
@@ -20,7 +21,8 @@ def record_to_sample(record) -> Sample:
         choices=["Vulnerable", "Not vulnerable"],
         target="A" if metadata["vulnerable"] else "B",
         metadata={
-            "cpv": metadata["cpv"],
+            "correct": f"pair_correct_{metadata["cpv"]}",
+            "predict": f"pair_prediction_{metadata["cpv"]}",
             "files": metadata["files"],
             "code": metadata["code"],
             "language": metadata["language"],
