@@ -1,6 +1,7 @@
 [project]
-name = "crs"
+name = "honestcybereval"
 version = "0.2.0"
+requires-python = ">=3.11"
 dependencies = [
     "aioshutil",
     "aiorwlock",
@@ -15,21 +16,26 @@ openai = ["openai"]
 azure-ai = ["azure-ai-inference"]
 groq = ["groq"]
 anthropic = ["anthropic"]
+all = [
+    "honestcybereval[openai,azure-ai,groq,anthropic]",
+]
+[dependency-groups]
 dev = [
-    "pip-tools",
     "pyright",
-    "black",
-    "isort",
+    "ruff",
     "pre-commit",
+]
+typestubs = [
     "types-PyYAML",
     "types-requests",
+]
+all = [
+    {include-group = "dev"},
+    {include-group = "typestubs"},
 ]
 
 [build-system]
 requires = ["setuptools", "wheel"]
-
-[tool.pip-tools]
-generate-hashes = false
 
 [tool.pyright]
 pythonVersion = "3.12"
@@ -39,16 +45,29 @@ reportMissingTypeStubs = true
 deprecateTypingAliases = true
 executionEnvironments = [{ root = "src" }]
 
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-line_length = 120
-include_trailing_comma = true
-skip_gitignore = true
-known_first_party = ["api", "pipeline", "config", "logger", "params"]
+[tool.ruff]
+line-length = 88
 
-[tool.black]
-target-version = ["py312"]
-line_length = 120
-preview = true
-enable-unstable-feature= ["hug_parens_with_braces_and_square_brackets"]
+[tool.ruff.lint]
+extend-select = [
+    "RUF",  # Ruff rules
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "PLE",  # Pylint error
+    "PLC",  # Pylint convention
+    "F",  # Pyflakes
+    "B",  # flake8-bugbear
+    "FA",  # flake8-future-annotations
+    "EXE",  # flake8-executable
+    "Q",  # flake8-quotes
+    "I",  # isort
+    "UP",  # pyupgrade
+]
+ignore=[
+    "E501",  # line length, ignored for now
+]
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.lint.per-file-ignores]
+"*/__init__.py" = ["PLC0414"]

@@ -5,11 +5,11 @@ from pydantic import BaseModel
 
 
 class PairedVulnMetadata(BaseModel, frozen=True):
-    cpv: str
-    files: list[str]
+    code_files: list[str]
     code: str
+    fixed_code: str
     language: str
-    vulnerable: bool
+    sanitizer: str
 
 
 def record_to_sample(record) -> Sample:
@@ -18,18 +18,19 @@ def record_to_sample(record) -> Sample:
         input=record["input"],
         id=record["id"],
         choices=["Vulnerable", "Not vulnerable"],
-        target="A" if metadata["vulnerable"] else "B",
         metadata={
-            "cpv": metadata["cpv"],
-            "files": metadata["files"],
+            "code_files": metadata["code_files"],
             "code": metadata["code"],
+            "fixed_code": metadata["fixed_code"],
             "language": metadata["language"],
-            "vulnerable": metadata["vulnerable"],
+            "sanitizer": metadata["sanitizer"],
         },
     )
 
 
 def read_dataset(challenge_project: str):
-    path = (Path(__file__).parent / "output" / f"{challenge_project.replace("-", "_")}.json").absolute()
+    path = (
+        Path(__file__).parent / "output" / f"{challenge_project.replace('-', '_')}.json"
+    ).absolute()
     dataset = json_dataset(str(path), record_to_sample)
     return dataset

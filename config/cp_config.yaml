@@ -11,3 +11,6 @@ cp_targets:
   nginx-cp:
     url: git@github.com:aixcc-public/challenge-004-nginx-cp.git
     ref: v1.0.3
+  mock-cp:
+    url: git@github.com:AICD-Research-Centre/aicc_mock_cp.git
+    ref: v4.0.1

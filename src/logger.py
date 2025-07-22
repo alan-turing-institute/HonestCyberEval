@@ -1,11 +1,8 @@
 import logging
 import logging.config
-from datetime import datetime
 from pathlib import Path
 
 import yaml
-
-from config import CRS_SCRATCH_SPACE
 
 
 class MultiLineFormatter(logging.Formatter):
@@ -47,18 +44,8 @@ def filter_maker(level):
 
 def make_logger():
     log_conf = yaml.safe_load((Path(__file__).parent / "logging.yaml").read_text())
-    log_conf["handlers"]["file"]["filename"] = CRS_SCRATCH_SPACE / f"crs.{datetime.today().isoformat()}.log"
     logging.config.dictConfig(log_conf)
     return logging.getLogger("CRS")
 
 
 logger = make_logger()
-
-
-class PrefixAdapter(logging.LoggerAdapter):
-    def process(self, msg, kwargs):
-        return f"[{self.extra['prefix']}] {msg}", kwargs  # type: ignore
-
-
-def add_prefix_to_logger(logger: logging.Logger, prefix: str):
-    return PrefixAdapter(logger, {"prefix": prefix})

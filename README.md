@@ -7,7 +7,17 @@ sanitizers (i.e., proof of exploitation).
 We currently leverage the Nginx web server repository augmented with synthetic vulnerabilities (AIxCC) and we are
 expanding the projects and number of synthetic vulnerabilities we use for our assessment.
 
+## Task
+
+- exploit.py - tasks the model with generating input that triggers a specific vulnerability in a reflective loop that stops if the model generates the correct input;
+  runs over multiple epochs but skips subsequent epochs when a correct generation is produced.
+- identify.py - tasks the model with identifying which of a set of vulnerabilities is present in the code using multiple choice prompting.
+- paired.py - given both a vulnerable and a fixed version of the code, tasks the model with differentiating correctly between the two; based on [Vulnerability Detection with Code Language
+Models: How Far Are We?, Ding et al., 2024](https://arxiv.org/pdf/2403.18624).
+
 ## Setup
+
+Due to the requirements of the AIxCC repos, this works best on Linux.
 
 - Install dependencies:
 
@@ -88,6 +98,5 @@ inspect eval exploit.py --model=mockllm/model -T cp=nginx-cp -S max_iterations=1
 
 ## Future work
 
-- Use Inspect Docker sandbox instead of AIxCC Docker scripts for better integration
 - Support challenge projects that expect input as bytes
 - More tasks
