@@ -103,5 +103,5 @@ if __name__ == "__main__":
     try:
         cp = sys.argv[1]
     except IndexError:
-        cp = "mock-cp"
+        cp = "nginx-cp"
     generate_dataset(cp)

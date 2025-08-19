@@ -80,20 +80,13 @@ For example:
 inspect eval exploit.py --model=openai/o1 -T cp=nginx-cp
 ```
 
-will run the `nginx-cp` project with the default 5 reflexion loops and 3 epochs.
+will run the `nginx-cp` project with the default 5 reflexion loops and 5 epochs.
 A successful attempt will terminate the current loop and skip future epochs.
 
 The optional `critique_model` solver parameter allows a different model to be called for the critique component of the solver:
 
 ```shell
 inspect eval exploit.py --model=openai/o1-mini --solver=reflexion_vuln_detect -S critique_model=openai/o1
-```
-
-The first run will be slower as it will patch and build multiple copied of the project.
-We recommend starting a mock run first to create the test projects before running the eval, but it is not required:
-
-```shell
-inspect eval exploit.py --model=mockllm/model -T cp=nginx-cp -S max_iterations=1
 ```
 
 ## Future work
